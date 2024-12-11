@@ -75,12 +75,12 @@ export default function SuppliesPage() {
               <input
                 type="text"
                 placeholder="Search items..."
-                className="w-64 px-4 py-2 pl-10 bg-gray-800/50 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-gray-300"
+                className="w-64 px-4 py-2 pl-10 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 text-gray-300"
               />
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 h-4 w-4" />
             </div>
-            <button className="btn-bevel accent-primary px-6 py-2 rounded-xl flex items-center gap-2 transform hover:scale-105 transition-all">
-              <Plus className="h-5 w-5" />
+            <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
+              <Plus className="h-4 w-4" />
               Add New Item
             </button>
           </div>
@@ -88,23 +88,23 @@ export default function SuppliesPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="text-gray-400 text-sm">Total Items</div>
             <div className="text-2xl font-bold text-white mt-1">{items.length}</div>
           </div>
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="text-gray-400 text-sm">Low Stock Items</div>
             <div className="text-2xl font-bold text-red-400 mt-1">
               {items.filter(item => item.on_hand <= item.min_stock).length}
             </div>
           </div>
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="text-gray-400 text-sm">Total Value</div>
             <div className="text-2xl font-bold text-green-400 mt-1">
               ${items.reduce((sum, item) => sum + item.cost * item.on_hand, 0).toFixed(2)}
             </div>
           </div>
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="text-gray-400 text-sm">Categories</div>
             <div className="text-2xl font-bold text-indigo-400 mt-1">{categories.length}</div>
           </div>
@@ -114,7 +114,7 @@ export default function SuppliesPage() {
       <div className="flex gap-6">
         {/* Left Sidebar - Categories */}
         <div className="w-64 space-y-4">
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-white">Categories</h2>
               <button className="p-1 hover:bg-gray-700 rounded">
@@ -128,8 +128,8 @@ export default function SuppliesPage() {
                   onClick={() => setActiveTab(category)}
                   className={`w-full text-left p-2.5 rounded-lg text-sm transition-all
                     ${activeTab === category 
-                      ? 'bg-indigo-600 text-white shadow-lg' 
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-indigo-600 text-white' 
+                      : 'text-gray-400 hover:bg-gray-700 hover:text-white'
                     }`}
                 >
                   {category}
@@ -150,11 +150,11 @@ export default function SuppliesPage() {
               <div className="text-red-500">{error}</div>
             </div>
           ) : (
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-800">
+                    <tr className="border-b border-gray-700">
                       <th className="p-4 text-left text-gray-400 font-medium">Item No</th>
                       <th className="p-4 text-left text-gray-400 font-medium">Vendor</th>
                       <th className="p-4 text-left text-gray-400 font-medium">UPC/SKU</th>
@@ -174,7 +174,7 @@ export default function SuppliesPage() {
                         className={`border-b border-gray-700 text-gray-300 transition-all
                           ${selectedItem?.id === item.id 
                             ? 'bg-indigo-600/10 border-indigo-500/50' 
-                            : 'hover:bg-gray-800/50'
+                            : 'hover:bg-gray-700'
                           }`}
                       >
                         <td className="p-4">{item.item_no}</td>
@@ -195,10 +195,10 @@ export default function SuppliesPage() {
                         <td className="p-4 text-right">{item.min_stock}</td>
                         <td className="p-4">
                           <div className="flex items-center justify-center space-x-2">
-                            <button className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors">
+                            <button className="p-1.5 hover:bg-gray-600 rounded-lg transition-colors">
                               <Edit2 className="h-4 w-4 text-gray-400" />
                             </button>
-                            <button className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors">
+                            <button className="p-1.5 hover:bg-gray-600 rounded-lg transition-colors">
                               <Copy className="h-4 w-4 text-gray-400" />
                             </button>
                             <button className="p-1.5 hover:bg-red-900/50 rounded-lg transition-colors">
@@ -215,23 +215,23 @@ export default function SuppliesPage() {
           )}
 
           {/* Bottom Action Bar */}
-          <div className="mt-4 flex items-center justify-between bg-gray-800/50 p-3 rounded-xl border border-gray-700">
+          <div className="mt-4 flex items-center justify-between card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
             <div className="flex items-center space-x-2">
-              <button className="btn-bevel accent-primary px-4 py-2 rounded-lg flex items-center gap-2">
+              <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
                 <ShoppingCart className="h-4 w-4" />
                 Add to Cart
               </button>
-              <button className="btn-bevel accent-secondary px-4 py-2 rounded-lg flex items-center gap-2">
+              <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
                 <Printer className="h-4 w-4" />
                 Print List
               </button>
             </div>
             <div className="flex items-center space-x-2">
-              <button className="btn-bevel accent-secondary px-4 py-2 rounded-lg flex items-center gap-2">
+              <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
                 <List className="h-4 w-4" />
                 Export
               </button>
-              <button className="btn-bevel accent-danger px-4 py-2 rounded-lg flex items-center gap-2">
+              <button className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
                 <X className="h-4 w-4" />
                 Close
               </button>

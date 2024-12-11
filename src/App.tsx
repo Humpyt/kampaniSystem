@@ -9,6 +9,7 @@ import PickupPage from './pages/PickupPage';
 import MessagePage from './pages/MessagePage';
 import OperationPage from './pages/OperationPage';
 import SuppliesPage from './pages/SuppliesPage';
+import SalesPage from './pages/SalesPage';
 import SalesItems from './pages/SalesItems';
 import TicketsPage from './pages/TicketsPage';
 import QRCodesPage from './pages/QRCodesPage';
@@ -68,6 +69,7 @@ function App() {
           <MainMenu 
             onMenuClick={handleMenuClick} 
             isCollapsed={isSidebarCollapsed}
+            currentView={window.location.pathname}
           />
         </div>
 
@@ -84,7 +86,8 @@ function App() {
                   <Route path="/messages" element={<MessagePage />} />
                   <Route path="/operations" element={<OperationPage />} />
                   <Route path="/supplies" element={<SuppliesPage />} />
-                  <Route path="/sales" element={<SalesItems />} />
+                  <Route path="/sales" element={<SalesPage />} />
+                  <Route path="/sales-items" element={<SalesItems />} />
                   <Route path="/tickets" element={<TicketsPage />} />
                   <Route path="/qrcodes" element={<QRCodesPage />} />
                   <Route path="/marketing" element={<MarketingPage />} />

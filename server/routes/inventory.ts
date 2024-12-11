@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Get all inventory items with optional category filter
-router.get('/inventory', (req, res) => {
+router.get('/supplies', (req, res) => {
   try {
     const { category } = req.query;
     const query = category 
@@ -23,7 +23,7 @@ router.get('/inventory', (req, res) => {
 });
 
 // Add new inventory item
-router.post('/inventory', (req, res) => {
+router.post('/supplies', (req, res) => {
   try {
     const { itemNo, category, vendor, upcSku, description, location, cost, onHand, minStock } = req.body;
     const now = new Date().toISOString();
@@ -46,7 +46,7 @@ router.post('/inventory', (req, res) => {
 });
 
 // Update inventory item
-router.put('/inventory/:id', (req, res) => {
+router.put('/supplies/:id', (req, res) => {
   try {
     const { id } = req.params;
     const { itemNo, category, vendor, upcSku, description, location, cost, onHand, minStock } = req.body;
@@ -75,7 +75,7 @@ router.put('/inventory/:id', (req, res) => {
 });
 
 // Delete inventory item
-router.delete('/inventory/:id', (req, res) => {
+router.delete('/supplies/:id', (req, res) => {
   try {
     const { id } = req.params;
     const result = db.prepare('DELETE FROM inventory_items WHERE id = ?').run(id);
@@ -90,7 +90,7 @@ router.delete('/inventory/:id', (req, res) => {
 });
 
 // Search inventory items
-router.get('/inventory/search', (req, res) => {
+router.get('/supplies/search', (req, res) => {
   try {
     const { query } = req.query;
     const items = db.prepare(`
@@ -107,7 +107,7 @@ router.get('/inventory/search', (req, res) => {
 });
 
 // Update stock level
-router.patch('/inventory/:id/stock', (req, res) => {
+router.patch('/supplies/:id/stock', (req, res) => {
   try {
     const { id } = req.params;
     const { quantity } = req.body;
@@ -127,6 +127,36 @@ router.patch('/inventory/:id/stock', (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: 'Failed to update stock level' });
+  }
+});
+
+// Bulk update supplies
+router.post('/supplies/bulk-update', (req, res) => {
+  try {
+    const { items } = req.body;
+    
+    for (const item of items) {
+      const { id, quantity } = item;
+      
+      // Get current supply
+      const supply = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(id);
+      if (!supply) {
+        return res.status(404).json({ error: `Supply ${id} not found` });
+      }
+
+      // Calculate new quantity
+      const newQuantity = supply.on_hand - quantity;
+      if (newQuantity < 0) {
+        return res.status(400).json({ error: `Not enough quantity in stock for supply ${id}` });
+      }
+
+      // Update quantity
+      db.prepare('UPDATE inventory_items SET on_hand = ? WHERE id = ?').run(newQuantity, id);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to bulk update supplies' });
   }
 });
 

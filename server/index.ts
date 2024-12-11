@@ -5,6 +5,7 @@ import db from './database';
 import operationsRouter from './operations';
 import inventoryRouter from './routes/inventory';
 import printerRouter from './routes/printer';
+import salesRoutes from './routes/sales';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
@@ -27,6 +28,7 @@ app.get('/api/health', (req, res) => {
 // Use routers
 app.use('/api/operations', operationsRouter);
 app.use('/api', inventoryRouter);
+app.use('/api', salesRoutes);
 // Temporarily disable printer routes
 // app.use('/api/printer', printerRouter);
 

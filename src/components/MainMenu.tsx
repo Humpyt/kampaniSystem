@@ -13,7 +13,8 @@ import {
   Megaphone,
   BarChart3,
   UserCog,
-  Shield
+  Shield,
+  DollarSign
 } from 'lucide-react';
 
 interface MainMenuProps {
@@ -31,7 +32,8 @@ export default function MainMenu({ onMenuClick, currentView, isCollapsed }: Main
     { icon: MessageSquare, label: 'Messages', view: 'messages' },
     { icon: Settings, label: 'Operation', view: 'operations' },
     { icon: Package, label: 'Supplies', view: 'supplies' },
-    { icon: ShoppingBag, label: 'Sales Items', view: 'sales' },
+    { icon: DollarSign, label: 'Sales Overview', view: 'sales' },
+    { icon: ShoppingBag, label: 'Sales Items', view: 'sales-items' },
     { icon: Tag, label: 'Tickets & Tags', view: 'tickets' },
     { icon: QrCode, label: 'QR Codes', view: 'qrcodes' },
     { icon: Megaphone, label: 'Marketing', view: 'marketing' },

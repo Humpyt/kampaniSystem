@@ -76,6 +76,13 @@ export function Sidebar({ onNavigate, currentView }: SidebarProps) {
             <DollarSign className="h-5 w-5" />
             <span>Accounts</span>
           </button>
+          <button 
+            onClick={() => onNavigate('sales')}
+            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('sales')}`}
+          >
+            <DollarSign className="h-5 w-5" />
+            <span>Sales Overview</span>
+          </button>
         </div>
       </nav>
 

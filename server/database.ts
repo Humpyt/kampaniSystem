@@ -102,6 +102,19 @@ db.exec(`
     created_at TEXT,
     updated_at TEXT
   );
+
+  -- Sales table to track all sales
+  CREATE TABLE IF NOT EXISTS sales (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT,
+    sale_type TEXT NOT NULL CHECK(sale_type IN ('repair', 'retail', 'pickup')),
+    reference_id TEXT NOT NULL,
+    total_amount REAL NOT NULL DEFAULT 0,
+    payment_method TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    FOREIGN KEY (customer_id) REFERENCES customers (id)
+  );
 `);
 
 export default db;

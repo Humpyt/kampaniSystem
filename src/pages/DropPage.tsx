@@ -373,60 +373,63 @@ export default function DropPage() {
     return sum + (service?.price || 0);
   }, 0);
 
-  const handleSaveToOperations = async () => {
-    if (shoes.length === 0) {
-      alert('Please add at least one shoe to save');
+  const handleSubmit = async () => {
+    if (!selectedCustomer) {
+      alert('Please select a customer');
       return;
     }
 
-    if (!selectedCustomer) {
-      alert('Please select a customer before saving');
+    if (shoes.length === 0) {
+      alert('Please add at least one shoe');
       return;
     }
 
     try {
-      const operationData = {
-        customer: selectedCustomer,
-        shoes: shoes.map(shoe => ({
-          ...shoe,
-          services: shoe.services.map(service => ({
-            ...service,
-            quantity: service.quantity || 1,
-            notes: service.notes || null
-          }))
-        })),
-        status: 'pending',
-        totalAmount: calculateTotal(),
-        isNoCharge: false,
-        isDoOver: false,
-        isDelivery: false,
-        isPickup: false,
-        notes: ''
-      };
-      
+      // Create the operation
       const response = await fetch('http://localhost:3000/api/operations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(operationData),
+        body: JSON.stringify({
+          customer: selectedCustomer,
+          shoes: shoes,
+          status: 'Pending',
+          totalAmount: calculateTotal(),
+          isNoCharge: false,
+          isDoOver: false,
+          isDelivery: false,
+          isPickup: false,
+          notes: '',
+        }),
       });
-      
+
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to save operation: ${errorText}`);
+        throw new Error('Failed to create operation');
       }
 
-      const savedOperation = await response.json();
+      const operation = await response.json();
 
-      // Clear the form but don't navigate away
-      handleCancel();
-      
-      // Show success message
-      alert('Operation saved successfully!');
+      // Record the sale
+      await fetch('http://localhost:3000/api/sales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerId: selectedCustomer.id,
+          saleType: 'repair',
+          referenceId: operation.id,
+          totalAmount: calculateTotal(),
+          paymentMethod: 'cash', // You might want to add payment method selection
+        }),
+      });
+
+      alert('Drop-off recorded successfully');
+      // resetForm();
     } catch (error) {
-      console.error('Error in handleSaveToOperations:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save operation. Please try again.');
+      console.error('Error submitting drop-off:', error);
+      alert('Failed to record drop-off');
     }
   };
 
@@ -446,7 +449,7 @@ export default function DropPage() {
       });
 
       // Clear the form
-      handleCancel();
+      // handleCancel();
       
       // Navigate to operations page
       // navigate('/operations');
@@ -470,7 +473,7 @@ export default function DropPage() {
         isPickup: false,
       });
 
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating no-charge operation:', error);
@@ -492,7 +495,7 @@ export default function DropPage() {
         isPickup: false,
       });
 
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating do-over operation:', error);
@@ -514,7 +517,7 @@ export default function DropPage() {
         isPickup: false,
       });
 
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating delivery operation:', error);
@@ -536,7 +539,7 @@ export default function DropPage() {
         isPickup: true,
       });
 
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating pickup operation:', error);
@@ -566,7 +569,7 @@ export default function DropPage() {
       });
 
       setShowDiscountModal(false);
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating discounted operation:', error);
@@ -606,7 +609,7 @@ export default function DropPage() {
       }
 
       setShowSplitModal(false);
-      handleCancel();
+      // handleCancel();
       // navigate('/operations');
     } catch (error) {
       console.error('Error creating split tickets:', error);
@@ -953,7 +956,7 @@ export default function DropPage() {
 
             <div className="space-y-2">
               <button
-                onClick={handleSaveToOperations}
+                onClick={handleSubmit}
                 className="w-full btn-bevel bg-indigo-600 hover:bg-indigo-700 p-3 rounded-lg"
               >
                 Save to Operations

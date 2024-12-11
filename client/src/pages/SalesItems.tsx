@@ -41,6 +41,13 @@ const ItemButton = styled(Button)(({ theme }) => ({
   justifyContent: 'space-between',
   padding: '10px',
   border: '1px solid #ccc',
+  '& .MuiTypography-body1': {
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+    marginTop: '4px'
+  }
 }));
 
 const DiscountButton = styled(Button)(({ theme }) => ({
