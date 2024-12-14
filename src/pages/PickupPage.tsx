@@ -140,85 +140,100 @@ export default function PickupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
-      <div className="grid grid-cols-12 gap-4">
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="grid grid-cols-12 gap-6">
         {/* Left Panel */}
-        <div className="col-span-7 space-y-4">
+        <div className="col-span-7 space-y-6">
           {/* Search and Stats */}
-          <div className="card-bevel p-4">
-            <div className="flex items-center justify-between mb-4">
+          <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
+            <div className="flex items-center justify-between mb-6">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search tickets by ID or customer..."
-                  className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full pl-12 pr-4 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <div className="flex space-x-4 ml-4">
-                <div className="flex items-center space-x-2">
-                  <Package className="h-5 w-5 text-gray-400" />
-                  <span className="text-gray-400">Total Items: {filteredTickets.length}</span>
+              <div className="flex space-x-6 ml-6">
+                <div className="flex items-center space-x-3 bg-gray-800/50 rounded-lg p-3">
+                  <Package className="h-5 w-5 text-indigo-400" />
+                  <span className="text-gray-300 font-medium">{filteredTickets.length}</span>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <DollarSign className="h-5 w-5 text-gray-400" />
-                  <span className="text-gray-400">
-                    Value: {formatCurrency(filteredTickets.reduce((sum, t) => sum + t.total, 0))}
+                <div className="flex items-center space-x-3 bg-gray-800/50 rounded-lg p-3">
+                  <DollarSign className="h-5 w-5 text-green-400" />
+                  <span className="text-gray-300 font-medium">
+                    {formatCurrency(filteredTickets.reduce((sum, t) => sum + t.total, 0))}
                   </span>
                 </div>
               </div>
             </div>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={handleSelectAll}
+                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-lg transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                onClick={handleSelectNone}
+                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-lg transition-colors"
+              >
+                Clear Selection
+              </button>
+            </div>
           </div>
 
           {/* Tickets Table */}
-          <div className="card-bevel p-4 overflow-hidden">
-            <div className="max-h-[400px] overflow-y-auto">
+          <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
+            <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
               <table className="w-full">
-                <thead className="bg-gray-800 sticky top-0">
+                <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
                   <tr>
-                    <th className="px-4 py-2 text-left">Ticket No</th>
-                    <th className="px-4 py-2 text-left">Customer</th>
-                    <th className="px-4 py-2 text-left">Date</th>
-                    <th className="px-4 py-2 text-center">Pieces</th>
-                    <th className="px-4 py-2 text-right">Total</th>
-                    <th className="px-4 py-2 text-center">Status</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
+                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Pieces</th>
+                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Total</th>
+                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-800">
                   {filteredTickets.map((ticket) => (
                     <tr 
                       key={ticket.id}
-                      className={`border-b border-gray-700 cursor-pointer hover:bg-gray-800 ${
-                        selectedTickets.includes(ticket.id) ? 'bg-indigo-900' : ''
+                      className={`group cursor-pointer transition-all ${
+                        selectedTickets.includes(ticket.id) 
+                          ? 'bg-indigo-900/40 hover:bg-indigo-900/60' 
+                          : 'hover:bg-gray-800/60'
                       }`}
                       onClick={() => handleSelectTicket(ticket.id)}
                     >
-                      <td className="px-4 py-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300 group-hover:bg-gray-600">
                           {`TKT-${ticket.id.slice(-6).toUpperCase()}`}
                         </span>
                       </td>
-                      <td className="px-4 py-2">
-                        <div className="text-sm font-medium">{ticket.customerName}</div>
-                        <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
+                      <td className="px-6 py-4">
+                        <div>
+                          <div className="text-sm font-medium text-gray-200">{ticket.customerName}</div>
+                          <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
+                        </div>
                       </td>
-                      <td className="px-4 py-2">{ticket.date}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-700">
-                          {ticket.pieces}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium">
+                      <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
+                      <td className="px-6 py-4 text-center text-sm text-gray-300">{ticket.pieces}</td>
+                      <td className="px-6 py-4 text-right text-sm font-medium text-gray-200">
                         {formatCurrency(ticket.total)}
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${ticket.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}
-                          ${ticket.status === 'ready' ? 'bg-green-100 text-green-800' : ''}
-                          ${ticket.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}
-                        `}>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium
+                          ${ticket.status === 'completed' 
+                            ? 'bg-green-900/40 text-green-400' 
+                            : 'bg-yellow-900/40 text-yellow-400'
+                          }`}
+                        >
                           {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
                         </span>
                       </td>
@@ -228,71 +243,40 @@ export default function PickupPage() {
               </table>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="grid grid-cols-4 gap-4">
-            <button 
-              className="btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2"
-              onClick={handleSelectAll}
-            >
-              <Plus className="h-5 w-5" />
-              <span>Select All</span>
-            </button>
-            <button 
-              className="btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2"
-              onClick={handleSelectNone}
-            >
-              <Minus className="h-5 w-5" />
-              <span>Select None</span>
-            </button>
-            <button className="btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2">
-              <RefreshCw className="h-5 w-5" />
-              <span>Refresh</span>
-            </button>
-          </div>
         </div>
 
-        {/* Right Panel - Payment */}
-        <div className="col-span-5 space-y-4">
-          {/* Payment Summary */}
-          <div className="card-bevel p-4">
-            <h2 className="text-lg font-semibold mb-4">Payment Summary</h2>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Selected Items:</span>
-                <span className="text-lg font-medium">{selectedTickets.length}</span>
+        {/* Right Panel - Payment Section */}
+        <div className="col-span-5 space-y-6">
+          <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
+            <h2 className="text-xl font-semibold text-gray-200 mb-6">Payment Details</h2>
+            
+            {/* Selected Tickets Summary */}
+            <div className="space-y-4 mb-6">
+              <div className="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg">
+                <span className="text-gray-300">Selected Tickets</span>
+                <span className="text-gray-200 font-medium">{selectedTickets.length}</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Subtotal:</span>
-                <span className="text-lg font-medium">{formatCurrency(selectedTotal)}</span>
+              <div className="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg">
+                <span className="text-gray-300">Subtotal</span>
+                <span className="text-gray-200 font-medium">{formatCurrency(selectedTotal)}</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Discount:</span>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    className="w-24 bg-gray-700 rounded px-2 py-1 text-right"
-                    value={discount}
-                    onChange={(e) => setDiscount(Number(e.target.value))}
-                    min="0"
-                    max={selectedTotal}
-                  />
-                </div>
+              <div className="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg">
+                <span className="text-gray-300">Discount</span>
+                <span className="text-red-400 font-medium">-{formatCurrency(discount)}</span>
               </div>
-              <div className="flex justify-between items-center text-lg font-semibold">
-                <span>Total Due:</span>
-                <span>{formatCurrency(finalAmount)}</span>
+              <div className="flex justify-between items-center bg-indigo-900/30 p-4 rounded-lg">
+                <span className="text-gray-200 font-medium">Final Amount</span>
+                <span className="text-indigo-400 font-semibold text-lg">{formatCurrency(finalAmount)}</span>
               </div>
             </div>
-          </div>
 
-          {/* Payment Method */}
-          <div className="card-bevel p-4">
-            <h2 className="text-lg font-semibold mb-4">Payment Method</h2>
-            <div className="grid grid-cols-2 gap-4">
+            {/* Payment Method Selection */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
               <button
-                className={`btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2 ${
-                  paymentMethod === 'cash' ? 'accent-primary' : ''
+                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
+                  paymentMethod === 'cash' 
+                    ? 'bg-green-900/40 text-green-400 ring-2 ring-green-500/50' 
+                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
                 }`}
                 onClick={() => setPaymentMethod('cash')}
               >
@@ -300,8 +284,10 @@ export default function PickupPage() {
                 <span>Cash</span>
               </button>
               <button
-                className={`btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2 ${
-                  paymentMethod === 'card' ? 'accent-primary' : ''
+                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
+                  paymentMethod === 'card' 
+                    ? 'bg-blue-900/40 text-blue-400 ring-2 ring-blue-500/50' 
+                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
                 }`}
                 onClick={() => setPaymentMethod('card')}
               >
@@ -309,8 +295,10 @@ export default function PickupPage() {
                 <span>Card</span>
               </button>
               <button
-                className={`btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2 ${
-                  paymentMethod === 'check' ? 'accent-primary' : ''
+                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
+                  paymentMethod === 'check' 
+                    ? 'bg-purple-900/40 text-purple-400 ring-2 ring-purple-500/50' 
+                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
                 }`}
                 onClick={() => setPaymentMethod('check')}
               >
@@ -318,8 +306,10 @@ export default function PickupPage() {
                 <span>Check</span>
               </button>
               <button
-                className={`btn-bevel p-4 rounded-lg flex items-center justify-center space-x-2 ${
-                  paymentMethod === 'store_credit' ? 'accent-primary' : ''
+                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
+                  paymentMethod === 'store_credit' 
+                    ? 'bg-yellow-900/40 text-yellow-400 ring-2 ring-yellow-500/50' 
+                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
                 }`}
                 onClick={() => setPaymentMethod('store_credit')}
               >
@@ -327,75 +317,57 @@ export default function PickupPage() {
                 <span>Store Credit</span>
               </button>
             </div>
-          </div>
 
-          {/* Amount Tendered */}
-          {paymentMethod === 'cash' && (
-            <div className="card-bevel p-4">
-              <h2 className="text-lg font-semibold mb-4">Amount Tendered</h2>
-              <div className="space-y-4">
-                <div 
-                  className="btn-bevel bg-gray-700 p-4 rounded-lg text-right text-2xl cursor-pointer"
-                  onClick={() => setShowNumpad(true)}
-                >
-                  {formatCurrency(amountTendered)}
+            {/* Amount Tendered Section */}
+            {paymentMethod === 'cash' && (
+              <div className="space-y-4 mb-6">
+                <div className="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg">
+                  <span className="text-gray-300">Amount Tendered</span>
+                  <span className="text-gray-200 font-medium">{formatCurrency(amountTendered)}</span>
                 </div>
-                <div className="flex justify-between items-center text-lg">
-                  <span>Change:</span>
-                  <span className="font-medium text-green-400">{formatCurrency(change)}</span>
+                <div className="flex justify-between items-center bg-green-900/30 p-4 rounded-lg">
+                  <span className="text-gray-300">Change</span>
+                  <span className="text-green-400 font-medium">{formatCurrency(change)}</span>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Process Payment Button */}
-          <button
-            className="w-full btn-bevel accent-primary p-4 rounded-lg flex items-center justify-center space-x-2 text-lg"
-            onClick={handlePayment}
-            disabled={selectedTickets.length === 0 || (paymentMethod === 'cash' && amountTendered < finalAmount)}
-          >
-            <DollarSign className="h-6 w-6" />
-            <span>Process Payment</span>
-          </button>
-        </div>
-      </div>
+            {/* Numpad */}
+            {showNumpad && (
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'C'].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => handleNumpadClick(num)}
+                    className="p-4 text-lg font-medium rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700 transition-colors"
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+            )}
 
-      {/* Numpad Modal */}
-      {showNumpad && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-96">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Enter Amount</h2>
-              <button 
-                onClick={() => setShowNumpad(false)}
-                className="text-gray-400 hover:text-white"
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => setShowNumpad(!showNumpad)}
+                className="flex items-center justify-center space-x-2 p-4 rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700 transition-colors"
               >
-                <X className="h-6 w-6" />
+                {showNumpad ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+                <span>{showNumpad ? 'Hide Numpad' : 'Show Numpad'}</span>
+              </button>
+              <button
+                onClick={handlePayment}
+                className="flex items-center justify-center space-x-2 p-4 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={selectedTickets.length === 0}
+              >
+                <DollarSign className="h-5 w-5" />
+                <span>Process Payment</span>
               </button>
             </div>
-            <div className="bg-gray-700 p-4 rounded-lg text-right text-3xl mb-4">
-              {formatCurrency(amountTendered)}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0, 'C'].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => handleNumpadClick(num.toString())}
-                  className="btn-bevel p-4 rounded-lg text-xl font-medium"
-                >
-                  {num}
-                </button>
-              ))}
-            </div>
-            <button
-              className="w-full btn-bevel accent-primary p-4 rounded-lg mt-4"
-              onClick={() => setShowNumpad(false)}
-            >
-              Confirm
-            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

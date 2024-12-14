@@ -28,7 +28,7 @@ function App() {
   const navigate = useNavigate();
 
   const handleMenuClick = (view: string) => {
-    navigate(`/${view}`);
+    navigate(view === '/' ? view : `/${view}`);
   };
 
   const toggleSidebar = () => {

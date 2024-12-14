@@ -22,7 +22,9 @@ import {
   faWarehouse,
   faBoxOpen,
   faMoneyBillTransfer,
-  faHandshake
+  faHandshake,
+  faArrowTrendUp,
+  faUsers
 } from '@fortawesome/free-solid-svg-icons';
 
 export default function StorePage() {
@@ -45,99 +47,116 @@ export default function StorePage() {
     { icon: faMoneyBillTransfer, label: 'COD Payment', color: '#8BC34A' }
   ];
 
+  const stats = [
+    { label: 'Daily Revenue', value: '$2,845', trend: '+12.5%', icon: faArrowTrendUp, color: '#4CAF50' },
+    { label: 'Active Orders', value: '47', trend: '+8.1%', icon: faBoxOpen, color: '#2196F3' },
+    { label: 'Customers Today', value: '24', trend: '+15.3%', icon: faUsers, color: '#FF5722' }
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-900 p-6">
-      {/* Top Bar */}
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex space-x-4">
-          <button className="btn-bevel accent-primary px-6 py-3 rounded-lg flex items-center">
-            <FontAwesomeIcon icon={faUserTie} className="text-[#4CAF50]" />
-            <span className="ml-2">Management</span>
-          </button>
-          <button className="btn-bevel accent-secondary px-6 py-3 rounded-lg flex items-center">
-            <FontAwesomeIcon icon={faBullhorn} className="text-[#FF5722]" />
-            <span className="ml-2">Marketing</span>
-          </button>
-          <button className="btn-bevel accent-tertiary px-6 py-3 rounded-lg flex items-center">
-            <FontAwesomeIcon icon={faCircleQuestion} className="text-[#2196F3]" />
-            <span className="ml-2">Help</span>
-          </button>
-        </div>
-        
-        <div className="bg-black px-6 py-3 rounded-lg border border-gray-800">
-          <span className="font-mono text-indigo-400 text-2xl digital-clock">
-            {format(new Date(), 'hh:mm a MM/dd/yy')}
-          </span>
+    <div className="min-h-screen bg-gray-900 p-8">
+      {/* Top Bar with Stats */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-white">Store Dashboard</h1>
+          <div className="bg-gray-800 px-6 py-3 rounded-xl border border-gray-700 shadow-lg">
+            <span className="font-mono text-indigo-400 text-2xl digital-clock">
+              {format(new Date(), 'hh:mm a MM/dd/yy')}
+            </span>
+          </div>
         </div>
 
-        <div className="flex space-x-4">
-          <button className="btn-bevel accent-primary px-6 py-3 rounded-lg flex items-center">
-            <FontAwesomeIcon icon={faCalendarCheck} className="text-[#4CAF50] mr-2" />
-            Schedule
-          </button>
-          <button className="btn-bevel accent-secondary px-6 py-3 rounded-lg flex items-center">
-            <FontAwesomeIcon icon={faMessage} className="text-[#2196F3] mr-2" />
-            Message
-          </button>
+        <div className="grid grid-cols-3 gap-6">
+          {stats.map((stat, index) => (
+            <div key={index} className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg hover:border-indigo-500 transition-all duration-300">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-gray-400 text-sm">{stat.label}</p>
+                  <h3 className="text-2xl font-bold text-white mt-1">{stat.value}</h3>
+                </div>
+                <div className="bg-opacity-20 rounded-lg p-2" style={{ backgroundColor: stat.color }}>
+                  <FontAwesomeIcon icon={stat.icon} className="text-2xl" style={{ color: stat.color }} />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center text-sm">
+                <span className="text-green-400 mr-2">{stat.trend}</span>
+                <span className="text-gray-400">vs last week</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <button className="bg-indigo-600 hover:bg-indigo-700 rounded-xl p-4 flex items-center transition-all duration-300 shadow-lg group">
+          <FontAwesomeIcon icon={faUserTie} className="text-2xl text-white mr-3 group-hover:scale-110 transition-transform" />
+          <span className="text-white">Management</span>
+        </button>
+        <button className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 flex items-center transition-all duration-300 shadow-lg group border border-gray-700 hover:border-indigo-500">
+          <FontAwesomeIcon icon={faBullhorn} className="text-2xl text-[#FF5722] mr-3 group-hover:scale-110 transition-transform" />
+          <span className="text-white">Marketing</span>
+        </button>
+        <button className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 flex items-center transition-all duration-300 shadow-lg group border border-gray-700 hover:border-indigo-500">
+          <FontAwesomeIcon icon={faCalendarCheck} className="text-2xl text-[#4CAF50] mr-3 group-hover:scale-110 transition-transform" />
+          <span className="text-white">Schedule</span>
+        </button>
+        <button className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 flex items-center transition-all duration-300 shadow-lg group border border-gray-700 hover:border-indigo-500">
+          <FontAwesomeIcon icon={faMessage} className="text-2xl text-[#2196F3] mr-3 group-hover:scale-110 transition-transform" />
+          <span className="text-white">Message</span>
+        </button>
+      </div>
+
       {/* Quick Information */}
-      <div className="card-bevel p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4 text-indigo-400">Quick Information</h2>
-        <div className="grid grid-cols-2 gap-4">
+      <div className="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700 shadow-lg">
+        <h2 className="text-xl font-semibold mb-6 text-white flex items-center">
+          <span className="bg-indigo-600 p-2 rounded-lg mr-3">
+            <FontAwesomeIcon icon={faMagnifyingGlass} className="text-white" />
+          </span>
+          Quick Information
+        </h2>
+        <div className="grid grid-cols-4 gap-4">
           {quickInfo.map((item, index) => (
             <button
               key={index}
-              className="btn-bevel bg-gray-800 hover:bg-gray-700 p-4 rounded-lg text-left transition-colors group"
+              className="bg-gray-900 hover:bg-gray-800 p-4 rounded-xl text-left transition-all duration-300 group border border-gray-700 hover:border-indigo-500"
             >
               <div className="flex justify-between items-center">
                 <div className="flex items-center">
-                  <FontAwesomeIcon icon={item.icon} className={`text-[${item.color}] mr-3`} />
-                  <span>{item.label}</span>
+                  <div className="p-2 rounded-lg mr-3" style={{ backgroundColor: `${item.color}20` }}>
+                    <FontAwesomeIcon icon={item.icon} className="text-xl group-hover:scale-110 transition-transform" style={{ color: item.color }} />
+                  </div>
+                  <span className="text-white">{item.label}</span>
                 </div>
                 {item.count > 0 && (
-                  <span className="bg-indigo-600 text-white px-2 py-1 rounded-full text-sm group-hover:bg-indigo-500">
+                  <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-sm group-hover:bg-indigo-500">
                     {item.count}
                   </span>
                 )}
               </div>
             </button>
           ))}
-          <div className="grid grid-cols-2 gap-4">
-            <button className="btn-bevel accent-primary p-3 rounded-lg text-center flex items-center justify-center">
-              <FontAwesomeIcon icon={faMagnifyingGlass} className="text-[#4CAF50] mr-2" />
-              Search
-            </button>
-            <button className="btn-bevel accent-secondary p-3 rounded-lg text-center flex items-center justify-center">
-              <FontAwesomeIcon icon={faChartLine} className="text-[#FF5722] mr-2" />
-              Graphs
-            </button>
-            <button className="btn-bevel accent-tertiary p-3 rounded-lg text-center flex items-center justify-center">
-              <FontAwesomeIcon icon={faCartShopping} className="text-[#2196F3] mr-2" />
-              Sales Item
-            </button>
-            <button className="btn-bevel accent-primary p-3 rounded-lg text-center flex items-center justify-center">
-              <FontAwesomeIcon icon={faCogs} className="text-[#9C27B0] mr-2" />
-              Operations
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Quick Access */}
-      <div className="card-bevel p-6">
-        <h2 className="text-lg font-semibold mb-4 text-indigo-400">Quick Access</h2>
-        <div className="grid grid-cols-6 gap-4">
+      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+        <h2 className="text-xl font-semibold mb-6 text-white flex items-center">
+          <span className="bg-indigo-600 p-2 rounded-lg mr-3">
+            <FontAwesomeIcon icon={faBoxesStacked} className="text-white" />
+          </span>
+          Quick Access
+        </h2>
+        <div className="grid grid-cols-6 gap-6">
           {quickAccess.map((item, index) => (
             <button
               key={index}
-              className="btn-bevel bg-gray-800 p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:bg-gray-700 transition-colors group"
+              className="bg-gray-900 hover:bg-gray-800 p-6 rounded-xl flex flex-col items-center justify-center space-y-3 transition-all duration-300 group border border-gray-700 hover:border-indigo-500"
             >
-              <div className="transform group-hover:scale-110 transition-transform">
-                <FontAwesomeIcon icon={item.icon} className={`text-[${item.color}] text-2xl`} />
+              <div className="p-4 rounded-xl group-hover:scale-110 transition-transform" style={{ backgroundColor: `${item.color}20` }}>
+                <FontAwesomeIcon icon={item.icon} className="text-2xl" style={{ color: item.color }} />
               </div>
-              <span className="text-sm group-hover:text-indigo-400 transition-colors">
+              <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
                 {item.label}
               </span>
             </button>

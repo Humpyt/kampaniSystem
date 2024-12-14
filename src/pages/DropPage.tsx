@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, User, Search, Star, Percent, Scissors } from 'lucide-react';
+import { X, Plus, User, Search, Star, Percent, Scissors, Phone, Mail } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import type { Customer } from '../types';
 import { useCustomer } from '../contexts/CustomerContext';
@@ -28,7 +28,7 @@ interface ShoeItem {
   category: string;
   color: string;
   services: {
-    id: string;
+    service_id: string;
     name: string;
     price: number;
     quantity: number;
@@ -74,16 +74,16 @@ const colors: ColorOption[] = [
 ];
 
 const services: RepairService[] = [
-  { id: 'sole-replacement', name: 'Sole Replacement', price: 80000 },
-  { id: 'heel-repair', name: 'Heel Repair', price: 40000 },
-  { id: 'cleaning', name: 'Cleaning', price: 25000 },
-  { id: 'polishing', name: 'Polishing', price: 15000 },
-  { id: 'waterproofing', name: 'Waterproofing', price: 30000 },
-  { id: 'stretching', name: 'Stretching', price: 20000 },
-  { id: 'elastic', name: 'Elastic', price: 15000 },
-  { id: 'hardware', name: 'Hardware', price: 20000 },
-  { id: 'heel-fix', name: 'Heel Fix', price: 25000 },
-  { id: 'misc', name: 'Misc', price: 8000 }
+  { id: 'service_1', name: 'Sole Replacement', price: 80000 },
+  { id: 'service_2', name: 'Heel Repair', price: 40000 },
+  { id: 'service_3', name: 'Cleaning', price: 25000 },
+  { id: 'service_4', name: 'Polishing', price: 15000 },
+  { id: 'service_5', name: 'Waterproofing', price: 30000 },
+  { id: 'service_6', name: 'Stretching', price: 20000 },
+  { id: 'service_7', name: 'Elastic', price: 15000 },
+  { id: 'service_8', name: 'Hardware', price: 20000 },
+  { id: 'service_9', name: 'Heel Fix', price: 25000 },
+  { id: 'service_10', name: 'Misc', price: 8000 }
 ];
 
 const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
@@ -333,7 +333,7 @@ export default function DropPage() {
         const service = services.find(s => s.id === serviceId);
         if (!service) return null;
         return {
-          id: service.id,
+          service_id: service.id,
           name: service.name,
           price: service.price,
           quantity: 1,
@@ -385,51 +385,48 @@ export default function DropPage() {
     }
 
     try {
-      // Create the operation
-      const response = await fetch('http://localhost:3000/api/operations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customer: selectedCustomer,
-          shoes: shoes,
-          status: 'Pending',
-          totalAmount: calculateTotal(),
-          isNoCharge: false,
-          isDoOver: false,
-          isDelivery: false,
-          isPickup: false,
-          notes: '',
-        }),
+      console.log('Submitting operation with data:', {
+        customer: selectedCustomer,
+        shoes: shoes,
+        status: 'pending',
+        totalAmount: calculateTotal(),
+        isNoCharge: false,
+        isDoOver: false,
+        isDelivery: false,
+        isPickup: false,
+        notes: '',
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create operation');
-      }
+      const operationData = {
+        customer: selectedCustomer,
+        shoes: shoes,
+        status: 'pending' as const,
+        totalAmount: calculateTotal(),
+        isNoCharge: false,
+        isDoOver: false,
+        isDelivery: false,
+        isPickup: false,
+        notes: '',
+      };
 
-      const operation = await response.json();
+      await addOperation(operationData);
 
-      // Record the sale
-      await fetch('http://localhost:3000/api/sales', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerId: selectedCustomer.id,
-          saleType: 'repair',
-          referenceId: operation.id,
-          totalAmount: calculateTotal(),
-          paymentMethod: 'cash', // You might want to add payment method selection
-        }),
-      });
+      // Clear form after successful submission
+      setSelectedCategory(null);
+      setSelectedColor(null);
+      setSelectedServices([]);
+      setShoes([]);
+      setSelectedCustomer(null);
+      setOperationStatus('none');
 
       alert('Drop-off recorded successfully');
-      // resetForm();
     } catch (error) {
       console.error('Error submitting drop-off:', error);
-      alert('Failed to record drop-off');
+      if (error instanceof Error) {
+        alert(`Failed to record drop-off: ${error.message}`);
+      } else {
+        alert('Failed to record drop-off');
+      }
     }
   };
 
@@ -639,62 +636,87 @@ export default function DropPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
-      <div className="grid grid-cols-12 gap-4 h-full">
-        <div className="col-span-3">
-          <div className="card-bevel p-4">
-            <div className="grid grid-cols-3 gap-2">
+    <div className="min-h-screen bg-gray-900 p-8">
+      <div className="grid grid-cols-12 gap-6">
+        {/* Left Column - Categories and Colors */}
+        <div className="col-span-3 space-y-6">
+          {/* Categories */}
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+            <h2 className="text-lg font-semibold mb-4 text-white flex items-center">
+              <Scissors className="text-indigo-400 mr-2" />
+              Categories
+            </h2>
+            <div className="grid grid-cols-3 gap-3">
               {categories.map((category) => (
                 <button
                   key={category.id}
                   onClick={() => setSelectedCategory(category.id)}
-                  className={`btn-bevel aspect-square p-2 rounded-lg text-center ${
-                    selectedCategory === category.id ? 'ring-2 ring-indigo-500' : ''
-                  }`}
+                  className={`bg-gray-900 hover:bg-gray-700 p-3 rounded-xl transition-all duration-300 group
+                    ${selectedCategory === category.id ? 'ring-2 ring-indigo-500 bg-gray-700' : 'border border-gray-700 hover:border-indigo-500'}
+                  `}
                 >
-                  <div className="text-2xl mb-1">{category.icon}</div>
-                  <div className="text-[10px] truncate">{category.name}</div>
+                  <div className="text-2xl mb-2 group-hover:scale-110 transition-transform">{category.icon}</div>
+                  <div className="text-xs text-gray-300 group-hover:text-white transition-colors truncate">{category.name}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="card-bevel p-2 mt-2">
-            <div className="grid grid-cols-4 gap-1">
+          {/* Colors */}
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+            <h2 className="text-lg font-semibold mb-4 text-white">Colors</h2>
+            <div className="grid grid-cols-4 gap-3">
               {colors.map((color) => (
                 <button
                   key={color.id}
                   onClick={() => setSelectedColor(color.id)}
-                  className={`relative p-1 rounded-md transition-all ${
-                    selectedColor === color.id 
-                    ? 'ring-2 ring-indigo-500 scale-110' 
-                    : 'hover:scale-105'
-                  }`}
+                  className={`group relative p-2 rounded-lg transition-all duration-300
+                    ${selectedColor === color.id ? 'ring-2 ring-indigo-500 scale-110' : 'hover:scale-105'}
+                  `}
                   title={color.name}
                 >
                   <div 
-                    className={`w-6 h-6 rounded-full ${color.bgClass} shadow-lg`}
-                    style={{ boxShadow: selectedColor === color.id ? '0 0 10px rgba(99, 102, 241, 0.5)' : undefined }}
+                    className={`w-8 h-8 rounded-lg ${color.bgClass} shadow-lg group-hover:shadow-xl transition-shadow`}
+                    style={{ 
+                      boxShadow: selectedColor === color.id ? '0 0 15px rgba(99, 102, 241, 0.5)' : undefined 
+                    }}
                   />
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    {selectedColor === color.id && (
+                      <div className="w-2 h-2 bg-white rounded-full shadow-lg"></div>
+                    )}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="col-span-6 space-y-4">
-          <div className="card-bevel p-4">
-            <div className="flex items-center justify-between">
+        {/* Middle Column - Customer and Current Selection */}
+        <div className="col-span-6 space-y-6">
+          {/* Customer Section */}
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-4">
-                <User className="text-2xl" />
+                <div className="p-3 bg-indigo-500 bg-opacity-20 rounded-xl">
+                  <User className="text-2xl text-indigo-400" />
+                </div>
                 {selectedCustomer ? (
                   <div>
-                    <h3 className="font-semibold">{selectedCustomer.name}</h3>
-                    <div className="text-sm text-gray-400 space-y-1">
-                      <p>{selectedCustomer.phone}</p>
-                      {selectedCustomer.email && <p>{selectedCustomer.email}</p>}
+                    <h3 className="text-xl font-semibold text-white">{selectedCustomer.name}</h3>
+                    <div className="text-sm text-gray-400 space-y-2 mt-1">
                       <p className="flex items-center">
-                        <Star className="h-4 w-4 mr-1" />
+                        <Phone className="h-4 w-4 mr-2" />
+                        {selectedCustomer.phone}
+                      </p>
+                      {selectedCustomer.email && (
+                        <p className="flex items-center">
+                          <Mail className="h-4 w-4 mr-2" />
+                          {selectedCustomer.email}
+                        </p>
+                      )}
+                      <p className="flex items-center text-yellow-400">
+                        <Star className="h-4 w-4 mr-2" />
                         {selectedCustomer.loyaltyPoints} points
                       </p>
                     </div>
@@ -703,52 +725,52 @@ export default function DropPage() {
                   <p className="text-gray-400">No customer selected</p>
                 )}
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <button
                   onClick={() => setShowCustomerSearch(prev => !prev)}
-                  className="btn-secondary text-sm px-3 py-1"
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center"
                 >
-                  <Search size={16} className="mr-1" />
+                  <Search size={18} className="mr-2" />
                   Find
                 </button>
                 <button
                   onClick={handleOpenAddCustomer}
-                  className="btn-primary text-sm px-3 py-1"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center"
                 >
-                  <Plus size={16} className="mr-1" />
+                  <Plus size={18} className="mr-2" />
                   Add
                 </button>
               </div>
             </div>
 
             {showCustomerSearch && (
-              <div className="mt-4 bg-gray-800 rounded-lg p-4">
+              <div className="mt-4 bg-gray-900 rounded-xl p-4 border border-gray-700">
                 <div className="relative mb-4">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <input
                     type="text"
                     placeholder="Search customers..."
-                    className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-800 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none border border-gray-700"
                     value={customerSearchTerm}
                     onChange={(e) => setCustomerSearchTerm(e.target.value)}
                     autoFocus
                   />
                 </div>
-                <div className="max-h-60 overflow-y-auto space-y-2">
+                <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
                   {filteredCustomers.map((customer) => (
                     <button
                       key={customer.id}
-                      className="w-full text-left p-2 rounded hover:bg-gray-700 transition-colors"
+                      className="w-full text-left p-3 rounded-lg hover:bg-gray-800 transition-colors duration-200 border border-transparent hover:border-gray-700"
                       onClick={() => handleSelectCustomer(customer)}
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-medium">{customer.name}</p>
-                          <p className="text-sm text-gray-400">{customer.phone}</p>
+                          <p className="font-medium text-white">{customer.name}</p>
+                          <p className="text-sm text-gray-400 mt-1">{customer.phone}</p>
                         </div>
-                        <div className="text-right text-sm text-gray-400">
-                          <p>{customer.totalOrders} orders</p>
-                          <p>{formatCurrency(customer.totalSpent)}</p>
+                        <div className="text-right">
+                          <p className="text-sm text-indigo-400">{customer.totalOrders} orders</p>
+                          <p className="text-sm text-green-400 mt-1">{formatCurrency(customer.totalSpent)}</p>
                         </div>
                       </div>
                     </button>
@@ -758,33 +780,29 @@ export default function DropPage() {
             )}
           </div>
 
-          {selectedCustomer && (
-            <div className="card-bevel p-4">
-              <button
-                onClick={handleEditCustomer}
-                className="btn-bevel accent-primary w-full py-3 rounded-lg"
-              >
-                Edit Customer
-              </button>
-            </div>
-          )}
-
-          <div className="card-bevel p-4">
-            <div className="flex items-center justify-between">
+          {/* Current Selection */}
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-4">
-                <div className="text-2xl">
-                  {categories.find(c => c.id === selectedCategory)?.icon}
+                <div className="p-3 bg-gray-700 rounded-xl">
+                  {selectedCategory ? (
+                    <span className="text-2xl">{categories.find(c => c.id === selectedCategory)?.icon}</span>
+                  ) : (
+                    <Scissors className="text-2xl text-gray-400" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold">
-                    {categories.find(c => c.id === selectedCategory)?.name}
+                  <h3 className="text-lg font-semibold text-white">
+                    {selectedCategory 
+                      ? categories.find(c => c.id === selectedCategory)?.name 
+                      : 'Select Category'}
                   </h3>
                   {selectedColor && (
-                    <div className="flex items-center mt-1">
+                    <div className="flex items-center mt-2">
                       <div 
-                        className={`w-3 h-3 rounded-full ${colors.find(c => c.id === selectedColor)?.bgClass} mr-2`}
+                        className={`w-4 h-4 rounded-lg ${colors.find(c => c.id === selectedColor)?.bgClass} mr-2`}
                       />
-                      <span className="text-xs text-gray-400">
+                      <span className="text-sm text-gray-400">
                         {colors.find(c => c.id === selectedColor)?.name}
                       </span>
                     </div>
@@ -793,339 +811,240 @@ export default function DropPage() {
               </div>
               {selectedCategory && selectedColor && selectedServices.length > 0 && (
                 <div className="flex items-center space-x-4">
-                  <div className="text-sm text-gray-400">
+                  <div className="text-xl font-semibold text-green-400">
                     {formatCurrency(currentSelectionTotal)}
                   </div>
                   <button
                     onClick={handleAddShoe}
-                    className="btn-primary text-sm px-3 py-1"
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center"
                   >
-                    Add Shoe
+                    <Plus size={18} className="mr-2" />
+                    Add Item
                   </button>
                 </div>
               )}
             </div>
-            {selectedServices.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedServices.map(serviceId => {
-                  const service = services.find(s => s.id === serviceId);
-                  return (
-                    <div key={serviceId} className="bg-gray-700 rounded px-2 py-1">
-                      <span className="text-xs">{service?.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
-          <div className="card-bevel p-4">
-            <h3 className="text-lg font-semibold mb-4">Services</h3>
-            <div className="grid grid-cols-4 gap-4">
+            {/* Services Grid */}
+            <div className="grid grid-cols-2 gap-4 mt-4">
               {services.map((service) => (
                 <button
                   key={service.id}
-                  onClick={() => setSelectedServices(prev => 
-                    prev.includes(service.id)
-                      ? prev.filter(id => id !== service.id)
-                      : [...prev, service.id]
-                  )}
-                  className={`btn-bevel p-4 rounded-lg text-center ${
-                    selectedServices.includes(service.id) ? 'bg-indigo-600' : 'bg-gray-800'
-                  }`}
+                  onClick={() => {
+                    if (selectedServices.includes(service.id)) {
+                      setSelectedServices(prev => prev.filter(id => id !== service.id));
+                    } else {
+                      setSelectedServices(prev => [...prev, service.id]);
+                    }
+                  }}
+                  className={`p-4 rounded-xl transition-all duration-300 flex items-center justify-between
+                    ${selectedServices.includes(service.id)
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-indigo-500'
+                    }
+                  `}
                 >
-                  <div className="text-sm font-medium">{service.name}</div>
-                  <div className="text-[10px] text-gray-400 mt-1">
+                  <span className="text-white">{service.name}</span>
+                  <span className={`font-semibold ${
+                    selectedServices.includes(service.id) ? 'text-white' : 'text-indigo-400'
+                  }`}>
                     {formatCurrency(service.price)}
-                  </div>
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {shoes.length > 0 && (
-            <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
-              <h3 className="text-lg font-semibold mb-4">Shoes List</h3>
-              <div className="space-y-3">
-                {shoes.map((shoe) => {
-                  const category = categories.find(c => c.id === shoe.category);
-                  const color = colors.find(c => c.id === shoe.color);
-                  const shoeTotal = shoe.services.reduce((sum, service) => {
-                    return sum + (service.price || 0) * (service.quantity || 1);
-                  }, 0);
-
-                  return (
-                    <div key={shoe.id} className="bg-gray-800 rounded-lg p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-xl">{category?.icon}</span>
-                          <div>
-                            <div className="text-sm font-semibold">{category?.name}</div>
-                            <div className="flex items-center mt-1">
-                              <div 
-                                className={`w-3 h-3 rounded-full ${color?.bgClass} mr-2`}
-                              />
-                              <span className="text-xs text-gray-400">{color?.name}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-sm text-indigo-400">{formatCurrency(shoeTotal)}</span>
-                          <button
-                            onClick={() => handleRemoveShoe(shoe.id)}
-                            className="text-red-500 hover:text-red-400 text-sm"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {shoe.services.map(service => {
-                          return (
-                            <div key={service.id} className="bg-gray-700 rounded px-2 py-1">
-                              <span className="text-xs">{service.name}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <span className="text-gray-400 mr-2">Total:</span>
-                <span className="text-xl font-bold text-indigo-400">{formatCurrency(calculateTotal())}</span>
-              </div>
-              {selectedServices.length > 0 && (
-                <div className="text-sm text-gray-400">
-                  Current Selection: {formatCurrency(currentSelectionTotal)}
-                </div>
-              )}
-            </div>
+          {/* Action Buttons */}
+          <div className="grid grid-cols-3 gap-4">
+            <button
+              onClick={handleSubmit}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl transition-colors duration-200 flex items-center justify-center"
+            >
+              <Plus size={20} className="mr-2" />
+              Save
+            </button>
+            <button
+              onClick={handleHold}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-xl transition-colors duration-200"
+            >
+              Hold
+            </button>
+            <button
+              onClick={handleCancel}
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl transition-colors duration-200 flex items-center justify-center"
+            >
+              Cancel
+            </button>
           </div>
         </div>
 
+        {/* Right Column - Cart */}
         <div className="col-span-3">
-          <div className="space-y-2 mb-4">
-            <div className="space-y-2">
-              <button
-                onClick={handleNoCharge}
-                className="w-full btn-bevel bg-indigo-600 hover:bg-indigo-700 p-3 rounded-lg"
-              >
-                No Charge
-              </button>
-              <button
-                onClick={handleDoOver}
-                className="w-full btn-bevel bg-emerald-600 hover:bg-emerald-700 p-3 rounded-lg"
-              >
-                Do Over
-              </button>
-              <button
-                onClick={handleDiscount}
-                className="w-full btn-bevel bg-orange-600 hover:bg-orange-700 p-3 rounded-lg"
-              >
-                Discount
-              </button>
-              <button
-                onClick={handleSplitTicket}
-                className="w-full btn-bevel bg-gray-600 hover:bg-gray-700 p-3 rounded-lg"
-              >
-                Split Ticket
-              </button>
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+            <h2 className="text-xl font-semibold text-white mb-6 flex items-center justify-between">
+              <span>Cart Summary</span>
+              <span className="text-green-400">{formatCurrency(calculateTotal())}</span>
+            </h2>
+            <div className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto custom-scrollbar">
+              {shoes.map((shoe, index) => (
+                <div key={shoe.id} className="bg-gray-900 rounded-xl p-4 border border-gray-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-2xl">
+                        {categories.find(c => c.id === shoe.category)?.icon}
+                      </span>
+                      <div>
+                        <h3 className="font-medium text-white">
+                          {categories.find(c => c.id === shoe.category)?.name}
+                        </h3>
+                        <div className="flex items-center mt-1">
+                          <div 
+                            className={`w-3 h-3 rounded-lg ${colors.find(c => c.id === shoe.color)?.bgClass} mr-2`}
+                          />
+                          <span className="text-sm text-gray-400">
+                            {colors.find(c => c.id === shoe.color)?.name}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveShoe(shoe.id)}
+                      className="text-gray-400 hover:text-red-400 transition-colors duration-200"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {shoe.services.map((service) => (
+                      <div key={service.service_id} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-300">{service.name}</span>
+                        <span className="text-gray-400">{formatCurrency(service.price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-2">
-              <button
-                onClick={handleDelivery}
-                className="w-full btn-bevel bg-indigo-600 hover:bg-indigo-700 p-3 rounded-lg"
-              >
-                Delivery
-              </button>
-              <button
-                onClick={handlePickup}
-                className="w-full btn-bevel bg-emerald-600 hover:bg-emerald-700 p-3 rounded-lg"
-              >
-                Pickup
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={handleSubmit}
-                className="w-full btn-bevel bg-indigo-600 hover:bg-indigo-700 p-3 rounded-lg"
-              >
-                Save to Operations
-              </button>
-              <button
-                onClick={handleHold}
-                className="w-full btn-bevel bg-emerald-600 hover:bg-emerald-700 p-3 rounded-lg"
-              >
-                Hold
-              </button>
-              <button
-                onClick={handleCancel}
-                className="w-full btn-bevel bg-emerald-600 hover:bg-emerald-700 p-3 rounded-lg"
-              >
-                Cancel
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={handleClearLastEntry}
-                className="w-full btn-bevel bg-gray-600 hover:bg-gray-700 p-3 rounded-lg"
-              >
-                Clear Last Entry
-              </button>
-              <button
-                onClick={handleDeleteItem}
-                className="w-full btn-bevel bg-gray-600 hover:bg-gray-700 p-3 rounded-lg"
-              >
-                Delete Item
-              </button>
-            </div>
+            {shoes.length > 0 && (
+              <div className="mt-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={handleNoCharge}
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    No Charge
+                  </button>
+                  <button
+                    onClick={handleDoOver}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    Do Over
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={handleDelivery}
+                    className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    Delivery
+                  </button>
+                  <button
+                    onClick={handlePickup}
+                    className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    Pickup
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={handleDiscount}
+                    className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
+                  >
+                    <Percent size={18} className="mr-2" />
+                    Discount
+                  </button>
+                  <button
+                    onClick={handleSplitTicket}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    Split Ticket
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Discount Modal */}
-      {showDiscountModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold flex items-center">
-                <Percent className="h-5 w-5 mr-2" />
-                Apply Discount
-              </h2>
-              <button 
-                onClick={() => setShowDiscountModal(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Discount Amount (UGX)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max={calculateTotal()}
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                  className="w-full bg-gray-700 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-between items-center text-sm">
-                <span>Original Total:</span>
-                <span>{formatCurrency(calculateTotal())}</span>
-              </div>
-
-              <div className="flex justify-between items-center text-sm font-semibold">
-                <span>Final Total:</span>
-                <span>{formatCurrency((calculateTotal() - discountAmount))}</span>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={() => setShowDiscountModal(false)}
-                  className="px-4 py-2 rounded-lg btn-bevel"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplyDiscount}
-                  className="px-4 py-2 rounded-lg accent-primary flex items-center"
-                  disabled={discountAmount <= 0 || discountAmount >= calculateTotal()}
-                >
-                  <Percent className="h-4 w-4 mr-2" />
-                  Apply Discount
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Split Ticket Modal */}
-      {showSplitModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold flex items-center">
-                <Scissors className="h-5 w-5 mr-2" />
-                Split Ticket
-              </h2>
-              <button 
-                onClick={() => setShowSplitModal(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Number of Splits</label>
-                <input
-                  type="number"
-                  min="2"
-                  max={shoes.length}
-                  value={splitCount}
-                  onChange={(e) => setSplitCount(Math.max(2, Math.min(shoes.length, Number(e.target.value))))}
-                  className="w-full bg-gray-700 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span>Total Amount:</span>
-                  <span>{formatCurrency(calculateTotal())}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span>Amount per Ticket:</span>
-                  <span>{formatCurrency((calculateTotal() / splitCount))}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span>Shoes per Ticket:</span>
-                  <span>{Math.ceil(shoes.length / splitCount)}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={() => setShowSplitModal(false)}
-                  className="px-4 py-2 rounded-lg btn-bevel"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplySplit}
-                  className="px-4 py-2 rounded-lg accent-primary flex items-center"
-                  disabled={splitCount < 2 || splitCount > shoes.length}
-                >
-                  <Scissors className="h-4 w-4 mr-2" />
-                  Split Ticket
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <CustomerModal
         isOpen={isCustomerModalOpen}
         onClose={handleCustomerModalClose}
-        onSave={handleAddCustomer}
+        onSave={isEditingCustomer ? updateCustomer : handleAddCustomer}
         initialData={isEditingCustomer ? selectedCustomer : undefined}
       />
+
+      {/* Discount Modal */}
+      {showDiscountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h2 className="text-xl font-semibold mb-4">Apply Discount</h2>
+            <input
+              type="number"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(Number(e.target.value))}
+              className="w-full bg-gray-700 rounded-lg p-2 mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Enter discount amount"
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDiscountModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyDiscount}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors duration-200"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Modal */}
+      {showSplitModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h2 className="text-xl font-semibold mb-4">Split Ticket</h2>
+            <input
+              type="number"
+              value={splitCount}
+              onChange={(e) => setSplitCount(Number(e.target.value))}
+              min="2"
+              className="w-full bg-gray-700 rounded-lg p-2 mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Enter number of splits"
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowSplitModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplySplit}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors duration-200"
+              >
+                Split
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

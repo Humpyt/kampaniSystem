@@ -434,7 +434,9 @@ export default function CustomerPage() {
                         {formatCurrency(customer.totalSpent)}
                       </div>
                       <div className="text-sm text-gray-400">
-                        {differenceInDays(new Date(), new Date(customer.lastVisit))} days ago
+                        {customer.lastVisit 
+                          ? `${differenceInDays(new Date(), new Date(customer.lastVisit))} days ago`
+                          : 'No visits yet'}
                       </div>
                     </div>
                   </div>

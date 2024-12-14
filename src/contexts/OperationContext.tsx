@@ -1,11 +1,19 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { Customer } from '../types';
 
+interface ShoeService {
+  service_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  notes: string | null;
+}
+
 interface ShoeItem {
   id: string;
   category: string;
   color: string;
-  services: string[];
+  services: ShoeService[];
 }
 
 interface Operation {

@@ -166,7 +166,7 @@ router.post('/', (req, res) => {
         );
       } catch (error) {
         console.error('Error inserting operation:', error);
-        throw error;
+        throw new Error(`Failed to insert operation: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
 
       // Insert each shoe
@@ -195,6 +195,10 @@ router.post('/', (req, res) => {
               console.log(`Processing service ${sIndex + 1} for shoe ${index + 1}:`, JSON.stringify(service, null, 2)); // Debug log
               
               try {
+                if (!service.service_id) {
+                  throw new Error(`Missing service_id for service ${sIndex + 1} of shoe ${index + 1}`);
+                }
+
                 db.prepare(`
                   INSERT INTO operation_services (
                     id, operation_shoe_id, service_id, quantity, price, notes,
@@ -203,7 +207,7 @@ router.post('/', (req, res) => {
                 `).run(
                   uuidv4(),
                   shoeId,
-                  service.id,
+                  service.service_id,
                   service.quantity || 1,
                   service.price || 0,
                   service.notes || null,

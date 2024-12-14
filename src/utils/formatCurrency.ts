@@ -1,8 +1,9 @@
-export const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-UG', {
+export const formatCurrency = (amount: number | undefined | null): string => {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return '$0.00';
+  }
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'UGX',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    currency: 'USD',
   }).format(amount);
 };
