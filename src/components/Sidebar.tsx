@@ -5,98 +5,102 @@ interface SidebarProps {
   currentView: string;
 }
 
+interface NavItemProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  isActive: boolean;
+}
+
+const NavItem = ({ icon, label, onClick, isActive }: NavItemProps) => (
+  <button 
+    onClick={onClick}
+    className={`
+      flex items-center space-x-4 px-6 py-4 rounded-lg
+      transition-all duration-200 w-full text-left relative
+      ${isActive 
+        ? 'bg-indigo-700 text-white shadow-lg translate-x-2 after:absolute after:left-0 after:top-1/2 after:-translate-y-1/2 after:w-1 after:h-8 after:bg-white after:rounded-r-full' 
+        : 'text-indigo-100 hover:bg-indigo-700/50 hover:translate-x-2'
+      }
+    `}
+  >
+    <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : ''}`}>
+      {icon}
+    </div>
+    <span className={`font-medium tracking-wide ${isActive ? 'text-white' : 'text-indigo-50'}`}>{label}</span>
+  </button>
+);
+
 export function Sidebar({ onNavigate, currentView }: SidebarProps) {
-  const isActive = (view: string) => 
-    currentView === view ? 'bg-indigo-700' : '';
+  const isActive = (view: string) => currentView === view;
+
+  const navGroups = [
+    {
+      title: "Main",
+      items: [
+        { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", view: "dashboard" },
+        { icon: <Clock className="h-5 w-5" />, label: "Work in Progress", view: "in-progress" },
+        { icon: <Package className="h-5 w-5" />, label: "Ready for Pickup", view: "pickups" },
+      ]
+    },
+    {
+      title: "Management",
+      items: [
+        { icon: <Users className="h-5 w-5" />, label: "Customers", view: "customers" },
+        { icon: <Wrench className="h-5 w-5" />, label: "Services", view: "services" },
+        { icon: <UserCircle className="h-5 w-5" />, label: "Staff", view: "staff" },
+      ]
+    },
+    {
+      title: "Inventory & Finance",
+      items: [
+        { icon: <Archive className="h-5 w-5" />, label: "Stock", view: "stock" },
+        { icon: <DollarSign className="h-5 w-5" />, label: "Accounts", view: "accounts" },
+        { icon: <DollarSign className="h-5 w-5" />, label: "Sales Overview", view: "sales" },
+      ]
+    }
+  ];
 
   return (
-    <div className="w-64 bg-indigo-600 text-white min-h-screen flex flex-col">
-      <div className="p-6 border-b border-indigo-500">
-        <div className="flex items-center space-x-3">
-          <ShoppingBag className="h-8 w-8" />
-          <h1 className="text-2xl font-bold">RepairPro</h1>
+    <div className="w-64 bg-gradient-to-b from-indigo-600 to-indigo-700 text-white min-h-screen flex flex-col shadow-xl">
+      <div className="p-8 border-b border-indigo-500/30">
+        <div className="flex items-center space-x-4">
+          <div className="p-2.5 bg-white/10 rounded-lg">
+            <ShoppingBag className="h-8 w-8" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">RepairPro</h1>
         </div>
       </div>
 
-      <nav className="flex-1 p-4">
-        <div className="space-y-2">
-          <button 
-            onClick={() => onNavigate('dashboard')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('dashboard')}`}
-          >
-            <LayoutDashboard className="h-5 w-5" />
-            <span>Dashboard</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('in-progress')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('in-progress')}`}
-          >
-            <Clock className="h-5 w-5" />
-            <span>Work in Progress</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('pickups')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('pickups')}`}
-          >
-            <Package className="h-5 w-5" />
-            <span>Ready for Pickup</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('customers')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('customers')}`}
-          >
-            <Users className="h-5 w-5" />
-            <span>Customers</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('services')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('services')}`}
-          >
-            <Wrench className="h-5 w-5" />
-            <span>Services</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('staff')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('staff')}`}
-          >
-            <UserCircle className="h-5 w-5" />
-            <span>Staff</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('stock')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('stock')}`}
-          >
-            <Archive className="h-5 w-5" />
-            <span>Stock</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('accounts')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('accounts')}`}
-          >
-            <DollarSign className="h-5 w-5" />
-            <span>Accounts</span>
-          </button>
-          <button 
-            onClick={() => onNavigate('sales')}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('sales')}`}
-          >
-            <DollarSign className="h-5 w-5" />
-            <span>Sales Overview</span>
-          </button>
-        </div>
+      <nav className="flex-1 py-8 space-y-10 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-400 scrollbar-track-transparent">
+        {navGroups.map((group, index) => (
+          <div key={index} className="space-y-4">
+            <h2 className="text-xs font-semibold text-indigo-200 uppercase tracking-wider px-6 pb-2">
+              {group.title}
+            </h2>
+            {group.items.map((item) => (
+              <NavItem
+                key={item.view}
+                icon={item.icon}
+                label={item.label}
+                onClick={() => onNavigate(item.view)}
+                isActive={isActive(item.view)}
+              />
+            ))}
+          </div>
+        ))}
       </nav>
 
-      <div className="p-4 border-t border-indigo-500">
-        <button 
+      <div className="p-8 border-t border-indigo-500/30 space-y-4 bg-indigo-700/20">
+        <NavItem
+          icon={<Settings className="h-5 w-5" />}
+          label="Settings"
           onClick={() => onNavigate('account')}
-          className={`flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full text-left ${isActive('account')}`}
-        >
-          <Settings className="h-5 w-5" />
-          <span>Settings</span>
-        </button>
-        <button className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors w-full mt-2">
+          isActive={isActive('account')}
+        />
+        <button className="flex items-center space-x-4 px-6 py-4 rounded-lg text-red-200 hover:bg-red-500/20 hover:text-red-100 transition-colors w-full">
           <LogOut className="h-5 w-5" />
-          <span>Logout</span>
+          <span className="font-medium">Logout</span>
         </button>
       </div>
     </div>

@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Copy, Printer, ShoppingCart, Search, List, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
 
 interface SupplyItem {
   id: string;
-  item_no: string;
-  vendor: string;
-  upc_sku: string;
+  name: string;
+  category: string;
   description: string;
-  location: string;
-  cost: number;
   on_hand: number;
   min_stock: number;
-  category: string;
+  cost: number;
+  unit: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const categories = [
@@ -47,8 +46,14 @@ export default function SuppliesPage() {
   const fetchItems = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/inventory?category=${activeTab.toLowerCase()}`);
-      const itemsData = Array.isArray(response.data) ? response.data : [];
+      console.log('Fetching items for category:', activeTab);
+      const response = await fetch(`/api/supplies?category=${encodeURIComponent(activeTab)}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log('Response:', data);
+      const itemsData = Array.isArray(data) ? data : [];
       setItems(itemsData);
       setError(null);
     } catch (err) {
@@ -155,14 +160,13 @@ export default function SuppliesPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-700">
-                      <th className="p-4 text-left text-gray-400 font-medium">Item No</th>
-                      <th className="p-4 text-left text-gray-400 font-medium">Vendor</th>
-                      <th className="p-4 text-left text-gray-400 font-medium">UPC/SKU</th>
+                      <th className="p-4 text-left text-gray-400 font-medium">Name</th>
+                      <th className="p-4 text-left text-gray-400 font-medium">Category</th>
                       <th className="p-4 text-left text-gray-400 font-medium">Description</th>
-                      <th className="p-4 text-left text-gray-400 font-medium">Location</th>
-                      <th className="p-4 text-right text-gray-400 font-medium">Cost</th>
                       <th className="p-4 text-right text-gray-400 font-medium">On Hand</th>
                       <th className="p-4 text-right text-gray-400 font-medium">Min Stock</th>
+                      <th className="p-4 text-right text-gray-400 font-medium">Cost</th>
+                      <th className="p-4 text-right text-gray-400 font-medium">Unit</th>
                       <th className="p-4 text-center text-gray-400 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -177,12 +181,9 @@ export default function SuppliesPage() {
                             : 'hover:bg-gray-700'
                           }`}
                       >
-                        <td className="p-4">{item.item_no}</td>
-                        <td className="p-4">{item.vendor}</td>
-                        <td className="p-4">{item.upc_sku}</td>
+                        <td className="p-4">{item.name}</td>
+                        <td className="p-4">{item.category}</td>
                         <td className="p-4">{item.description}</td>
-                        <td className="p-4">{item.location}</td>
-                        <td className="p-4 text-right">${item.cost.toFixed(2)}</td>
                         <td className="p-4 text-right">
                           <span className={`px-2 py-1 rounded-full text-sm
                             ${item.on_hand <= item.min_stock 
@@ -193,6 +194,8 @@ export default function SuppliesPage() {
                           </span>
                         </td>
                         <td className="p-4 text-right">{item.min_stock}</td>
+                        <td className="p-4 text-right">${item.cost.toFixed(2)}</td>
+                        <td className="p-4 text-right">{item.unit}</td>
                         <td className="p-4">
                           <div className="flex items-center justify-center space-x-2">
                             <button className="p-1.5 hover:bg-gray-600 rounded-lg transition-colors">

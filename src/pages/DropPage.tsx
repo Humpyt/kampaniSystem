@@ -53,7 +53,9 @@ const categories: ItemCategory[] = [
   { id: 'mens-sneaker', name: "Men's Sneaker", icon: '👟' },
   { id: 'mens-work', name: "Men's Work", icon: '🥾' },
   { id: 'mens-western', name: "Men's Western", icon: '👢' },
-  { id: 'mens-riding', name: "Men's Riding", icon: '🥾' }
+  { id: 'mens-riding', name: "Men's Riding", icon: '🥾' },
+  { id: 'bag', name: "Bag", icon: '👜' },
+  { id: 'other', name: "Other", icon: '🔧' }
 ];
 
 const colors: ColorOption[] = [

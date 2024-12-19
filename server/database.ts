@@ -103,6 +103,20 @@ db.exec(`
     updated_at TEXT
   );
 
+  -- Supplies table
+  CREATE TABLE IF NOT EXISTS supplies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT,
+    on_hand INTEGER NOT NULL DEFAULT 0,
+    min_stock INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
   -- Sales table to track all sales
   CREATE TABLE IF NOT EXISTS sales (
     id TEXT PRIMARY KEY,

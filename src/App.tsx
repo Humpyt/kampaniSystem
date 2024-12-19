@@ -45,16 +45,13 @@ function App() {
       }} />
       <div className="flex">
         {/* Left Sidebar */}
-        <div className={`${isSidebarCollapsed ? 'w-16' : 'w-72'} min-h-screen bg-gray-900 p-4 relative transition-all duration-300`}>
+        <div className={`${isSidebarCollapsed ? 'w-12' : 'w-56'} h-screen bg-gray-900 flex flex-col transition-all duration-300`}>
           {/* Toggle Button */}
           <button 
             onClick={toggleSidebar}
-            className="absolute -right-3 top-8 bg-gray-700 rounded-full p-1 hover:bg-gray-600 z-10"
+            className="absolute top-3 -right-3 bg-gray-800 text-gray-400 hover:text-white p-1 rounded-full shadow-lg border border-gray-700 z-10"
           >
-            {isSidebarCollapsed ? 
-              <ChevronRight className="h-4 w-4" /> : 
-              <ChevronLeft className="h-4 w-4" />
-            }
+            {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
 
           <div className={`mb-8 ${isSidebarCollapsed ? 'text-center' : ''}`}>
@@ -68,8 +65,8 @@ function App() {
 
           <MainMenu 
             onMenuClick={handleMenuClick} 
-            isCollapsed={isSidebarCollapsed}
             currentView={window.location.pathname}
+            isCollapsed={isSidebarCollapsed}
           />
         </div>
 
