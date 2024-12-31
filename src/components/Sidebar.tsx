@@ -56,7 +56,6 @@ export function Sidebar({ onNavigate, currentView }: SidebarProps) {
       items: [
         { icon: <Archive className="h-5 w-5" />, label: "Stock", view: "stock" },
         { icon: <DollarSign className="h-5 w-5" />, label: "Accounts", view: "accounts" },
-        { icon: <DollarSign className="h-5 w-5" />, label: "Sales Overview", view: "sales" },
       ]
     }
   ];

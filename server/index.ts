@@ -6,6 +6,7 @@ import operationsRouter from './operations';
 import inventoryRouter from './routes/inventory';
 import printerRouter from './routes/printer';
 import salesRoutes from './routes/sales';
+import qrCodesRouter from './routes/qrcodes';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
@@ -27,10 +28,10 @@ app.get('/api/health', (req, res) => {
 
 // Use routers
 app.use('/api/operations', operationsRouter);
-app.use('/api', inventoryRouter);
+app.use('/api/inventory', inventoryRouter);
+app.use('/api/printer', printerRouter);
 app.use('/api/sales', salesRoutes);
-// Temporarily disable printer routes
-// app.use('/api/printer', printerRouter);
+app.use('/api/qrcodes', qrCodesRouter);
 
 // Customer endpoints
 app.get('/api/customers', (req, res) => {

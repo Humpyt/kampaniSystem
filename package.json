@@ -37,6 +37,7 @@
     "express": "^4.21.2",
     "lucide-react": "^0.294.0",
     "node-thermal-printer": "^4.4.3",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-barcode": "^1.5.3",
     "react-calendar": "^4.8.0",

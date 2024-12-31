@@ -129,6 +129,73 @@ db.exec(`
     updated_at TEXT,
     FOREIGN KEY (customer_id) REFERENCES customers (id)
   );
+
+  -- QR Codes table
+  CREATE TABLE IF NOT EXISTS qrcodes (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Initialize database with indexes
+db.exec(`
+  -- Create indexes for better query performance
+  CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+  CREATE INDEX IF NOT EXISTS idx_operations_customer ON operations(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_operation_shoes_operation ON operation_shoes(operation_id);
+  CREATE INDEX IF NOT EXISTS idx_operation_services_operation_shoe ON operation_services(operation_shoe_id);
+  CREATE INDEX IF NOT EXISTS idx_operation_services_service ON operation_services(service_id);
+  CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_qrcodes_type ON qrcodes(type);
+`);
+
+// Function to initialize the database with some default data if needed
+const initializeDatabase = () => {
+  const categories = db.prepare('SELECT COUNT(*) as count FROM sales_categories').get();
+  if (categories.count === 0) {
+    // Add default sales categories
+    const defaultCategories = [
+      { id: 'cat_polish', name: 'Polish', description: 'Shoe polish products' },
+      { id: 'cat_laces', name: 'Laces', description: 'Shoe laces' },
+      { id: 'cat_insoles', name: 'Insoles', description: 'Shoe insoles' },
+      { id: 'cat_accessories', name: 'Accessories', description: 'Other shoe accessories' }
+    ];
+
+    const insertCategory = db.prepare(`
+      INSERT INTO sales_categories (id, name, description, created_at, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `);
+
+    defaultCategories.forEach(category => {
+      insertCategory.run(category.id, category.name, category.description);
+    });
+  }
+
+  const services = db.prepare('SELECT COUNT(*) as count FROM services').get();
+  if (services.count === 0) {
+    // Add default services
+    const defaultServices = [
+      { id: 'srv_repair', name: 'Basic Repair', price: 25.00, estimated_days: 3, category: 'repair' },
+      { id: 'srv_polish', name: 'Polish Service', price: 15.00, estimated_days: 1, category: 'polish' },
+      { id: 'srv_clean', name: 'Deep Cleaning', price: 20.00, estimated_days: 2, category: 'cleaning' }
+    ];
+
+    const insertService = db.prepare(`
+      INSERT INTO services (id, name, price, estimated_days, category, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `);
+
+    defaultServices.forEach(service => {
+      insertService.run(service.id, service.name, service.price, service.estimated_days, service.category);
+    });
+  }
+};
+
+// Initialize the database
+initializeDatabase();
 
 export default db;

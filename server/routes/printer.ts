@@ -1,6 +1,4 @@
 import express from 'express';
-import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
-import { USB } from 'escpos-usb';
 import db from '../database';
 import { formatCurrency } from '../utils/formatCurrency';
 
@@ -8,15 +6,24 @@ const router = express.Router();
 
 // Store printer configuration in memory (in production, this should be in a database)
 let printerConfig = {
-  type: PrinterTypes.EPSON,
+  type: 'EPSON',
   interface: 'printer:auto',
-  characterSet: CharacterSet.PC437_USA,
+  characterSet: 'PC437_USA',
   removeSpecialCharacters: false,
   options: {
     timeout: 5000
   },
   width: 42
 };
+
+// Dynamically import printer module
+let ThermalPrinter, PrinterTypes, CharacterSet, USB;
+try {
+  ({ ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer'));
+  ({ USB } = require('escpos-usb'));
+} catch (error) {
+  console.error('Error loading printer module:', error);
+}
 
 // Get printer configuration
 router.get('/config', (req, res) => {
@@ -61,6 +68,10 @@ router.post('/print/order/:id', async (req, res) => {
       LEFT JOIN services s ON oss.service_id = s.id
       WHERE os.operation_id = ?
     `).all(id);
+
+    if (!ThermalPrinter) {
+      return res.status(500).json({ error: 'Printer module not available' });
+    }
 
     // Create printer instance
     const printer = new ThermalPrinter(printerConfig);
@@ -182,6 +193,10 @@ router.post('/print/quotation/:id', async (req, res) => {
 
     if (!quotation) {
       return res.status(404).json({ error: 'Quotation not found' });
+    }
+
+    if (!ThermalPrinter) {
+      return res.status(500).json({ error: 'Printer module not available' });
     }
 
     // Create printer instance
