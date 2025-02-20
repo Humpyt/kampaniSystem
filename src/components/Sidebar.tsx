@@ -1,6 +1,24 @@
-import { ShoppingBag, LayoutDashboard, Users, Settings, LogOut, Wrench, Clock, UserCircle, DollarSign, Package, Archive } from 'lucide-react';
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { 
+  ShoppingBag, 
+  LayoutDashboard, 
+  Users, 
+  Settings, 
+  LogOut, 
+  Wrench, 
+  Clock, 
+  UserCircle, 
+  DollarSign, 
+  Package, 
+  Archive, 
+  ChevronLeft, 
+  ChevronRight 
+} from 'lucide-react';
 
 interface SidebarProps {
+  isCollapsed: boolean;
+  toggleCollapse: () => void;
   onNavigate: (view: string) => void;
   currentView: string;
 }
@@ -31,8 +49,8 @@ const NavItem = ({ icon, label, onClick, isActive }: NavItemProps) => (
   </button>
 );
 
-export function Sidebar({ onNavigate, currentView }: SidebarProps) {
-  const isActive = (view: string) => currentView === view;
+const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse, onNavigate, currentView }) => {
+  const location = useLocation();
 
   const navGroups = [
     {
@@ -61,31 +79,39 @@ export function Sidebar({ onNavigate, currentView }: SidebarProps) {
     }
   ];
 
+  const isActive = (view: string) => currentView === view;
+
   return (
-    <div className="w-64 bg-gradient-to-b from-indigo-600 to-indigo-700 text-white min-h-screen flex flex-col shadow-xl">
-      <div className="p-8 border-b border-indigo-500/30">
-        <div className="flex items-center space-x-4">
-          <div className="p-2.5 bg-white/10 rounded-lg">
-            <ShoppingBag className="h-8 w-8" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">RepairPro</h1>
-        </div>
+    <div 
+      className={`${
+        isCollapsed ? 'w-20' : 'w-64'
+      } bg-gradient-to-b from-indigo-600 to-indigo-700 text-white transition-all duration-300 ease-in-out flex flex-col`}
+    >
+      <div className="p-4 flex justify-between items-center">
+        {!isCollapsed && <h1 className="text-xl font-bold">RepairPro</h1>}
+        <button
+          onClick={toggleCollapse}
+          className="p-2 hover:bg-indigo-800 rounded-lg"
+        >
+          {isCollapsed ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
+        </button>
       </div>
 
-      <nav className="flex-1 py-8 space-y-10 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-400 scrollbar-track-transparent">
+      <nav className="flex-1 overflow-y-auto">
         {navGroups.map((group, index) => (
           <div key={index} className="space-y-4">
-            <h2 className="text-xs font-semibold text-indigo-200 uppercase tracking-wider px-6 pb-2">
-              {group.title}
-            </h2>
+            {!isCollapsed && <h2 className="text-xs font-semibold text-indigo-200 uppercase tracking-wider px-6 pb-2">{group.title}</h2>}
             {group.items.map((item) => (
-              <NavItem
+              <button
                 key={item.view}
-                icon={item.icon}
-                label={item.label}
                 onClick={() => onNavigate(item.view)}
-                isActive={isActive(item.view)}
-              />
+                className={`flex items-center px-4 py-3 text-indigo-100 hover:bg-indigo-700/50 transition-colors ${
+                  isActive(item.view) ? 'bg-indigo-700 text-white shadow-lg translate-x-2 after:absolute after:left-0 after:top-1/2 after:-translate-y-1/2 after:w-1 after:h-8 after:bg-white after:rounded-r-full' : ''
+                }`}
+              >
+                <span className="mr-3">{item.icon}</span>
+                {!isCollapsed && <span>{item.label}</span>}
+              </button>
             ))}
           </div>
         ))}
@@ -105,6 +131,6 @@ export function Sidebar({ onNavigate, currentView }: SidebarProps) {
       </div>
     </div>
   );
-}
+};
 
 export default Sidebar;

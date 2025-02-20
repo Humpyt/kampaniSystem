@@ -26,6 +26,7 @@ import { OperationProvider } from './contexts/OperationContext';
 import { AdminProvider } from './contexts/AdminContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+import { ProductProvider } from './contexts/ProductContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import FirestoreTest from './pages/FirestoreTest';
@@ -38,10 +39,11 @@ import PickupOrderPage from './pages/PickupOrderPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import CodPaymentPage from './pages/CodPaymentPage';
 import SaleItemsPage from './pages/SaleItemsPage';
+import ProductCategoryManager from './pages/ProductCategoryManager';
 
 const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boolean; toggleSidebar: () => void }) => {
   return (
-    <div className={`flex h-screen ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className="flex h-screen">
       {/* Sidebar */}
       <div
         className={`bg-gray-900 text-white transition-all duration-300 ease-in-out ${
@@ -79,50 +81,66 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-800 text-white">
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/test-firestore" element={<FirestoreTest />} />
-        
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
-          </ProtectedRoute>
-        }>
-          <Route index element={<StorePage />} />
-          <Route path="customers" element={<CustomerPage />} />
-          <Route path="drop" element={<DropPage />} />
-          <Route path="pickup" element={<PickupPage />} />
-          <Route path="messages" element={<MessagePage />} />
-          <Route path="operation" element={<OperationPage />} />
-          <Route path="supplies" element={<SuppliesPage />} />
-          <Route path="sales" element={<SalesPage />} />
-          <Route path="sales-items" element={<SalesItems />} />
-          <Route path="tickets" element={<TicketsPage />} />
-          <Route path="qrcodes" element={<QRCodesPage />} />
-          <Route path="marketing" element={<MarketingPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="staff" element={
-            <ProtectedRoute requiredRoles={['admin', 'manager']}>
-              <StaffPage />
-            </ProtectedRoute>
-          } />
-          <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="admin" element={
-            <ProtectedRoute requiredRoles={['admin']}>
-              <AdminPage />
-            </ProtectedRoute>
-          } />
-          <Route path="hold-quick-drop" element={<HoldQuickDropPage />} />
-          <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
-          <Route path="ticket-search" element={<TicketSearchPage />} />
-          <Route path="assembly" element={<AssemblyPage />} />
-          <Route path="racking" element={<RackingPage />} />
-          <Route path="pickup-order" element={<PickupOrderPage />} />
-          <Route path="deliveries" element={<DeliveriesPage />} />
-          <Route path="cod-payment" element={<CodPaymentPage />} />
-          <Route path="sale-items" element={<SaleItemsPage />} />
-        </Route>
-      </Routes>
+      <AuthProvider>
+        <CustomerProvider>
+          <OperationProvider>
+            <AdminProvider>
+              <CartProvider>
+                <ProductProvider>
+                  <Routes>
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/test-firestore" element={<FirestoreTest />} />
+                    
+                    <Route
+                      path="/"
+                      element={
+                        <ProtectedRoute>
+                          <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<StorePage />} />
+                      <Route path="customers" element={<CustomerPage />} />
+                      <Route path="drop" element={<DropPage />} />
+                      <Route path="pickup" element={<PickupPage />} />
+                      <Route path="messages" element={<MessagePage />} />
+                      <Route path="operation" element={<OperationPage />} />
+                      <Route path="supplies" element={<SuppliesPage />} />
+                      <Route path="sales" element={<SalesPage />} />
+                      <Route path="sales-items" element={<SalesItems />} />
+                      <Route path="manage-categories" element={<ProductCategoryManager />} />
+                      <Route path="tickets" element={<TicketsPage />} />
+                      <Route path="qrcodes" element={<QRCodesPage />} />
+                      <Route path="marketing" element={<MarketingPage />} />
+                      <Route path="reports" element={<ReportsPage />} />
+                      <Route path="staff" element={
+                        <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                          <StaffPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="notifications" element={<NotificationsPage />} />
+                      <Route path="admin" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <AdminPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="hold-quick-drop" element={<HoldQuickDropPage />} />
+                      <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
+                      <Route path="ticket-search" element={<TicketSearchPage />} />
+                      <Route path="assembly" element={<AssemblyPage />} />
+                      <Route path="racking" element={<RackingPage />} />
+                      <Route path="pickup-order" element={<PickupOrderPage />} />
+                      <Route path="deliveries" element={<DeliveriesPage />} />
+                      <Route path="cod-payment" element={<CodPaymentPage />} />
+                      <Route path="sale-items" element={<SaleItemsPage />} />
+                    </Route>
+                  </Routes>
+                </ProductProvider>
+              </CartProvider>
+            </AdminProvider>
+          </OperationProvider>
+        </CustomerProvider>
+      </AuthProvider>
       <Toaster position="top-right" toastOptions={{
         style: {
           background: '#333',
@@ -135,17 +153,7 @@ function App() {
 
 function AppWithProviders() {
   return (
-    <AuthProvider>
-      <CustomerProvider>
-        <OperationProvider>
-          <AdminProvider>
-            <CartProvider>
-              <App />
-            </CartProvider>
-          </AdminProvider>
-        </OperationProvider>
-      </CustomerProvider>
-    </AuthProvider>
+    <App />
   );
 }
 

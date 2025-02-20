@@ -1,51 +1,25 @@
 import React, { useState } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faTimes,
-  faImage,
-  faUpload,
-  faBarcode,
-  faBox,
-  faDollarSign,
-  faTag
-} from '@fortawesome/free-solid-svg-icons';
-
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  type: 'product' | 'service';
-  price: number;
-  stock?: number;
-  description: string;
-  image?: string;
-  sku?: string;
-  barcode?: string;
-}
+import { X } from 'lucide-react';
+import { useProducts } from '../contexts/ProductContext';
 
 interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (product: Product) => void;
-  categories: string[];
 }
 
-export default function AddProductModal({
-  isOpen,
-  onClose,
-  onSave,
-  categories
-}: AddProductModalProps) {
+const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose }) => {
+  const { categories, addProduct } = useProducts();
   const [currentStep, setCurrentStep] = useState(1);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [product, setProduct] = useState<Product>({
+  const [product, setProduct] = useState({
     id: Math.random().toString(36).substr(2, 9),
     name: '',
-    category: categories[0],
+    category: categories[0].id,
     type: 'product',
     price: 0,
     stock: 0,
     description: '',
+    image: '',
     sku: '',
     barcode: ''
   });
@@ -68,18 +42,30 @@ export default function AddProductModal({
     setProduct({ ...product, barcode });
   };
 
-  const handleSave = () => {
-    onSave(product);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    addProduct({
+      name: product.name,
+      price: product.price,
+      categoryId: product.category,
+      imageUrl: product.image,
+      inStock: true,
+      featured: false,
+      description: product.description
+    });
+    onClose();
+    // Reset form
     setCurrentStep(1);
     setImagePreview(null);
     setProduct({
       id: Math.random().toString(36).substr(2, 9),
       name: '',
-      category: categories[0],
+      category: categories[0].id,
       type: 'product',
       price: 0,
       stock: 0,
       description: '',
+      image: '',
       sku: '',
       barcode: ''
     });
@@ -89,34 +75,14 @@ export default function AddProductModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-3xl">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Add New Product</h2>
-            <div className="flex mt-2">
-              {[1, 2, 3].map((step) => (
-                <div
-                  key={step}
-                  className={`w-3 h-3 rounded-full mx-1 ${
-                    step === currentStep
-                      ? 'bg-indigo-500'
-                      : step < currentStep
-                      ? 'bg-green-500'
-                      : 'bg-gray-700'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <FontAwesomeIcon icon={faTimes} />
+      <div className="bg-gray-900 rounded-lg p-6 w-full max-w-3xl">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-white">Add New Product</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={24} />
           </button>
         </div>
-
-        <div className="mt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {currentStep === 1 && (
             <div className="space-y-6">
               <div className="flex justify-center">
@@ -128,16 +94,12 @@ export default function AddProductModal({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <FontAwesomeIcon
-                      icon={faImage}
-                      className="text-gray-600 text-5xl"
-                    />
+                    <div className="text-gray-600 text-5xl">
+                      <X size={48} />
+                    </div>
                   )}
                   <label className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
-                    <FontAwesomeIcon
-                      icon={faUpload}
-                      className="text-white text-2xl"
-                    />
+                    <X size={24} />
                     <input
                       type="file"
                       accept="image/*"
@@ -150,30 +112,32 @@ export default function AddProductModal({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-400 mb-2">Name</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
                   <input
                     type="text"
                     value={product.name}
                     onChange={(e) =>
                       setProduct({ ...product, name: e.target.value })
                     }
-                    className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
-                    placeholder="Product name"
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-400 mb-2">Category</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
                   <select
                     value={product.category}
                     onChange={(e) =>
                       setProduct({ ...product, category: e.target.value })
                     }
-                    className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   >
+                    <option value="">Select a category</option>
                     {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
+                      <option key={category.id} value={category.id}>
+                        {category.name}
                       </option>
                     ))}
                   </select>
@@ -186,14 +150,12 @@ export default function AddProductModal({
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-400 mb-2">Price</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Price</label>
                   <div className="relative">
-                    <FontAwesomeIcon
-                      icon={faDollarSign}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    />
+                    <X size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="number"
+                      step="0.01"
                       value={product.price}
                       onChange={(e) =>
                         setProduct({
@@ -201,21 +163,16 @@ export default function AddProductModal({
                           price: parseFloat(e.target.value)
                         })
                       }
-                      className="w-full bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
-                      placeholder="0.00"
-                      step="0.01"
-                      min="0"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
+                      required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-gray-400 mb-2">Stock</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Stock</label>
                   <div className="relative">
-                    <FontAwesomeIcon
-                      icon={faBox}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    />
+                    <X size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="number"
                       value={product.stock}
@@ -225,23 +182,20 @@ export default function AddProductModal({
                           stock: parseInt(e.target.value)
                         })
                       }
-                      className="w-full bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
-                      placeholder="0"
-                      min="0"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-gray-400 mb-2">Description</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
                   <textarea
                     value={product.description}
                     onChange={(e) =>
                       setProduct({ ...product, description: e.target.value })
                     }
-                    className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
                     rows={3}
-                    placeholder="Product description"
                   />
                 </div>
               </div>
@@ -252,39 +206,31 @@ export default function AddProductModal({
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-400 mb-2">SKU</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">SKU</label>
                   <div className="relative">
-                    <FontAwesomeIcon
-                      icon={faTag}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    />
+                    <X size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
                       value={product.sku}
                       onChange={(e) =>
                         setProduct({ ...product, sku: e.target.value })
                       }
-                      className="w-full bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
-                      placeholder="SKU"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-gray-400 mb-2">Barcode</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Barcode</label>
                   <div className="relative">
-                    <FontAwesomeIcon
-                      icon={faBarcode}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    />
+                    <X size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
                       value={product.barcode}
                       onChange={(e) =>
                         setProduct({ ...product, barcode: e.target.value })
                       }
-                      className="w-full bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none"
-                      placeholder="Barcode"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                       onClick={generateBarcode}
@@ -305,7 +251,7 @@ export default function AddProductModal({
                   </div>
                   <div>
                     <span className="text-gray-400">Category:</span>
-                    <span className="text-white ml-2">{product.category}</span>
+                    <span className="text-white ml-2">{categories.find((category) => category.id === product.category)?.name}</span>
                   </div>
                   <div>
                     <span className="text-gray-400">Price:</span>
@@ -321,7 +267,7 @@ export default function AddProductModal({
               </div>
             </div>
           )}
-        </div>
+        </form>
 
         <div className="flex justify-between mt-8">
           {currentStep > 1 && (
@@ -336,7 +282,7 @@ export default function AddProductModal({
             <button
               onClick={
                 currentStep === 3
-                  ? handleSave
+                  ? handleSubmit
                   : () => setCurrentStep(currentStep + 1)
               }
               className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors"
@@ -348,4 +294,6 @@ export default function AddProductModal({
       </div>
     </div>
   );
-}
+};
+
+export default AddProductModal;
