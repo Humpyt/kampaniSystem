@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import type { Customer } from '../types';
 import { api } from '../services/api';
 
@@ -18,12 +18,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch customers on mount
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
-
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,7 +29,12 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch customers on mount
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id'>) => {
     try {
@@ -69,17 +69,20 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const contextValue = useMemo(
+    () => ({
+      customers,
+      addCustomer,
+      updateCustomer,
+      deleteCustomer,
+      loading,
+      error,
+    }),
+    [customers, loading, error]
+  );
+
   return (
-    <CustomerContext.Provider 
-      value={{ 
-        customers, 
-        addCustomer, 
-        updateCustomer, 
-        deleteCustomer,
-        loading,
-        error
-      }}
-    >
+    <CustomerContext.Provider value={contextValue}>
       {children}
     </CustomerContext.Provider>
   );

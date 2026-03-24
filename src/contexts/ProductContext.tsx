@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 export interface Product {
@@ -185,21 +185,24 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return categories.find(category => category.id === id);
   };
 
+  const contextValue = useMemo(
+    () => ({
+      products,
+      categories,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      getProductsByCategory,
+      getCategoryById,
+    }),
+    [products, categories]
+  );
+
   return (
-    <ProductContext.Provider
-      value={{
-        products,
-        categories,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        addCategory,
-        updateCategory,
-        deleteCategory,
-        getProductsByCategory,
-        getCategoryById,
-      }}
-    >
+    <ProductContext.Provider value={contextValue}>
       {children}
     </ProductContext.Provider>
   );

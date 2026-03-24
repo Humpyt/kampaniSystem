@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { Customer } from '../types';
 
 interface ShoeService {
@@ -134,14 +134,19 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     return operations.find(op => op.id === id);
   }, [operations]);
 
-  return (
-    <OperationContext.Provider value={{
+  const contextValue = useMemo(
+    () => ({
       operations,
       addOperation,
       updateOperation,
       deleteOperation,
       getOperation,
-    }}>
+    }),
+    [operations]
+  );
+
+  return (
+    <OperationContext.Provider value={contextValue}>
       {children}
     </OperationContext.Provider>
   );

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { AdminUser, Role, Permission, SystemSetting, AuditLog } from '../types/admin';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -339,32 +339,35 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     });
   }, [auditLogs]);
 
+  const contextValue = useMemo(
+    () => ({
+      users,
+      addUser,
+      updateUser,
+      deleteUser,
+      getUserById,
+      roles,
+      addRole,
+      updateRole,
+      deleteRole,
+      getRoleByName,
+      permissions,
+      addPermission,
+      updatePermission,
+      deletePermission,
+      settings,
+      updateSetting,
+      getSettingByKey,
+      auditLogs,
+      addAuditLog,
+      clearAuditLogs,
+      getFilteredLogs,
+    }),
+    [users, roles, permissions, settings, auditLogs, addUser, updateUser, deleteUser, getUserById, addRole, updateRole, deleteRole, getRoleByName, addPermission, updatePermission, deletePermission, updateSetting, getSettingByKey, addAuditLog, clearAuditLogs, getFilteredLogs]
+  );
+
   return (
-    <AdminContext.Provider
-      value={{
-        users,
-        addUser,
-        updateUser,
-        deleteUser,
-        getUserById,
-        roles,
-        addRole,
-        updateRole,
-        deleteRole,
-        getRoleByName,
-        permissions,
-        addPermission,
-        updatePermission,
-        deletePermission,
-        settings,
-        updateSetting,
-        getSettingByKey,
-        auditLogs,
-        addAuditLog,
-        clearAuditLogs,
-        getFilteredLogs,
-      }}
-    >
+    <AdminContext.Provider value={contextValue}>
       {children}
     </AdminContext.Provider>
   );
