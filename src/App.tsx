@@ -19,6 +19,7 @@ import StaffPage from './pages/StaffPage';
 import NotificationsPage from './pages/NotificationsPage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import MainMenu from './components/MainMenu';
 import RightSidebar from './components/RightSidebar';
 import QuickActionButtons from './components/QuickActionButtons';
@@ -78,68 +79,70 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-800 text-white">
-      <CustomerProvider>
-        <OperationProvider>
-          <AdminProvider>
-            <CartProvider>
-              <ProductProvider>
-                <Routes>
-                  <Route
-                    path="/"
-                    element={
-                      <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
-                    }
-                  >
-                    <Route index element={<StorePage />} />
-                    <Route path="login" element={<LoginPage />} />
-                    <Route path="customers" element={<CustomerPage />} />
-                    <Route path="drop" element={<DropPage />} />
-                    <Route path="pickup" element={<PickupPage />} />
-                    <Route path="messages" element={<MessagePage />} />
-                    <Route path="operation" element={<OperationPage />} />
-                    <Route path="supplies" element={<SuppliesPage />} />
-                    <Route path="sales" element={<SalesPage />} />
-                    <Route path="sales-items" element={<SalesItems />} />
-                    <Route path="manage-categories" element={<ProductCategoryManager />} />
-                    <Route path="tickets" element={<TicketsPage />} />
-                    <Route path="qrcodes" element={<QRCodesPage />} />
-                    <Route path="marketing" element={<MarketingPage />} />
-                    <Route path="reports" element={<ReportsPage />} />
-                    <Route path="staff" element={
-                      <ProtectedRoute requiredRoles={['admin', 'manager']}>
-                        <StaffPage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="notifications" element={<NotificationsPage />} />
-                    <Route path="admin" element={
-                      <ProtectedRoute requiredRoles={['admin']}>
-                        <AdminPage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="hold-quick-drop" element={<HoldQuickDropPage />} />
-                    <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
-                    <Route path="ticket-search" element={<TicketSearchPage />} />
-                    <Route path="assembly" element={<AssemblyPage />} />
-                    <Route path="racking" element={<RackingPage />} />
-                    <Route path="pickup-order" element={<PickupOrderPage />} />
-                    <Route path="deliveries" element={<DeliveriesPage />} />
-                    <Route path="cod-payment" element={<CodPaymentPage />} />
-                    <Route path="sale-items" element={<SaleItemsPage />} />
-                  </Route>
-                </Routes>
-              </ProductProvider>
-            </CartProvider>
-          </AdminProvider>
-        </OperationProvider>
-      </CustomerProvider>
-      <Toaster position="top-right" toastOptions={{
-        style: {
-          background: '#333',
-          color: '#fff',
-        },
-      }} />
-    </div>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-800 text-white">
+        <CustomerProvider>
+          <OperationProvider>
+            <AdminProvider>
+              <CartProvider>
+                <ProductProvider>
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={
+                        <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
+                      }
+                    >
+                      <Route index element={<StorePage />} />
+                      <Route path="login" element={<LoginPage />} />
+                      <Route path="customers" element={<CustomerPage />} />
+                      <Route path="drop" element={<DropPage />} />
+                      <Route path="pickup" element={<PickupPage />} />
+                      <Route path="messages" element={<MessagePage />} />
+                      <Route path="operation" element={<OperationPage />} />
+                      <Route path="supplies" element={<SuppliesPage />} />
+                      <Route path="sales" element={<SalesPage />} />
+                      <Route path="sales-items" element={<SalesItems />} />
+                      <Route path="manage-categories" element={<ProductCategoryManager />} />
+                      <Route path="tickets" element={<TicketsPage />} />
+                      <Route path="qrcodes" element={<QRCodesPage />} />
+                      <Route path="marketing" element={<MarketingPage />} />
+                      <Route path="reports" element={<ReportsPage />} />
+                      <Route path="staff" element={
+                        <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                          <StaffPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="notifications" element={<NotificationsPage />} />
+                      <Route path="admin" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <AdminPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="hold-quick-drop" element={<HoldQuickDropPage />} />
+                      <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
+                      <Route path="ticket-search" element={<TicketSearchPage />} />
+                      <Route path="assembly" element={<AssemblyPage />} />
+                      <Route path="racking" element={<RackingPage />} />
+                      <Route path="pickup-order" element={<PickupOrderPage />} />
+                      <Route path="deliveries" element={<DeliveriesPage />} />
+                      <Route path="cod-payment" element={<CodPaymentPage />} />
+                      <Route path="sale-items" element={<SaleItemsPage />} />
+                    </Route>
+                  </Routes>
+                </ProductProvider>
+              </CartProvider>
+            </AdminProvider>
+          </OperationProvider>
+        </CustomerProvider>
+        <Toaster position="top-right" toastOptions={{
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+        }} />
+      </div>
+    </ErrorBoundary>
   );
 }
 
