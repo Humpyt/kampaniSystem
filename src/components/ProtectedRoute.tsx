@@ -1,35 +1,44 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { UserRole } from '../contexts/AuthContext';
+import { useAuthStore } from '../store/authStore';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRoles?: UserRole[];
+  requiredRoles?: Array<'admin' | 'manager' | 'staff'>;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
-  children, 
-  requiredRoles = [] 
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
+  requiredRoles = []
 }) => {
-  const { currentUser, userData, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuthStore();
 
+  // Show loading while checking authentication
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800">
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
       </div>
     );
   }
 
-  if (!currentUser) {
-    return <Navigate to="/login" />;
+  // Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
 
-  if (requiredRoles.length > 0 && userData) {
-    const hasRequiredRole = requiredRoles.includes(userData.role);
+  // Check role requirements
+  if (requiredRoles.length > 0 && user) {
+    const hasRequiredRole = requiredRoles.includes(user.role as any);
     if (!hasRequiredRole) {
-      return <Navigate to="/" />;
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
+            <p className="text-gray-400">You don't have permission to access this page.</p>
+          </div>
+        </div>
+      );
     }
   }
 
