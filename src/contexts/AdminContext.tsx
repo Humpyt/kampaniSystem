@@ -1,14 +1,14 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { User, Role, Permission, SystemSetting, AuditLog } from '../types/admin';
+import type { AdminUser, Role, Permission, SystemSetting, AuditLog } from '../types/admin';
 import { v4 as uuidv4 } from 'uuid';
 
 interface AdminContextType {
   // Users
-  users: User[];
-  addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
-  updateUser: (id: string, user: Partial<User>) => void;
+  users: AdminUser[];
+  addUser: (user: Omit<AdminUser, 'id' | 'createdAt'>) => void;
+  updateUser: (id: string, user: Partial<AdminUser>) => void;
   deleteUser: (id: string) => void;
-  getUserById: (id: string) => User | undefined;
+  getUserById: (id: string) => AdminUser | undefined;
   
   // Roles
   roles: Role[];
@@ -75,7 +75,7 @@ const mockRoles: Role[] = [
   },
 ];
 
-const mockUsers: User[] = [
+const mockUsers: AdminUser[] = [
   {
     id: '1',
     name: 'Admin User',
@@ -149,7 +149,7 @@ const mockSettings: SystemSetting[] = [
 ];
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [users, setUsers] = useState<AdminUser[]>(mockUsers);
   const [roles, setRoles] = useState<Role[]>(mockRoles);
   const [permissions] = useState<Permission[]>(mockPermissions);
   const [settings, setSettings] = useState<SystemSetting[]>(mockSettings);
@@ -176,7 +176,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('admin_audit_logs', JSON.stringify(auditLogs));
   }, [users, roles, settings, auditLogs]);
 
-  const addUser = useCallback((user: Omit<User, 'id' | 'createdAt'>) => {
+  const addUser = useCallback((user: Omit<AdminUser, 'id' | 'createdAt'>) => {
     const newUser = {
       ...user,
       id: uuidv4(),
@@ -194,7 +194,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const updateUser = useCallback((id: string, userData: Partial<User>) => {
+  const updateUser = useCallback((id: string, userData: Partial<AdminUser>) => {
     setUsers(prev => prev.map(user => 
       user.id === id ? { ...user, ...userData } : user
     ));
