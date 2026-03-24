@@ -123,54 +123,51 @@ const SalesItems: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gray-900">
       {/* Header */}
-      <div className="bg-gradient-to-r from-gray-900 via-indigo-900 to-gray-900 p-4 flex items-center justify-between shadow-lg">
-        <div className="flex-1 flex items-center space-x-4">
-          {/* Search Bar */}
-          <div className="relative flex-1 max-w-xl">
-            <input
-              type="text"
-              placeholder="Search products..."
-              className="w-full bg-gradient-to-r from-gray-800 to-gray-700 text-white pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600 hover:border-indigo-500 transition-all duration-300"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400" size={20} />
+      <div className="card-bevel p-6 mb-6 bg-gradient-to-br from-gray-800 to-gray-900">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 flex items-center space-x-4">
+            <div className="relative flex-1 max-w-xl">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search products..."
+                className="w-full pl-12 pr-4 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-white placeholder-gray-400"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Right Section */}
-        <div className="flex items-center space-x-4">
-          {/* Manage Categories */}
-          <Link
-            to="/manage-categories"
-            className="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg transition-all duration-300 shadow-md hover:shadow-lg"
-          >
-            <Tag size={18} />
-            <span>Manage Categories</span>
-          </Link>
+          <div className="flex items-center space-x-4">
+            <Link
+              to="/manage-categories"
+              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Tag size={18} />
+              <span>Manage Categories</span>
+            </Link>
 
-          {/* Discount Button */}
-          <button
-            onClick={() => setShowCart(true)}
-            className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg transition-all duration-300 shadow-md hover:shadow-lg"
-          >
-            <DollarSign size={18} />
-            <span>Discount</span>
-          </button>
+            <button
+              onClick={() => setShowCart(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <DollarSign size={18} />
+              <span>Discount</span>
+            </button>
 
-          {/* Cart Button */}
-          <button
-            onClick={() => setShowCart(true)}
-            className="relative flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg transition-all duration-300 shadow-md hover:shadow-lg"
-          >
-            <ShoppingCart size={18} />
-            <span>Cart ({cart.length})</span>
-          </button>
+            <button
+              onClick={() => setShowCart(true)}
+              className="relative flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <ShoppingCart size={18} />
+              <span>Cart ({cart.length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Totals */}
-      <div className="bg-gray-900 p-4 border-b border-gray-800">
+      <div className="card-bevel p-6 mb-6 bg-gradient-to-br from-gray-800 to-gray-900">
         <div className="flex justify-between items-center">
           <div className="flex space-x-8">
             <div>
@@ -191,15 +188,23 @@ const SalesItems: React.FC = () => {
             </div>
           </div>
           <div className="flex space-x-2">
-            <button 
+            <button
               onClick={handleTaxableClick}
-              className={`bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 ${isTaxable ? 'bg-green-500' : ''}`}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                isTaxable
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700'
+              }`}
             >
               <span>Taxable</span>
             </button>
-            <button 
+            <button
               onClick={handleReceiptClick}
-              className={`bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 ${isReceipt ? 'bg-green-500' : ''}`}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                isReceipt
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700'
+              }`}
             >
               <span>Receipt</span>
             </button>
@@ -213,9 +218,9 @@ const SalesItems: React.FC = () => {
           <button
             key={category.id}
             onClick={() => setSelectedCategory(category.id)}
-            className={`p-2 text-white rounded-lg ${
+            className={`p-3 text-gray-200 rounded-lg transition-colors ${
               selectedCategory === category.id
-                ? 'bg-blue-600'
+                ? 'bg-indigo-600'
                 : 'bg-gray-800 hover:bg-gray-700'
             }`}
           >
@@ -252,21 +257,21 @@ const SalesItems: React.FC = () => {
       </div>
 
       {/* Cart Sidebar */}
-      <div 
-        className={`fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl transform transition-transform duration-300 ${
+      <div
+        className={`fixed right-0 top-0 h-screen w-96 bg-gradient-to-br from-gray-800 to-gray-900 shadow-2xl transform transition-transform duration-300 ${
           showCart ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         <div className="h-full flex flex-col">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-blue-600 to-blue-500">
-            <h2 className="text-xl font-bold text-white">Shopping Cart</h2>
-            <button onClick={() => setShowCart(false)} className="text-white hover:text-gray-200">
+          <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-200">Shopping Cart</h2>
+            <button onClick={() => setShowCart(false)} className="text-gray-400 hover:text-white">
               <X size={24} />
             </button>
           </div>
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex-1 overflow-auto p-6">
             {cart.map((item, index) => (
-              <div key={index} className="flex justify-between items-center p-4 mb-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div key={index} className="flex justify-between items-center p-4 mb-2 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors">
                 <div className="flex items-center space-x-4">
                   <img
                     src={item.item.imageUrl || '/placeholder.png'}
@@ -274,8 +279,8 @@ const SalesItems: React.FC = () => {
                     className="w-16 h-16 object-cover rounded-lg"
                   />
                   <div>
-                    <div className="font-medium text-gray-800">{item.item.name}</div>
-                    <div className="text-sm text-gray-600">
+                    <div className="font-medium text-gray-200">{item.item.name}</div>
+                    <div className="text-sm text-gray-400">
                       ${item.item.price.toFixed(2)} x {item.quantity}
                     </div>
                   </div>
@@ -292,11 +297,11 @@ const SalesItems: React.FC = () => {
                       );
                       updateTotals();
                     }}
-                    className="p-1 text-gray-600 hover:text-gray-800 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white transition-colors"
                   >
                     <Minus size={16} />
                   </button>
-                  <span className="w-8 text-center font-medium">{item.quantity}</span>
+                  <span className="w-8 text-center font-medium text-gray-200">{item.quantity}</span>
                   <button
                     onClick={() => {
                       setCart(prevCart =>
@@ -308,7 +313,7 @@ const SalesItems: React.FC = () => {
                       );
                       updateTotals();
                     }}
-                    className="p-1 text-gray-600 hover:text-gray-800 transition-colors"
+                    className="p-1 text-gray-400 hover:text-white transition-colors"
                   >
                     <Plus size={16} />
                   </button>
@@ -316,11 +321,11 @@ const SalesItems: React.FC = () => {
               </div>
             ))}
           </div>
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
+          <div className="p-6 border-t border-gray-700">
             <button
               onClick={() => console.log('Checkout button clicked')}
               disabled={cart.length === 0}
-              className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 rounded-lg hover:from-green-700 hover:to-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+              className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center space-x-2"
             >
               <ShoppingCart size={20} />
               <span>Complete Purchase</span>
@@ -331,23 +336,23 @@ const SalesItems: React.FC = () => {
 
       {/* Delete Category Modal */}
       {isDeleteModalOpen && (
-        <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-4 w-96">
-            <h2 className="text-lg font-bold mb-2">Confirm Delete Category</h2>
-            <p className="text-gray-600 mb-4">Are you sure you want to delete this category?</p>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-6 w-96 border border-gray-700">
+            <h2 className="text-lg font-bold text-gray-200 mb-2">Confirm Delete Category</h2>
+            <p className="text-gray-400 mb-4">Are you sure you want to delete this category?</p>
             {categoryUsage[deleteCategoryId] > 0 && (
-              <p className="text-red-500 mb-4">
-                Warning: This category has {categoryUsage[deleteCategoryId]} items assigned. Deleting it will remove these items from the catalog.
+              <p className="text-red-400 mb-4">
+                Warning: This category has {categoryUsage[deleteCategoryId]} items assigned.
               </p>
             )}
             <div className="flex justify-between">
-              <button 
+              <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="bg-gray-200 text-gray-600 py-2 px-4 rounded-lg hover:bg-gray-300"
+                className="bg-gray-700 text-gray-300 py-2 px-4 rounded-lg hover:bg-gray-600"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleConfirmDeleteCategory}
                 className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700"
               >
