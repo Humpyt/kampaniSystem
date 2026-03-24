@@ -128,18 +128,18 @@ export default function SalesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 p-8">
+    <div className="min-h-screen bg-gray-900 p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Sales Overview</h1>
           <p className="text-gray-400">Monitor and analyze your sales performance</p>
         </div>
-        <div className="bg-indigo-600/20 border border-indigo-500/30 rounded-2xl px-6 py-4">
+        <div className="card-bevel px-6 py-4 bg-gradient-to-br from-gray-800 to-gray-900">
           <div className="flex items-center space-x-3">
             <DollarSign className="h-6 w-6 text-indigo-400" />
             <div>
-              <p className="text-sm text-indigo-300">Total Sales</p>
+              <p className="text-sm text-gray-400">Total Sales</p>
               <p className="text-2xl font-bold text-white">{formatCurrency(totalSales)}</p>
             </div>
           </div>
@@ -147,67 +147,58 @@ export default function SalesPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50 hover:border-green-500/50 transition-all duration-300">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-2">
-                <p className="text-gray-400 font-medium">Repairs</p>
-                <span className="text-green-500 text-xs bg-green-900/30 px-2 py-1 rounded-full">+12.5%</span>
-              </div>
+              <p className="text-gray-400 font-medium">Repairs</p>
               <p className="text-3xl font-bold text-white mt-2">
                 {sales.filter(s => s.sale_type === 'repair').length}
               </p>
               <p className="text-sm text-gray-500 mt-1">Total repair orders</p>
             </div>
-            <div className="w-14 h-14 rounded-xl bg-green-900/20 flex items-center justify-center group">
-              <Wrench className="h-7 w-7 text-green-500 group-hover:scale-110 transition-transform" />
+            <div className="w-14 h-14 rounded-xl bg-green-900/20 flex items-center justify-center">
+              <Wrench className="h-7 w-7 text-green-500" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50 hover:border-purple-500/50 transition-all duration-300">
+        <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-2">
-                <p className="text-gray-400 font-medium">Retail Sales</p>
-                <span className="text-purple-500 text-xs bg-purple-900/30 px-2 py-1 rounded-full">+8.3%</span>
-              </div>
+              <p className="text-gray-400 font-medium">Retail Sales</p>
               <p className="text-3xl font-bold text-white mt-2">
                 {sales.filter(s => s.sale_type === 'retail').length}
               </p>
               <p className="text-sm text-gray-500 mt-1">Products sold</p>
             </div>
-            <div className="w-14 h-14 rounded-xl bg-purple-900/20 flex items-center justify-center group">
-              <ShoppingBag className="h-7 w-7 text-purple-500 group-hover:scale-110 transition-transform" />
+            <div className="w-14 h-14 rounded-xl bg-purple-900/20 flex items-center justify-center">
+              <ShoppingBag className="h-7 w-7 text-purple-500" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50 hover:border-orange-500/50 transition-all duration-300">
+        <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-2">
-                <p className="text-gray-400 font-medium">Pickups</p>
-                <span className="text-orange-500 text-xs bg-orange-900/30 px-2 py-1 rounded-full">+15.7%</span>
-              </div>
+              <p className="text-gray-400 font-medium">Pickups</p>
               <p className="text-3xl font-bold text-white mt-2">
                 {sales.filter(s => s.sale_type === 'pickup').length}
               </p>
               <p className="text-sm text-gray-500 mt-1">Orders picked up</p>
             </div>
-            <div className="w-14 h-14 rounded-xl bg-orange-900/20 flex items-center justify-center group">
-              <Package className="h-7 w-7 text-orange-500 group-hover:scale-110 transition-transform" />
+            <div className="w-14 h-14 rounded-xl bg-orange-900/20 flex items-center justify-center">
+              <Package className="h-7 w-7 text-orange-500" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Filters Section */}
-      <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 mb-8 border border-gray-700/50">
+      <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900 mb-6">
         <div className="flex items-center space-x-2 mb-4">
           <Search className="h-5 w-5 text-indigo-400" />
-          <h2 className="text-lg font-medium text-white">Filter Sales</h2>
+          <h2 className="text-lg font-medium text-gray-200">Filter Sales</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
@@ -216,7 +207,7 @@ export default function SalesPage() {
               <DatePicker
                 selected={startDate}
                 onChange={setStartDate}
-                className="w-full pl-12 pr-4 py-3 bg-gray-900/50 rounded-xl border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white"
+                className="w-full pl-12 pr-4 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 text-white"
                 placeholderText="Select start date"
                 dateFormat="MMM d, yyyy"
               />
@@ -230,7 +221,7 @@ export default function SalesPage() {
               <DatePicker
                 selected={endDate}
                 onChange={setEndDate}
-                className="w-full pl-12 pr-4 py-3 bg-gray-900/50 rounded-xl border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white"
+                className="w-full pl-12 pr-4 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 text-white"
                 placeholderText="Select end date"
                 dateFormat="MMM d, yyyy"
               />
@@ -244,7 +235,7 @@ export default function SalesPage() {
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="w-full pl-4 pr-10 py-3 bg-gray-900/50 rounded-xl border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white appearance-none"
+                className="w-full pl-4 pr-10 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 text-white appearance-none"
               >
                 <option value="all">All Types</option>
                 <option value="repair">Repairs</option>
@@ -258,9 +249,9 @@ export default function SalesPage() {
       </div>
 
       {/* Sales Table */}
-      <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50">
+      <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900">
         <div className="p-6 border-b border-gray-700">
-          <h2 className="text-lg font-medium text-white">Sales History</h2>
+          <h2 className="text-lg font-medium text-gray-200">Sales History</h2>
         </div>
         <div className="p-6">
           {loading ? (
@@ -275,32 +266,29 @@ export default function SalesPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left py-4 px-4 text-gray-400 font-medium">Date</th>
-                    <th className="text-left py-4 px-4 text-gray-400 font-medium">Customer</th>
-                    <th className="text-left py-4 px-4 text-gray-400 font-medium">Type</th>
-                    <th className="text-left py-4 px-4 text-gray-400 font-medium">Details</th>
-                    <th className="text-right py-4 px-4 text-gray-400 font-medium">Amount</th>
-                    <th className="text-right py-4 px-4 text-gray-400 font-medium">Payment</th>
+                <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Type</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Details</th>
+                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
+                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Payment</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-800">
                   {sales.map((sale, index) => (
-                    <tr 
+                    <tr
                       key={sale.id}
-                      className={`
-                        border-b border-gray-700/50 hover:bg-gray-700/20 transition-colors
-                        ${index % 2 === 0 ? 'bg-gray-900/20' : ''}
-                      `}
+                      className="hover:bg-gray-800/60 transition-colors"
                     >
-                      <td className="py-4 px-4 text-gray-300">
+                      <td className="px-6 py-4 text-gray-300">
                         {new Date(sale.created_at).toLocaleDateString()}
                       </td>
-                      <td className="py-4 px-4 text-gray-300">
+                      <td className="px-6 py-4 text-gray-300">
                         {sale.customer_name || 'Walk-in'}
                       </td>
-                      <td className="py-4 px-4">
+                      <td className="px-6 py-4">
                         <span className={`
                           inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
                           ${sale.sale_type === 'repair' ? 'bg-green-900/20 text-green-400' : ''}
@@ -310,13 +298,13 @@ export default function SalesPage() {
                           {sale.sale_type}
                         </span>
                       </td>
-                      <td className="py-4 px-4">
+                      <td className="px-6 py-4">
                         {renderSaleDetails(sale)}
                       </td>
-                      <td className="py-4 px-4 text-right font-medium text-white">
+                      <td className="px-6 py-4 text-right font-medium text-gray-200">
                         {formatCurrency(sale.total_amount)}
                       </td>
-                      <td className="py-4 px-4 text-right">
+                      <td className="px-6 py-4 text-right">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-700/50 text-gray-300">
                           {sale.payment_method}
                         </span>
