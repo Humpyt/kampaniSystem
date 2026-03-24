@@ -95,15 +95,15 @@ export default function MarketingPage() {
   const getStatusColor = (status: Campaign['status']) => {
     switch (status) {
       case 'draft':
-        return 'bg-gray-500';
+        return 'bg-gray-700/50 text-gray-300';
       case 'scheduled':
-        return 'bg-blue-500';
+        return 'bg-blue-900/40 text-blue-400';
       case 'active':
-        return 'bg-green-500';
+        return 'bg-green-900/40 text-green-400';
       case 'completed':
-        return 'bg-purple-500';
+        return 'bg-purple-900/40 text-purple-400';
       default:
-        return 'bg-gray-500';
+        return 'bg-gray-700/50 text-gray-300';
     }
   };
 
@@ -129,34 +129,37 @@ export default function MarketingPage() {
           <div className="grid grid-cols-1 gap-6">
             {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-emerald-500 mb-2">
+              <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="flex items-center gap-2 text-emerald-400 mb-2">
                   <Users className="h-5 w-5" />
-                  <span>Total Customers</span>
+                  <span className="text-gray-300">Total Customers</span>
                 </div>
                 <div className="text-2xl font-bold text-white">2,547</div>
                 <div className="text-sm text-gray-400">+12% from last month</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-500 mb-2">
+
+              <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="flex items-center gap-2 text-blue-400 mb-2">
                   <Megaphone className="h-5 w-5" />
-                  <span>Active Campaigns</span>
+                  <span className="text-gray-300">Active Campaigns</span>
                 </div>
                 <div className="text-2xl font-bold text-white">{campaigns.filter(c => c.status === 'active').length}</div>
                 <div className="text-sm text-gray-400">{campaigns.filter(c => c.status === 'scheduled').length} scheduled</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-purple-500 mb-2">
+
+              <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="flex items-center gap-2 text-purple-400 mb-2">
                   <Mail className="h-5 w-5" />
-                  <span>Email Open Rate</span>
+                  <span className="text-gray-300">Email Open Rate</span>
                 </div>
                 <div className="text-2xl font-bold text-white">68%</div>
                 <div className="text-sm text-gray-400">Industry avg: 45%</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="flex items-center gap-2 text-yellow-500 mb-2">
+
+              <div className="card-bevel p-4 bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="flex items-center gap-2 text-yellow-400 mb-2">
                   <Gift className="h-5 w-5" />
-                  <span>Promotion Usage</span>
+                  <span className="text-gray-300">Promotion Usage</span>
                 </div>
                 <div className="text-2xl font-bold text-white">245</div>
                 <div className="text-sm text-gray-400">Last 30 days</div>
@@ -164,13 +167,13 @@ export default function MarketingPage() {
             </div>
 
             {/* Campaigns List */}
-            <div className="bg-gray-800 rounded-lg overflow-hidden">
+            <div className="card-bevel rounded-lg overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900">
               <div className="p-4 border-b border-gray-700">
-                <h2 className="text-lg font-semibold text-white">Active Campaigns</h2>
+                <h2 className="text-lg font-semibold text-gray-200">Active Campaigns</h2>
               </div>
               <div className="divide-y divide-gray-700">
                 {campaigns.map((campaign) => (
-                  <div key={campaign.id} className="p-4 hover:bg-gray-700">
+                  <div key={campaign.id} className="p-4 hover:bg-gray-700/50 transition-colors">
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
@@ -193,14 +196,14 @@ export default function MarketingPage() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button 
-                          className="p-2 hover:bg-gray-600 rounded"
+                        <button
+                          className="p-2 hover:bg-gray-700 rounded transition-colors"
                           onClick={() => handleEditCampaign(campaign.id)}
                         >
                           <Edit className="h-5 w-5 text-gray-400" />
                         </button>
-                        <button 
-                          className="p-2 hover:bg-gray-600 rounded"
+                        <button
+                          className="p-2 hover:bg-gray-700 rounded transition-colors"
                           onClick={() => handleDeleteCampaign(campaign.id)}
                         >
                           <Trash2 className="h-5 w-5 text-gray-400" />
@@ -241,23 +244,25 @@ export default function MarketingPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Marketing</h1>
+          <h1 className="text-2xl font-bold text-gray-200">Marketing</h1>
           <p className="text-gray-400">Manage marketing campaigns and communications</p>
         </div>
-        <button 
-          className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg flex items-center gap-2"
+        <button
+          className="flex items-center space-x-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           onClick={() => setShowCampaignForm(true)}
         >
           <Plus className="h-5 w-5" />
-          New Campaign
+          <span>New Campaign</span>
         </button>
       </div>
 
       {/* Navigation Tabs */}
       <div className="flex gap-4 mb-6">
         <button
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
-            selectedTab === 'campaigns' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+            selectedTab === 'campaigns'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
           }`}
           onClick={() => setSelectedTab('campaigns')}
         >
@@ -265,8 +270,10 @@ export default function MarketingPage() {
           Campaigns
         </button>
         <button
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
-            selectedTab === 'communications' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+            selectedTab === 'communications'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
           }`}
           onClick={() => setSelectedTab('communications')}
         >
@@ -274,8 +281,10 @@ export default function MarketingPage() {
           Communications
         </button>
         <button
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
-            selectedTab === 'analytics' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+            selectedTab === 'analytics'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
           }`}
           onClick={() => setSelectedTab('analytics')}
         >
