@@ -192,23 +192,12 @@ export default function CustomerPage() {
         type: 'payment',
         amount: op.totalAmount,
         date: op.createdAt,
-        description: op.shoes.map(shoe => 
+        description: op.shoes.map(shoe =>
           `${shoe.category} - ${shoe.services.map(s => s.name).join(', ')}`
         ).join('; ')
       }));
 
       setTransactions(customerTransactions);
-
-      // Calculate total spent and orders
-      const totalSpent = customerOperations.reduce((sum, op) => sum + op.totalAmount, 0);
-      const totalOrders = customerOperations.length;
-
-      // Update customer in state only, don't make API call here
-      setSelectedCustomer(prev => prev ? {
-        ...prev,
-        totalSpent,
-        totalOrders
-      } : null);
 
       // Set alerts based on customer notes
       const alerts: Alert[] = [];
@@ -234,7 +223,7 @@ export default function CustomerPage() {
 
       setAlerts(alerts);
     }
-  }, [selectedCustomer, operations]);
+  }, [selectedCustomer?.id, operations]);
 
   // Get current transactions for pagination
   const indexOfLastTransaction = currentPage * transactionsPerPage;

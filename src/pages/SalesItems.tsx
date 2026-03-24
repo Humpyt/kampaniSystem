@@ -220,21 +220,8 @@ const SalesItems: React.FC = () => {
             }`}
           >
             {category.name}
-            <button 
-              onClick={() => handleRemoveCategory(category.id)}
-              className="ml-2 text-red-500 hover:text-red-700"
-            >
-              <X size={16} />
-            </button>
           </button>
         ))}
-        <button 
-          onClick={() => handleAddCategory('New Category')}
-          className="p-2 text-white rounded-lg bg-gray-800 hover:bg-gray-700"
-        >
-          <Plus size={18} />
-          <span>Add Category</span>
-        </button>
       </div>
 
       {/* Products Grid */}

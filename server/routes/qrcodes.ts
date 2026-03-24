@@ -5,20 +5,26 @@ import db from '../database';
 const router = express.Router();
 
 // Initialize QR codes table if it doesn't exist
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS qrcodes (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    label TEXT NOT NULL,
-    data TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`).run();
+(async () => {
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS qrcodes (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+  } catch (error) {
+    console.error('Error creating qrcodes table:', error);
+  }
+})();
 
 // Get all QR codes
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const qrCodes = db.prepare(`
+    const qrCodes = await db.prepare(`
       SELECT * FROM qrcodes 
       ORDER BY created_at DESC
     `).all();
@@ -30,17 +36,17 @@ router.get('/', (req, res) => {
 });
 
 // Create a new QR code
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { type, label, data } = req.body;
     const id = uuidv4();
     
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO qrcodes (id, type, label, data)
       VALUES (?, ?, ?, ?)
     `).run(id, type, label, data);
     
-    const newQRCode = db.prepare('SELECT * FROM qrcodes WHERE id = ?').get(id);
+    const newQRCode = await db.prepare('SELECT * FROM qrcodes WHERE id = ?').get(id);
     res.status(201).json(newQRCode);
   } catch (error) {
     console.error('Error creating QR code:', error);
@@ -49,10 +55,10 @@ router.post('/', (req, res) => {
 });
 
 // Delete a QR code
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM qrcodes WHERE id = ?').run(id);
+    await db.prepare('DELETE FROM qrcodes WHERE id = ?').run(id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting QR code:', error);

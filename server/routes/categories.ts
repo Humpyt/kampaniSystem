@@ -5,9 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Get all categories
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const categories = db.prepare('SELECT * FROM categories ORDER BY name ASC').all();
+    const categories = await db.prepare('SELECT * FROM categories ORDER BY name ASC').all();
     res.json(categories);
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -16,10 +16,10 @@ router.get('/', (req, res) => {
 });
 
 // Get a single category
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    const category = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
     
     if (!category) {
       return res.status(404).json({ error: 'Category not found' });
@@ -33,7 +33,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create a new category
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name } = req.body;
     
@@ -44,17 +44,13 @@ router.post('/', (req, res) => {
     const now = new Date().toISOString();
     const id = uuidv4();
     
-    const result = db.prepare(`
+    await db.prepare(`
       INSERT INTO categories (id, name, created_at, updated_at)
       VALUES (?, ?, ?, ?)
     `).run(id, name, now, now);
     
-    if (result.changes > 0) {
-      const newCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
-      res.status(201).json(newCategory);
-    } else {
-      throw new Error('Failed to create category');
-    }
+    const newCategory = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    res.status(201).json(newCategory);
   } catch (error) {
     console.error('Error creating category:', error);
     res.status(500).json({ error: 'Failed to create category' });
@@ -62,7 +58,7 @@ router.post('/', (req, res) => {
 });
 
 // Update a category
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -73,15 +69,15 @@ router.put('/:id', (req, res) => {
 
     const now = new Date().toISOString();
     
-    const result = db.prepare(`
+    const result = await db.prepare(`
       UPDATE categories SET
         name = ?,
         updated_at = ?
       WHERE id = ?
     `).run(name, now, id);
     
-    if (result.changes > 0) {
-      const updatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    if ((result as any).changes > 0) {
+      const updatedCategory = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
       res.json(updatedCategory);
     } else {
       res.status(404).json({ error: 'Category not found' });
@@ -93,19 +89,19 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete a category
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
     // Check if category is in use
-    const itemsUsingCategory = db.prepare('SELECT COUNT(*) as count FROM supplies WHERE category = ?').get(id);
+    const itemsUsingCategory = await db.prepare('SELECT COUNT(*) as count FROM supplies WHERE category = ?').get(id);
     if (itemsUsingCategory.count > 0) {
       return res.status(400).json({ error: 'Cannot delete category that is in use' });
     }
 
-    const result = db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    const result = await db.prepare('DELETE FROM categories WHERE id = ?').run(id);
     
-    if (result.changes > 0) {
+    if ((result as any).changes > 0) {
       res.json({ message: 'Category deleted successfully' });
     } else {
       res.status(404).json({ error: 'Category not found' });

@@ -9,6 +9,7 @@ import salesRoutes from './routes/sales';
 import qrCodesRouter from './routes/qrcodes';
 import suppliesRouter from './routes/supplies';
 import categoriesRouter from './routes/categories';
+import productsRouter from './routes/products';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
@@ -36,11 +37,12 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/qrcodes', qrCodesRouter);
 app.use('/api/supplies', suppliesRouter);
 app.use('/api/categories', categoriesRouter);
+app.use('/api/products', productsRouter);
 
 // Customer endpoints
-app.get('/api/customers', (req, res) => {
+app.get('/api/customers', async (req, res) => {
   try {
-    const customers = db.prepare(`
+    const customers = await db.prepare(`
       SELECT * FROM customers
       ORDER BY name ASC
     `).all();
@@ -51,15 +53,16 @@ app.get('/api/customers', (req, res) => {
   }
 });
 
-app.post('/api/customers', (req, res) => {
+app.post('/api/customers', async (req, res) => {
   try {
     const { name, phone, email, address } = req.body;
     const id = uuidv4();
+    const now = new Date().toISOString();
     
-    const result = db.prepare(`
-      INSERT INTO customers (id, name, phone, email, address)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, name, phone, email, address);
+    await db.prepare(`
+      INSERT INTO customers (id, name, phone, email, address, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, phone, email || null, address || null, now, now);
     
     res.json({ id, name, phone, email, address });
   } catch (error) {
@@ -68,7 +71,7 @@ app.post('/api/customers', (req, res) => {
   }
 });
 
-app.put('/api/customers/:id', (req, res) => {
+app.put('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -84,13 +87,13 @@ app.put('/api/customers/:id', (req, res) => {
     
     const values = [...Object.values(updates), now, id];
     
-    db.prepare(`
+    await db.prepare(`
       UPDATE customers
       SET ${setClauses}
       WHERE id = ?
     `).run(...values);
 
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    const customer = await db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
     res.json(customer);
   } catch (error) {
     console.error('Error updating customer:', error);
@@ -98,12 +101,12 @@ app.put('/api/customers/:id', (req, res) => {
   }
 });
 
-app.delete('/api/customers/:id', (req, res) => {
+app.delete('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const now = new Date().toISOString();
     
-    db.prepare(`
+    await db.prepare(`
       UPDATE customers 
       SET status = 'inactive', updated_at = ? 
       WHERE id = ?
@@ -117,11 +120,11 @@ app.delete('/api/customers/:id', (req, res) => {
 });
 
 // Order routes
-app.get('/api/orders', (req, res) => {
+app.get('/api/orders', async (req, res) => {
   try {
-    const orders = db.prepare(`
+    const orders = await db.prepare(`
       SELECT o.*, c.name as customer_name 
-      FROM orders o 
+      FROM operations o 
       LEFT JOIN customers c ON o.customer_id = c.id
       ORDER BY o.created_at DESC
     `).all();
@@ -133,56 +136,62 @@ app.get('/api/orders', (req, res) => {
   }
 });
 
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', async (req, res) => {
   const { customer_id, items, notes, promised_date } = req.body;
   
   try {
     const order_id = uuidv4();
     let total_amount = 0;
+    const now = new Date().toISOString();
 
     // Start transaction
-    const transaction = db.transaction(() => {
+    await db.run('BEGIN TRANSACTION');
+    
+    try {
       // Create order
-      db.prepare(`
-        INSERT INTO orders (id, customer_id, total_amount, notes, promised_date)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(order_id, customer_id, total_amount, notes, promised_date);
+      await db.prepare(`
+        INSERT INTO operations (id, customer_id, total_amount, notes, promised_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(order_id, customer_id, total_amount, notes || null, promised_date || null, now, now);
 
       // Add order items
-      items.forEach((item: any) => {
+      for (const item of items) {
         const item_id = uuidv4();
         total_amount += item.price * item.quantity;
         
-        db.prepare(`
-          INSERT INTO order_items (id, order_id, service_id, quantity, price, notes)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(item_id, order_id, item.service_id, item.quantity, item.price, item.notes);
-      });
+        await db.prepare(`
+          INSERT INTO operation_services (id, operation_shoe_id, service_id, quantity, price, notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(item_id, order_id, item.service_id, item.quantity, item.price, item.notes || null, now, now);
+      }
 
       // Update order total
-      db.prepare(`
-        UPDATE orders SET total_amount = ? WHERE id = ?
+      await db.prepare(`
+        UPDATE operations SET total_amount = ? WHERE id = ?
       `).run(total_amount, order_id);
 
       // Update customer stats
-      db.prepare(`
+      await db.prepare(`
         UPDATE customers 
         SET total_orders = total_orders + 1,
             total_spent = total_spent + ?,
-            last_visit = CURRENT_TIMESTAMP
+            last_visit = ?
         WHERE id = ?
-      `).run(total_amount, customer_id);
+      `).run(total_amount, now, customer_id);
 
-      return db.prepare(`
+      const order = await db.prepare(`
         SELECT o.*, c.name as customer_name 
-        FROM orders o 
+        FROM operations o 
         LEFT JOIN customers c ON o.customer_id = c.id
         WHERE o.id = ?
       `).get(order_id);
-    });
-
-    const order = transaction();
-    res.status(201).json(transformOperation(order));
+      
+      await db.run('COMMIT');
+      res.status(201).json(transformOperation(order));
+    } catch (error) {
+      await db.run('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
     console.error('Error creating order:', error);
     res.status(500).json({ error: 'Failed to create order' });
@@ -190,9 +199,9 @@ app.post('/api/orders', (req, res) => {
 });
 
 // Operations endpoints
-app.get('/api/operations', (req, res) => {
+app.get('/api/operations', async (req, res) => {
   try {
-    const operations = db.prepare(`
+    const operations = await db.prepare(`
       SELECT 
         o.*,
         c.name as customer_name,
@@ -202,8 +211,9 @@ app.get('/api/operations', (req, res) => {
       ORDER BY o.created_at DESC
     `).all();
 
-    const operationsWithDetails = operations.map(operation => {
-      const shoes = db.prepare(`
+    const operationsWithDetails = [];
+    for (const operation of operations) {
+      const shoes = await db.prepare(`
         SELECT 
           s.*,
           GROUP_CONCAT(srv.name) as services
@@ -214,14 +224,14 @@ app.get('/api/operations', (req, res) => {
         GROUP BY s.id
       `).all(operation.id);
 
-      return {
+      operationsWithDetails.push({
         ...operation,
         shoes: shoes.map(shoe => ({
           ...shoe,
           services: shoe.services ? shoe.services.split(',') : []
         }))
-      };
-    });
+      });
+    }
 
     res.json(operationsWithDetails);
   } catch (error) {
@@ -231,9 +241,9 @@ app.get('/api/operations', (req, res) => {
 });
 
 // Services endpoints
-app.get('/api/services', (req, res) => {
+app.get('/api/services', async (req, res) => {
   try {
-    const services = db.prepare('SELECT * FROM services ORDER BY name ASC').all();
+    const services = await db.prepare('SELECT * FROM services ORDER BY name ASC').all();
     res.json(services);
   } catch (error) {
     console.error('Error fetching services:', error);
@@ -241,22 +251,19 @@ app.get('/api/services', (req, res) => {
   }
 });
 
-app.post('/api/services', (req, res) => {
+app.post('/api/services', async (req, res) => {
   try {
     const { name, description, price, estimated_days, category } = req.body;
     const id = uuidv4();
+    const now = new Date().toISOString();
     
-    const result = db.prepare(`
-      INSERT INTO services (id, name, description, price, estimated_days, category)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, name, description, price, estimated_days, category);
+    const result = await db.prepare(`
+      INSERT INTO services (id, name, description, price, estimated_days, category, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, description || null, price, estimated_days || null, category || null, now, now);
 
-    if (result.changes > 0) {
-      const service = db.prepare('SELECT * FROM services WHERE id = ?').get(id);
-      res.status(201).json(service);
-    } else {
-      res.status(400).json({ error: 'Failed to create service' });
-    }
+    const service = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+    res.status(201).json(service);
   } catch (error) {
     console.error('Error creating service:', error);
     res.status(500).json({ error: 'Failed to create service' });
@@ -264,9 +271,9 @@ app.post('/api/services', (req, res) => {
 });
 
 // Sales endpoints
-app.get('/api/sales-categories', (req, res) => {
+app.get('/api/sales-categories', async (req, res) => {
   try {
-    const categories = db.prepare(`
+    const categories = await db.prepare(`
       SELECT * FROM sales_categories 
       ORDER BY display_order ASC
     `).all();
@@ -277,9 +284,9 @@ app.get('/api/sales-categories', (req, res) => {
   }
 });
 
-app.get('/api/sales-items', (req, res) => {
+app.get('/api/sales-items', async (req, res) => {
   try {
-    const items = db.prepare(`
+    const items = await db.prepare(`
       SELECT 
         sales_items.*,
         sales_categories.name as category_name
@@ -294,9 +301,9 @@ app.get('/api/sales-items', (req, res) => {
   }
 });
 
-app.get('/api/sales-items/category/:categoryId', (req, res) => {
+app.get('/api/sales-items/category/:categoryId', async (req, res) => {
   try {
-    const items = db.prepare(`
+    const items = await db.prepare(`
       SELECT * FROM sales_items 
       WHERE category_id = ?
       ORDER BY name ASC
@@ -309,14 +316,14 @@ app.get('/api/sales-items/category/:categoryId', (req, res) => {
 });
 
 // Start server
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`Server is running on http://localhost:${port}`);
-  console.log('Database file:', db.name);
+  console.log('Database file:', (db as any).name);
   
   // Test database connection
   try {
-    const customerCount = db.prepare('SELECT COUNT(*) as count FROM customers').get();
-    console.log('Connected to database. Customer count:', customerCount.count);
+    const customerCount = await db.prepare('SELECT COUNT(*) as count FROM customers').get();
+    console.log('Connected to database. Customer count:', customerCount?.count || 0);
   } catch (error) {
     console.error('Database connection error:', error);
   }

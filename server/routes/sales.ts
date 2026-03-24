@@ -5,7 +5,7 @@ import db from '../database';
 const router = express.Router();
 
 // Get all sales with optional filters
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { startDate, endDate, saleType } = req.query;
     let query = `
@@ -33,13 +33,14 @@ router.get('/', (req, res) => {
 
     query += ' ORDER BY s.created_at DESC';
     
-    const sales = db.prepare(query).all(...params);
+    const sales = await db.prepare(query).all(...params);
 
     // Get details for each sale
-    const salesWithDetails = sales.map(sale => {
-      let details = [];
+    const salesWithDetails = [];
+    for (const sale of sales) {
+      let details: any[] = [];
       if (sale.sale_type === 'repair') {
-        const repairDetails = db.prepare(`
+        details = await db.prepare(`
           SELECT 
             os.category,
             srv.name as service_name,
@@ -50,10 +51,8 @@ router.get('/', (req, res) => {
           JOIN services srv ON srv.id = osrv.service_id
           WHERE o.id = ?
         `).all(sale.reference_id);
-
-        details = repairDetails;
       } else if (sale.sale_type === 'retail') {
-        const retailDetails = db.prepare(`
+        details = await db.prepare(`
           SELECT 
             si.name,
             si.price,
@@ -62,15 +61,13 @@ router.get('/', (req, res) => {
           JOIN sales_items si ON si.id = oi.item_id
           WHERE oi.order_id = ?
         `).all(sale.reference_id);
-
-        details = retailDetails;
       }
 
-      return {
+      salesWithDetails.push({
         ...sale,
         details
-      };
-    });
+      });
+    }
 
     res.json(salesWithDetails);
   } catch (error) {
@@ -80,12 +77,12 @@ router.get('/', (req, res) => {
 });
 
 // Record a new sale
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { customerId, saleType, referenceId, totalAmount, paymentMethod } = req.body;
     const now = new Date().toISOString();
     
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO sales (
         id, customer_id, sale_type, reference_id, 
         total_amount, payment_method, created_at, updated_at
@@ -101,7 +98,7 @@ router.post('/', (req, res) => {
       now
     );
 
-    if (result.changes > 0) {
+    if ((result as any).changes > 0) {
       res.status(201).json({ success: true });
     } else {
       res.status(400).json({ error: 'Failed to record sale' });

@@ -56,9 +56,9 @@ db.exec(`
 `);
 
 // Get all operations
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const operations = db.prepare(`
+    const operations = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
@@ -66,8 +66,9 @@ router.get('/', (req, res) => {
     `).all();
 
     // Get shoes and services for each operation
-    const operationsWithShoes = operations.map(operation => {
-      const shoes = db.prepare(`
+    const operationsWithShoes = [];
+    for (const operation of operations) {
+      const shoes = await db.prepare(`
         SELECT os.*, s.name as service_name, s.price as service_base_price
         FROM operation_shoes os
         LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
@@ -75,7 +76,7 @@ router.get('/', (req, res) => {
         WHERE os.operation_id = ?
       `).all(operation.id);
 
-      return {
+      operationsWithShoes.push({
         ...operation,
         shoes: shoes.map(shoe => ({
           id: shoe.id,
@@ -89,8 +90,8 @@ router.get('/', (req, res) => {
             basePrice: shoe.service_base_price
           }]
         }))
-      };
-    });
+      });
+    }
 
     res.json(operationsWithShoes.map(transformOperation));
   } catch (error) {
@@ -100,10 +101,10 @@ router.get('/', (req, res) => {
 });
 
 // Get operation by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const operation = db.prepare(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
@@ -121,8 +122,8 @@ router.get('/:id', (req, res) => {
 });
 
 // Create new operation
-router.post('/', (req, res) => {
-  console.log('Received operation request:', JSON.stringify(req.body, null, 2)); // Debug log
+router.post('/', async (req, res) => {
+  console.log('Received operation request:', JSON.stringify(req.body, null, 2));
   const { customer, shoes, status, totalAmount, isNoCharge, isDoOver, isDelivery, isPickup, notes } = req.body;
   const now = new Date().toISOString();
 
@@ -137,97 +138,84 @@ router.post('/', (req, res) => {
   }
 
   try {
-    const result = db.transaction(() => {
+    await db.run('BEGIN TRANSACTION');
+    
+    try {
       // Insert the operation
       const operationId = uuidv4();
-      console.log('Creating operation with ID:', operationId); // Debug log
+      console.log('Creating operation with ID:', operationId);
 
-      const operationStmt = db.prepare(`
+      await db.prepare(`
         INSERT INTO operations (
           id, customer_id, status, total_amount, notes, 
           is_no_charge, is_do_over, is_delivery, is_pickup,
           created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+      `).run(
+        operationId,
+        customer.id,
+        status || 'pending',
+        totalAmount || 0,
+        notes || null,
+        isNoCharge ? 1 : 0,
+        isDoOver ? 1 : 0,
+        isDelivery ? 1 : 0,
+        isPickup ? 1 : 0,
+        now,
+        now
+      );
 
-      try {
-        operationStmt.run(
+      // Insert each shoe
+      for (let index = 0; index < shoes.length; index++) {
+        const shoe = shoes[index];
+        console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2));
+        const shoeId = uuidv4();
+        
+        await db.prepare(`
+          INSERT INTO operation_shoes (
+            id, operation_id, category, color, notes, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          shoeId,
           operationId,
-          customer.id,
-          status || 'pending',
-          totalAmount || 0,
-          notes || null,
-          isNoCharge ? 1 : 0,
-          isDoOver ? 1 : 0,
-          isDelivery ? 1 : 0,
-          isPickup ? 1 : 0,
+          shoe.category,
+          shoe.color || null,
+          shoe.notes || null,
           now,
           now
         );
-      } catch (error) {
-        console.error('Error inserting operation:', error);
-        throw new Error(`Failed to insert operation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+        // Insert services for each shoe
+        if (Array.isArray(shoe.services)) {
+          for (let sIndex = 0; sIndex < shoe.services.length; sIndex++) {
+            const service = shoe.services[sIndex];
+            console.log(`Processing service ${sIndex + 1} for shoe ${index + 1}:`, JSON.stringify(service, null, 2));
+            
+            if (!service.service_id) {
+              throw new Error(`Missing service_id for service ${sIndex + 1} of shoe ${index + 1}`);
+            }
+
+            await db.prepare(`
+              INSERT INTO operation_services (
+                id, operation_shoe_id, service_id, quantity, price, notes,
+                created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              uuidv4(),
+              shoeId,
+              service.service_id,
+              service.quantity || 1,
+              service.price || 0,
+              service.notes || null,
+              now,
+              now
+            );
+          }
+        }
       }
 
-      // Insert each shoe
-      shoes.forEach((shoe, index) => {
-        console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2)); // Debug log
-        const shoeId = uuidv4();
-        
-        try {
-          db.prepare(`
-            INSERT INTO operation_shoes (
-              id, operation_id, category, color, notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            shoeId,
-            operationId,
-            shoe.category,
-            shoe.color || null,
-            shoe.notes || null,
-            now,
-            now
-          );
-
-          // Insert services for each shoe
-          if (Array.isArray(shoe.services)) {
-            shoe.services.forEach((service, sIndex) => {
-              console.log(`Processing service ${sIndex + 1} for shoe ${index + 1}:`, JSON.stringify(service, null, 2)); // Debug log
-              
-              try {
-                if (!service.service_id) {
-                  throw new Error(`Missing service_id for service ${sIndex + 1} of shoe ${index + 1}`);
-                }
-
-                db.prepare(`
-                  INSERT INTO operation_services (
-                    id, operation_shoe_id, service_id, quantity, price, notes,
-                    created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `).run(
-                  uuidv4(),
-                  shoeId,
-                  service.service_id,
-                  service.quantity || 1,
-                  service.price || 0,
-                  service.notes || null,
-                  now,
-                  now
-                );
-              } catch (error) {
-                console.error(`Error inserting service ${sIndex + 1} for shoe ${index + 1}:`, error);
-                throw error;
-              }
-            });
-          }
-        } catch (error) {
-          console.error(`Error processing shoe ${index + 1}:`, error);
-          throw error;
-        }
-      });
-
       // Return the created operation with all related data
-      const operation = db.prepare(`
+      const operation = await db.prepare(`
         SELECT 
           o.*,
           c.name as customer_name,
@@ -239,13 +227,14 @@ router.post('/', (req, res) => {
       `).get(operationId);
 
       // Get shoes for this operation
-      const operationShoes = db.prepare(`
+      const operationShoes = await db.prepare(`
         SELECT * FROM operation_shoes WHERE operation_id = ?
       `).all(operationId);
 
       // Get services for each shoe
-      const shoesWithServices = operationShoes.map(shoe => {
-        const services = db.prepare(`
+      const shoesWithServices = [];
+      for (const shoe of operationShoes) {
+        const services = await db.prepare(`
           SELECT 
             os.*,
             s.name as service_name,
@@ -255,7 +244,7 @@ router.post('/', (req, res) => {
           WHERE os.operation_shoe_id = ?
         `).all(shoe.id);
 
-        return {
+        shoesWithServices.push({
           ...shoe,
           services: services.map(s => ({
             id: s.service_id,
@@ -264,28 +253,31 @@ router.post('/', (req, res) => {
             quantity: s.quantity,
             notes: s.notes
           }))
-        };
-      });
+        });
+      }
 
-      return {
+      await db.run('COMMIT');
+      
+      res.json({
         ...operation,
         shoes: shoesWithServices,
         isNoCharge: Boolean(operation.is_no_charge),
         isDoOver: Boolean(operation.is_do_over),
         isDelivery: Boolean(operation.is_delivery),
         isPickup: Boolean(operation.is_pickup)
-      };
-    })();
-
-    res.json(result);
+      });
+    } catch (error) {
+      await db.run('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
     console.error('Error creating operation:', error);
-    res.status(500).json({ error: error.message || 'Failed to create operation' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create operation' });
   }
 });
 
 // Update operation status
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -301,13 +293,13 @@ router.patch('/:id', (req, res) => {
     
     const values = [...Object.values(updates), now, id];
     
-    db.prepare(`
+    await db.prepare(`
       UPDATE operations
       SET ${setClauses}
       WHERE id = ?
     `).run(...values);
     
-    const operation = db.prepare(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id

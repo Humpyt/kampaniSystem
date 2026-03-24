@@ -16,13 +16,26 @@ let printerConfig = {
   width: 42
 };
 
-// Dynamically import printer module
-let ThermalPrinter, PrinterTypes, CharacterSet, USB;
-try {
-  ({ ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer'));
-  ({ USB } = require('escpos-usb'));
-} catch (error) {
-  console.error('Error loading printer module:', error);
+// Lazily load printer modules
+let printerModule: any = null;
+let escposModule: any = null;
+
+async function loadPrinterModules() {
+  if (!printerModule) {
+    try {
+      printerModule = await import('node-thermal-printer');
+    } catch (error) {
+      console.error('Error loading node-thermal-printer:', error);
+    }
+  }
+  if (!escposModule) {
+    try {
+      escposModule = await import('escpos-usb');
+    } catch (error) {
+      console.error('Error loading escpos-usb:', error);
+    }
+  }
+  return { printerModule, escposModule };
 }
 
 // Get printer configuration
@@ -49,7 +62,7 @@ router.post('/print/order/:id', async (req, res) => {
     const { id } = req.params;
     
     // Get order details with customer info
-    const order = db.prepare(`
+    const order = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
@@ -61,7 +74,7 @@ router.post('/print/order/:id', async (req, res) => {
     }
 
     // Get shoes and services for the order
-    const shoes = db.prepare(`
+    const shoes = await db.prepare(`
       SELECT os.*, s.name as service_name, s.price as service_base_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
@@ -69,9 +82,14 @@ router.post('/print/order/:id', async (req, res) => {
       WHERE os.operation_id = ?
     `).all(id);
 
-    if (!ThermalPrinter) {
+    const { printerModule, escposModule } = await loadPrinterModules();
+    
+    if (!printerModule || !printerModule.ThermalPrinter) {
       return res.status(500).json({ error: 'Printer module not available' });
     }
+
+    const { ThermalPrinter } = printerModule;
+    const { USB } = escposModule || {};
 
     // Create printer instance
     const printer = new ThermalPrinter(printerConfig);
@@ -104,7 +122,7 @@ router.post('/print/order/:id', async (req, res) => {
     printer.bold(false);
 
     let total = 0;
-    shoes.forEach((shoe, index) => {
+    shoes.forEach((shoe: any, index: number) => {
       printer.bold(true);
       printer.println(`Item ${index + 1}: ${shoe.category}`);
       printer.bold(false);
@@ -163,11 +181,14 @@ router.post('/print/order/:id', async (req, res) => {
     printer.cut();
 
     try {
+      if (!USB) {
+        return res.status(500).json({ error: 'USB printer module not available' });
+      }
       // Find available USB printer
       const device = new USB();
       await printer.execute(device);
       res.json({ success: true, message: 'Receipt printed successfully' });
-    } catch (printError) {
+    } catch (printError: any) {
       console.error('Printer error:', printError);
       res.status(500).json({ error: 'Failed to print receipt', details: printError.message });
     }
@@ -184,7 +205,7 @@ router.post('/print/quotation/:id', async (req, res) => {
     const { id } = req.params;
     
     // Get quotation details with customer info
-    const quotation = db.prepare(`
+    const quotation = await db.prepare(`
       SELECT q.*, c.name as customer_name, c.phone as customer_phone
       FROM quotations q
       LEFT JOIN customers c ON q.customer_id = c.id
@@ -195,9 +216,14 @@ router.post('/print/quotation/:id', async (req, res) => {
       return res.status(404).json({ error: 'Quotation not found' });
     }
 
-    if (!ThermalPrinter) {
+    const { printerModule, escposModule } = await loadPrinterModules();
+    
+    if (!printerModule || !printerModule.ThermalPrinter) {
       return res.status(500).json({ error: 'Printer module not available' });
     }
+
+    const { ThermalPrinter } = printerModule;
+    const { USB } = escposModule || {};
 
     // Create printer instance
     const printer = new ThermalPrinter(printerConfig);
@@ -242,11 +268,14 @@ router.post('/print/quotation/:id', async (req, res) => {
     printer.cut();
 
     try {
+      if (!USB) {
+        return res.status(500).json({ error: 'USB printer module not available' });
+      }
       // Find available USB printer
       const device = new USB();
       await printer.execute(device);
       res.json({ success: true, message: 'Quotation printed successfully' });
-    } catch (printError) {
+    } catch (printError: any) {
       console.error('Printer error:', printError);
       res.status(500).json({ error: 'Failed to print quotation', details: printError.message });
     }
