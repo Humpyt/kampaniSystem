@@ -1,40 +1,32 @@
-import React, { useState } from 'react';
-import { Users, PlusCircle, Briefcase, Mail, Target, TrendingUp, AlertCircle, LayoutGrid, LayoutList } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, PlusCircle, Briefcase, Mail, Target, TrendingUp, AlertCircle, LayoutGrid, LayoutList, Loader2 } from 'lucide-react';
 import type { Staff } from '../types';
 import StaffModal from './StaffModal';
 import StaffTargetModal from './StaffTargetModal';
 import { Pagination } from './Pagination';
+import { formatCurrency } from '../utils/formatCurrency';
+import { getAuthToken } from '../store/authStore';
+import toast from 'react-hot-toast';
 
 const ITEMS_PER_PAGE = 10;
-const DAILY_TARGET = 750000;
+const DAILY_TARGET = 1200000;
 
-const mockStaff: Staff[] = [
-  {
-    id: '1',
-    name: 'Mike Johnson',
-    email: 'mike@repairpro.com',
-    role: 'technician',
-    specialization: ['shoe', 'bag'],
-    active: true,
-    currentWorkload: 3,
-    dailyTarget: DAILY_TARGET,
-    currentProgress: 680000
-  },
-  {
-    id: '2',
-    name: 'Sarah Wilson',
-    email: 'sarah@repairpro.com',
-    role: 'technician',
-    specialization: ['shoe'],
-    active: true,
-    currentWorkload: 2,
-    dailyTarget: DAILY_TARGET,
-    currentProgress: 725000
-  }
-];
+// Helper function to transform user data to Staff interface
+const transformUserToStaff = (user: any, performance: any): Staff => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  specialization: ['shoe', 'bag'], // Default specialization
+  active: user.status === 'active',
+  currentWorkload: 0, // Will be fetched from operations if needed
+  dailyTarget: performance?.daily_target || DAILY_TARGET,
+  currentProgress: performance?.today_sales || 0
+});
 
 export function Staff() {
-  const [staff, setStaff] = useState<Staff[]>(mockStaff);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
@@ -42,26 +34,111 @@ export function Staff() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Fetch staff data on component mount
+  useEffect(() => {
+    const fetchStaffData = async () => {
+      try {
+        const token = getAuthToken();
+        if (!token) {
+          throw new Error('No authentication token found');
+        }
+
+        // Fetch users and their performance data
+        const [usersResponse, performanceResponse] = await Promise.all([
+          fetch('http://localhost:3000/api/auth/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('http://localhost:3000/api/business/targets/staff/all', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
+
+        if (!usersResponse.ok || !performanceResponse.ok) {
+          throw new Error('Failed to fetch staff data');
+        }
+
+        const users = await usersResponse.json();
+        const performances = await performanceResponse.json();
+
+        // Create a map of user_id to performance data
+        const performanceMap = new Map(
+          performances.map((p: any) => [p.user_id, p])
+        );
+
+        // Transform users to Staff format
+        const transformedStaff = users
+          .filter((user: any) => user.status === 'active') // Only show active staff
+          .map((user: any) => transformUserToStaff(user, performanceMap.get(user.id)));
+
+        setStaff(transformedStaff);
+      } catch (error) {
+        console.error('Error fetching staff data:', error);
+        toast.error('Failed to load staff data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStaffData();
+  }, []);
+
   const totalPages = Math.ceil(staff.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedStaff = staff.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
-  const handleAddStaff = (staffMember: Omit<Staff, 'id'>) => {
-    const newStaff: Staff = {
-      ...staffMember,
-      id: (staff.length + 1).toString(),
-      dailyTarget: DAILY_TARGET,
-      currentProgress: 0
-    };
-    setStaff([...staff, newStaff]);
+  const handleAddStaff = async (staffMember: Omit<Staff, 'id'>) => {
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Register new staff member via API
+      const response = await fetch('http://localhost:3000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: staffMember.name,
+          email: staffMember.email,
+          password: 'temp123', // Default password, should be changed on first login
+          role: staffMember.role
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create staff member');
+      }
+
+      const newUser = await response.json();
+
+      // Add to local state
+      const newStaff: Staff = {
+        ...staffMember,
+        id: newUser.id,
+        dailyTarget: DAILY_TARGET,
+        currentProgress: 0
+      };
+      setStaff([...staff, newStaff]);
+      toast.success('Staff member added successfully');
+    } catch (error) {
+      console.error('Error adding staff:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to add staff member');
+      throw error;
+    }
   };
 
   const handleEditStaff = (staffMember: Staff) => {
     setStaff(staff.map(s => s.id === staffMember.id ? staffMember : s));
+    toast.success('Staff member updated successfully');
   };
 
   const handleUpdateTarget = (staffId: string, newProgress: number) => {
     setStaff(staff.map(s => s.id === staffId ? { ...s, currentProgress: newProgress } : s));
+    toast.success('Progress updated successfully');
   };
 
   const renderGridView = () => (
@@ -91,7 +168,7 @@ export function Staff() {
               </div>
               <div className="flex items-center text-sm text-gray-300">
                 <Target className="h-4 w-4 text-gray-500 mr-2" />
-                <span>Daily Progress: ${(member.currentProgress / 1000).toFixed(0)}k / ${(member.dailyTarget / 1000).toFixed(0)}k</span>
+                <span>Daily Progress: {formatCurrency(member.currentProgress)} / {formatCurrency(member.dailyTarget)}</span>
               </div>
             </div>
 
@@ -245,7 +322,7 @@ export function Staff() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white">Staff Management</h1>
-          <p className="text-sm text-gray-400 mt-1">Daily target per staff: ${(DAILY_TARGET / 1000).toFixed(0)}k</p>
+          <p className="text-sm text-gray-400 mt-1">Daily target per staff: {formatCurrency(DAILY_TARGET)}</p>
         </div>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 border border-gray-300 rounded-md">
@@ -275,7 +352,21 @@ export function Staff() {
         </div>
       </div>
 
-      {viewMode === 'grid' ? renderGridView() : renderListView()}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
+          <span className="ml-3 text-gray-400">Loading staff data...</span>
+        </div>
+      ) : staff.length === 0 ? (
+        <div className="text-center py-12">
+          <Users className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400">No staff members found. Add your first staff member to get started.</p>
+        </div>
+      ) : (
+        <>
+          {viewMode === 'grid' ? renderGridView() : renderListView()}
+        </>
+      )}
 
       <Pagination
         currentPage={currentPage}

@@ -1,10 +1,24 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Filter, Search, Package, DollarSign, CheckCircle } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { format } from 'date-fns';
 
+// Helper function to safely format dates
+const safeFormat = (date: string | Date | null | undefined, formatStr: string) => {
+  if (!date) return 'N/A';
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return 'N/A';
+    return format(dateObj, formatStr);
+  } catch {
+    return 'N/A';
+  }
+};
+
 export default function OperationPage() {
+  const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<'today' | 'tomorrow' | 'all'>('today');
   const [searchQuery, setSearchQuery] = useState('');
   const { operations } = useOperation();
@@ -16,16 +30,17 @@ export default function OperationPage() {
     custNo: operation.customer?.id ? `CST-${operation.customer.id.slice(-6).toUpperCase()}` : 'N/A',
     name: operation.customer?.name || 'Unknown',
     pair: operation.shoes.length,
-    createDate: format(new Date(operation.createdAt), 'MM/dd/yyyy'),
-    createTime: format(new Date(operation.createdAt), 'hh:mm a'),
-    readyDate: format(new Date(operation.updatedAt), 'MM/dd/yyyy'),
-    readyTime: format(new Date(operation.updatedAt), 'hh:mm a'),
-    amount: operation.totalAmount / 100,
+    createDate: safeFormat(operation.createdAt, 'MM/dd/yyyy'),
+    createTime: safeFormat(operation.createdAt, 'hh:mm a'),
+    readyDate: safeFormat(operation.updatedAt, 'MM/dd/yyyy'),
+    readyTime: safeFormat(operation.updatedAt, 'hh:mm a'),
+    amount: operation.totalAmount || 0,
+    discount: (operation as any).discount || 0,
     status: operation.status,
-    isNoCharge: operation.isNoCharge,
-    isDoOver: operation.isDoOver,
-    isDelivery: operation.isDelivery,
-    isPickup: operation.isPickup,
+    isNoCharge: operation.isNoCharge || false,
+    isDoOver: operation.isDoOver || false,
+    isDelivery: operation.isDelivery || false,
+    isPickup: operation.isPickup || false,
   }));
 
   // Filter work items based on time filter and search query
@@ -53,10 +68,8 @@ export default function OperationPage() {
   });
 
   const handleViewDetails = (operationId: string) => {
-    // Implement the logic to view details of the operation
-    console.log(`Viewing details for operation ${operationId}`);
-    // Example: Navigate to a details page
-    window.location.href = `/operations/details/${operationId}`;
+    // Navigate to the operation details page
+    navigate(`/operations/details/${operationId}`);
   };
 
   return (
@@ -134,6 +147,7 @@ export default function OperationPage() {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ready By</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Amount</th>
+              <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Flags</th>
               <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Status</th>
               <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
             </tr>
@@ -177,8 +191,51 @@ export default function OperationPage() {
                   <div className="text-xs text-gray-500">{item.readyTime}</div>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="text-sm font-medium text-white">
-                    {formatCurrency(item.amount)}
+                  {item.discount > 0 ? (
+                    <div>
+                      <div className="text-xs text-gray-400 line-through">
+                        {formatCurrency(item.amount + item.discount)}
+                      </div>
+                      <div className="text-sm font-medium text-green-400">
+                        {formatCurrency(item.amount)}
+                      </div>
+                      <div className="text-xs text-pink-400">
+                        -{formatCurrency(item.discount)}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-white">
+                      {formatCurrency(item.amount)}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <div className="flex flex-wrap gap-1 justify-center">
+                    {item.isDelivery && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                        Delivery
+                      </span>
+                    )}
+                    {item.isPickup && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800">
+                        Pickup
+                      </span>
+                    )}
+                    {item.isNoCharge && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                        No Charge
+                      </span>
+                    )}
+                    {item.isDoOver && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        Do Over
+                      </span>
+                    )}
+                    {item.discount > 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800">
+                        Discount
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3">

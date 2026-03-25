@@ -11,6 +11,8 @@ interface PickupTicket {
   pieces: number;
   rackNo?: string;
   total: number;
+  originalTotal: number;
+  discount: number;
   status: 'pending' | 'ready' | 'completed';
   items: {
     category: string;
@@ -34,23 +36,29 @@ export default function PickupPage() {
   // Convert operations to pickup tickets
   const tickets: PickupTicket[] = operations
     .filter(op => op.status === 'pending' || op.status === 'completed')
-    .map(op => ({
-      id: op.id,
-      customerName: op.customer?.name || 'Unknown',
-      customerPhone: op.customer?.phone || '',
-      date: new Date(op.createdAt).toLocaleDateString(),
-      pieces: op.shoes.length,
-      total: op.totalAmount / 100,
-      status: op.status,
-      items: op.shoes.map(shoe => ({
-        category: shoe.category,
-        color: shoe.color,
-        services: shoe.services.map(service => ({
-          name: service.name,
-          price: service.price / 100,
+    .map(op => {
+      const discount = (op as any).discount || 0;
+      const originalTotal = op.totalAmount + discount;
+      return {
+        id: op.id,
+        customerName: op.customer?.name || 'Unknown',
+        customerPhone: op.customer?.phone || '',
+        date: new Date(op.createdAt).toLocaleDateString(),
+        pieces: op.shoes.length,
+        total: op.totalAmount,
+        originalTotal: originalTotal,
+        discount: discount,
+        status: op.status,
+        items: op.shoes.map(shoe => ({
+          category: shoe.category,
+          color: shoe.color,
+          services: shoe.services.map(service => ({
+            name: service.name,
+            price: service.price,
+          })),
         })),
-      })),
-    }));
+      };
+    });
 
   // Filter tickets based on search term
   const filteredTickets = tickets.filter(ticket => 
@@ -196,7 +204,7 @@ export default function PickupPage() {
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Pieces</th>
-                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Total</th>
+                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Status</th>
                   </tr>
                 </thead>
@@ -224,8 +232,24 @@ export default function PickupPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
                       <td className="px-6 py-4 text-center text-sm text-gray-300">{ticket.pieces}</td>
-                      <td className="px-6 py-4 text-right text-sm font-medium text-gray-200">
-                        {formatCurrency(ticket.total)}
+                      <td className="px-6 py-4 text-right">
+                        {ticket.discount > 0 ? (
+                          <div>
+                            <div className="text-xs text-gray-400 line-through">
+                              {formatCurrency(ticket.originalTotal)}
+                            </div>
+                            <div className="text-sm font-medium text-green-400">
+                              {formatCurrency(ticket.total)}
+                            </div>
+                            <div className="text-xs text-pink-400">
+                              -{formatCurrency(ticket.discount)}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-200">
+                            {formatCurrency(ticket.total)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium

@@ -39,6 +39,11 @@ tsx server/add_customers.ts      # Add sample customer data
 tsx server/add_services.ts       # Add sample service data
 ```
 
+**Service management:**
+```bash
+npm run import:services          # Import services from pricing.txt to database
+```
+
 ## Architecture
 
 ### Backend (Express + SQLite)
@@ -49,6 +54,7 @@ tsx server/add_services.ts       # Add sample service data
 
 **Router structure:** Modular routers in `server/routes/`:
 - `operations.ts` - Main router mounted at `/api/operations` (also at `server/operations.ts`)
+- `orders.ts` - Order management endpoints
 - `inventory.ts` - Inventory management
 - `sales.ts` - Sales endpoints
 - `printer.ts` - Thermal printer integration
@@ -73,21 +79,23 @@ tsx server/add_services.ts       # Add sample service data
 ### Frontend (React + Vite)
 
 **State management:** Context-based architecture with nested providers
-- `CustomerProvider` → `OperationProvider` → `AdminProvider` → `CartProvider` → `ProductProvider`
+- `CustomerProvider` → `OperationProvider` → `AdminProvider` → `CartProvider` → `ProductProvider` → `ServiceProvider`
 - `CustomerContext` - Customer data and operations
 - `OperationContext` - Repair order/ticket management
 - `ProductContext` - Product/category catalog management
 - `CartContext` - Shopping cart for sales
 - `AdminContext` - Admin-specific state
+- `ServiceContext` - Service catalog and pricing
 
 **Authentication:** Local mock authentication using Zustand (`src/store/authStore.ts`)
 - Mock users with roles: admin, manager, staff
 - Credentials stored in localStorage
 - Login component at `src/pages/LoginPage.tsx`
-- Test credentials:
+- Test credentials (username / password):
   - admin@repairpro.com / admin123
   - manager@repairpro.com / manager123
   - staff1@repairpro.com / staff123
+- Protected routes use `ProtectedRoute` component with role-based access control
 
 **Routing:** `react-router-dom` v7 with nested routes
 - All routes nested under main layout with collapsible sidebar
@@ -107,6 +115,10 @@ tsx server/add_services.ts       # Add sample service data
 - React Hot Toast for notifications
 - React Chart.js 2 for analytics
 
+**Utility functions:**
+- `src/utils/formatCurrency.ts` - Currency formatting using UGX locale
+- `server/utils.ts` - Data transformers for snake_case ↔ camelCase conversion (transformCustomer, transformOperation, transformService)
+
 ### Key Features
 
 - **Repair orders:** Multi-step workflow (drop-off → assembly → racking → pickup)
@@ -120,19 +132,34 @@ tsx server/add_services.ts       # Add sample service data
 
 ## Important Notes
 
-1. **Database location:** SQLite database file at `server/database.db` - created automatically on first server run.
+1. **Currency:** System uses Ugandan Shilling (UGX) with 0 decimal places. Currency config is centralized in `src/config/currency.ts` and `server/config/currency.ts`.
 
-2. **Transaction handling:** Backend uses manual BEGIN TRANSACTION / COMMIT / ROLLBACK for multi-step database operations. The database module also provides a transaction wrapper function.
+2. **Service pricing:** Services are imported from `pricing.txt` file containing 45 services with prices in UGX. Use `npm run import:services` to import/update services. The import script:
+   - Parses CSV format with quoted price fields
+   - Handles price ranges by using maximum value (e.g., "80,000-150,000" → 150,000)
+   - Auto-categorizes services based on name patterns (cleaning, heel, sole, dyeing, etc.)
+   - Assigns estimated days based on service complexity
+   - Safe to re-run (uses INSERT OR REPLACE)
 
-3. **Column naming convention:** SQLite uses snake_case (e.g., `customer_id`), but TypeScript interfaces use camelCase. A transformer utility (`server/utils.ts`) converts between formats.
+3. **Database location:** SQLite database file at `server/database.db` - created automatically on first server run.
 
-4. **Printer support:** Uses `escpos` and `node-thermal-printer` packages for USB thermal printer integration.
+3. **Transaction handling:** Backend uses manual BEGIN TRANSACTION / COMMIT / ROLLBACK for multi-step database operations. The database module also provides a transaction wrapper function.
 
-5. **Image uploads:** Images are converted to base64 data URLs for local storage (no cloud storage required).
+4. **Column naming convention:** SQLite uses snake_case (e.g., `customer_id`), but TypeScript interfaces use camelCase. A transformer utility (`server/utils.ts`) converts between formats.
 
-6. **Online/offline detection:** App automatically detects network status and shows offline indicator when disconnected.
+5. **Database promisification:** The sqlite3 callback-based API is promisified in `server/database.ts` for async/await usage.
 
-7. **Deployment:** Configured for Netlify (see `netlify.toml`). Note that the Express backend won't work on Netlify - it's designed for local development or a separate Node.js hosting.
+6. **Printer support:** Uses `escpos` and `node-thermal-printer` packages for USB thermal printer integration.
+
+7. **Image uploads:** Images are converted to base64 data URLs for local storage (no cloud storage required).
+
+8. **Online/offline detection:** App automatically detects network status and shows offline indicator when disconnected.
+
+9. **Error handling:** Frontend uses `ErrorBoundary` component for catching React errors; backend has error middleware at the end of the Express middleware chain.
+
+10. **Deployment:** Configured for Netlify (see `netlify.toml`). Note that the Express backend won't work on Netlify - it's designed for local development or a separate Node.js hosting.
+
+11. **TypeScript:** Uses project references (tsconfig.app.json, tsconfig.node.json) for better type checking across frontend and backend.
 
 ## Database Schema Relationships
 

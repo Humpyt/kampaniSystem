@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, User, Search, Star, Percent, Scissors, Phone, Mail } from 'lucide-react';
+import { X, Plus, User, Search, Star, Percent, Phone, Mail, Palette, Scissors, Settings, Edit2, Trash2, FolderOpen, CheckCircle, DollarSign, CreditCard } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import type { Customer } from '../types';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useOperation } from '../contexts/OperationContext';
+import { useServices, type Service } from '../contexts/ServiceContext';
+import { useAuthStore } from '../store/authStore';
+import ServiceCRUDModal, { ServiceFormData } from '../components/ServiceCRUDModal';
+import CategoryManagerModal from '../components/CategoryManagerModal';
+import { PaymentModal } from '../components/PaymentModal';
 
 interface ItemCategory {
   id: string;
@@ -17,15 +22,10 @@ interface ColorOption {
   bgClass: string;
 }
 
-interface RepairService {
-  id: string;
-  name: string;
-  price: number;
-}
-
 interface ShoeItem {
   id: string;
   category: string;
+  description: string;
   color: string;
   services: {
     service_id: string;
@@ -34,6 +34,7 @@ interface ShoeItem {
     quantity: number;
     notes: string | null;
   }[];
+  manualPrice?: number;
 }
 
 interface CustomerModalProps {
@@ -73,19 +74,6 @@ const colors: ColorOption[] = [
   { id: 'red', name: 'Red', bgClass: 'bg-red-600' },
   { id: 'white', name: 'White', bgClass: 'bg-white' },
   { id: 'yellow', name: 'Yellow', bgClass: 'bg-yellow-400' }
-];
-
-const services: RepairService[] = [
-  { id: 'service_1', name: 'Sole Replacement', price: 80000 },
-  { id: 'service_2', name: 'Heel Repair', price: 40000 },
-  { id: 'service_3', name: 'Cleaning', price: 25000 },
-  { id: 'service_4', name: 'Polishing', price: 15000 },
-  { id: 'service_5', name: 'Waterproofing', price: 30000 },
-  { id: 'service_6', name: 'Stretching', price: 20000 },
-  { id: 'service_7', name: 'Elastic', price: 15000 },
-  { id: 'service_8', name: 'Hardware', price: 20000 },
-  { id: 'service_9', name: 'Heel Fix', price: 25000 },
-  { id: 'service_10', name: 'Misc', price: 8000 }
 ];
 
 const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
@@ -276,8 +264,10 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSave, 
 
 export default function DropPage() {
   const { customers, addCustomer, updateCustomer } = useCustomer();
-  const { addOperation } = useOperation();
+  const { addOperation, refreshOperations } = useOperation();
+  const { services, loading: servicesLoading } = useServices();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [customCategoryName, setCustomCategoryName] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [shoes, setShoes] = useState<ShoeItem[]>([]);
@@ -288,6 +278,16 @@ export default function DropPage() {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [activeCartButtons, setActiveCartButtons] = useState<string[]>([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+  const [manualPrice, setManualPrice] = useState<string>('');
+  const [useManualPrice, setUseManualPrice] = useState<boolean>(false);
+
+  // Admin mode state
+  const [adminMode, setAdminMode] = useState(false);
+  const [serviceModalOpen, setServiceModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
 
   const filteredCustomers = customers.filter(customer => 
     customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
@@ -295,18 +295,46 @@ export default function DropPage() {
     customer.email?.toLowerCase().includes(customerSearchTerm.toLowerCase())
   );
 
-  const handleAddCustomer = (customerData: Omit<Customer, 'id' | 'totalOrders' | 'totalSpent' | 'lastVisit' | 'loyaltyPoints'>) => {
-    const newCustomer: Customer = {
-      ...customerData,
-      id: Date.now().toString(),
-      totalOrders: 0,
-      totalSpent: 0,
-      lastVisit: new Date().toISOString().split('T')[0],
-      loyaltyPoints: 0,
-    };
-    
-    addCustomer(newCustomer);
-    setSelectedCustomer(newCustomer);
+  const handleAddCustomer = async (customerData: Omit<Customer, 'id' | 'totalOrders' | 'totalSpent' | 'lastVisit' | 'loyaltyPoints'>) => {
+    try {
+      // Don't generate ID here - let the API generate it
+      const customerToSave = {
+        ...customerData,
+        totalOrders: 0,
+        totalSpent: 0,
+        lastVisit: new Date().toISOString().split('T')[0],
+        loyaltyPoints: 0,
+      };
+
+      // The CustomerContext.addCustomer will return the created customer with the DB-generated ID
+      // But we need to work around the current API structure
+      const response = await fetch('http://localhost:3000/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerToSave),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create customer');
+      }
+
+      const newCustomer = await response.json();
+      setSelectedCustomer(newCustomer);
+      setIsCustomerModalOpen(false);
+
+      // Refresh the customer list
+      fetch('http://localhost:3000/api/customers')
+        .then(r => r.json())
+        .then(data => {
+          // Update context by re-fetching
+          setCustomerSearchTerm('');
+        })
+        .catch(console.error);
+
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      alert('Failed to add customer. Please try again.');
+    }
   };
 
   const handleSelectCustomer = (customer: Customer) => {
@@ -331,31 +359,138 @@ export default function DropPage() {
   };
 
   const handleAddShoe = () => {
-    if (selectedCategory && selectedColor && selectedServices.length > 0) {
-      const shoeServices = selectedServices.map(serviceId => {
-        const service = services.find(s => s.id === serviceId);
-        if (!service) return null;
-        return {
-          service_id: service.id,
-          name: service.name,
-          price: service.price,
-          quantity: 1,
-          notes: null
-        };
-      }).filter(Boolean);
+    // Validate category
+    if (!selectedCategory) {
+      alert('Please select a category');
+      return;
+    }
+
+    // For "Other" category, validate custom name
+    if (selectedCategory === 'other' && !customCategoryName.trim()) {
+      alert('Please specify the service type when "Other" is selected');
+      return;
+    }
+
+    // Handle manual price entry for "Other" category
+    if (selectedCategory === 'other' && useManualPrice) {
+      const price = parseInt(manualPrice);
+      if (!manualPrice || isNaN(price) || price <= 0) {
+        alert('Please enter a valid price');
+        return;
+      }
 
       const newShoe = {
         id: Date.now().toString(),
-        category: selectedCategory,
-        color: selectedColor,
-        services: shoeServices,
+        category: `other-${customCategoryName.trim().toLowerCase().replace(/\s+/g, '-')}`,
+        description: customCategoryName.trim(),
+        color: selectedColor || 'none',
+        services: [{
+          service_id: 'custom-manual-price',
+          name: customCategoryName.trim(),
+          price: price,
+          quantity: 1,
+          notes: 'Manual price entry'
+        }],
+        manualPrice: price
       };
-      
+
       setShoes([...shoes, newShoe]);
       setSelectedCategory(null);
+      setCustomCategoryName('');
+      setManualPrice('');
+      setUseManualPrice(false);
       setSelectedColor(null);
-      setSelectedServices([]);
+      return;
     }
+
+    // Handle service selection
+    if (selectedServices.length === 0) {
+      alert('Please select at least one service');
+      return;
+    }
+
+    const shoeServices = selectedServices.map(serviceId => {
+      const service = Array.isArray(services) ? services.find(s => s.id === serviceId) : null;
+      if (!service) return null;
+      return {
+        service_id: service.id,
+        name: service.name,
+        price: service.price,
+        quantity: 1,
+        notes: null
+      };
+    }).filter(Boolean);
+
+    // Generate description from category and service names
+    const serviceNames = shoeServices.map(s => s.name).join(', ');
+    const categoryInfo = categories.find(c => c.id === selectedCategory);
+    const categoryName = selectedCategory === 'other'
+      ? customCategoryName.trim()
+      : (categoryInfo?.name || 'Unknown');
+    const description = selectedServices.length > 1
+      ? `${categoryName}: ${serviceNames}`
+      : `${categoryName} - ${serviceNames}`;
+
+    const newShoe = {
+      id: Date.now().toString(),
+      category: selectedCategory === 'other' ? `other-${customCategoryName.trim().toLowerCase().replace(/\s+/g, '-')}` : selectedCategory,
+      description: description,
+      color: selectedColor || 'none',
+      services: shoeServices,
+    };
+
+    setShoes([...shoes, newShoe]);
+    setSelectedCategory(null);
+    setCustomCategoryName('');
+    setSelectedColor(null);
+    setSelectedServices([]);
+  };
+
+  const handleQuickAddToCart = () => {
+    // Validate inputs
+    if (!selectedCategory || selectedCategory !== 'other') {
+      alert('Please select "Other" category first');
+      return;
+    }
+
+    if (!customCategoryName.trim()) {
+      alert('Please specify the service type');
+      return;
+    }
+
+    const price = parseInt(manualPrice);
+    if (!manualPrice || isNaN(price) || price <= 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    // Create shoe with manual price
+    const newShoe = {
+      id: Date.now().toString(),
+      category: `other-${customCategoryName.trim().toLowerCase().replace(/\s+/g, '-')}`,
+      description: customCategoryName.trim(),
+      color: selectedColor || 'none',
+      services: [{
+        service_id: 'custom-manual-price',
+        name: customCategoryName.trim(),
+        price: price,
+        quantity: 1,
+        notes: 'Manual price entry - Quick Add'
+      }],
+      manualPrice: price
+    };
+
+    // Add to cart
+    setShoes([...shoes, newShoe]);
+
+    // Clear form for next entry
+    setCustomCategoryName('');
+    setManualPrice('');
+    setUseManualPrice(false);
+    setSelectedColor(null);
+
+    // Optional: Scroll to cart
+    document.getElementById('cart-summary')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleRemoveShoe = (shoeId: string) => {
@@ -363,18 +498,100 @@ export default function DropPage() {
   };
 
   const calculateTotal = () => {
-    return shoes.reduce((total, shoe) => {
+    const subtotal = shoes.reduce((total, shoe) => {
+      // Use manual price if available, otherwise sum service prices
+      if (shoe.manualPrice) {
+        return total + shoe.manualPrice;
+      }
       const shoeTotal = shoe.services.reduce((sum, service) => {
         return sum + (service.price || 0) * (service.quantity || 1);
       }, 0);
       return total + shoeTotal;
     }, 0);
+    return Math.max(0, subtotal - discountAmount);
   };
 
   const currentSelectionTotal = selectedServices.reduce((sum, serviceId) => {
-    const service = services.find(s => s.id === serviceId);
+    const service = Array.isArray(services) ? services.find(s => s.id === serviceId) : null;
     return sum + (service?.price || 0);
   }, 0);
+
+  // Admin helper functions
+  const isAdmin = useAuthStore(state => state.user?.role === 'admin');
+  const { addService, updateService, deleteService, refreshServices } = useServices();
+
+  const handleAddService = () => {
+    setEditingService(null);
+    setServiceModalOpen(true);
+  };
+
+  const handleEditService = (service: Service) => {
+    setEditingService(service);
+    setServiceModalOpen(true);
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    const service = Array.isArray(services) ? services.find(s => s.id === serviceId) : null;
+    if (service && window.confirm(`Are you sure you want to delete "${service.name}"?`)) {
+      try {
+        await deleteService(serviceId);
+        // Remove from selected services if present
+        setSelectedServices(prev => prev.filter(id => id !== serviceId));
+      } catch (error) {
+        console.error('Failed to delete service:', error);
+      }
+    }
+  };
+
+  const handleSaveService = async (serviceData: ServiceFormData) => {
+    try {
+      if (editingService) {
+        await updateService(editingService.id, serviceData);
+      } else {
+        await addService(serviceData);
+      }
+      setServiceModalOpen(false);
+      setEditingService(null);
+    } catch (error) {
+      console.error('Failed to save service:', error);
+    }
+  };
+
+  const handleRenameCategory = async (oldName: string, newName: string) => {
+    try {
+      // Bulk update all services with this category
+      const servicesToUpdate = Array.isArray(services) ? services.filter(s => s.category === oldName) : [];
+      await Promise.all(
+        servicesToUpdate.map(service =>
+          updateService(service.id, { category: newName })
+        )
+      );
+      await refreshServices();
+    } catch (error) {
+      console.error('Failed to rename category:', error);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryName: string, reassignTo?: string) => {
+    try {
+      const servicesInCategory = Array.isArray(services) ? services.filter(s => s.category === categoryName) : [];
+
+      if (servicesInCategory.length > 0 && !reassignTo) {
+        alert('Please select a category to reassign services to');
+        return;
+      }
+
+      // Reassign services to new category
+      await Promise.all(
+        servicesInCategory.map(service =>
+          updateService(service.id, { category: reassignTo || 'other' })
+        )
+      );
+      await refreshServices();
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!selectedCustomer) {
@@ -393,8 +610,9 @@ export default function DropPage() {
         shoes: shoes,
         status: 'pending' as const,
         totalAmount: calculateTotal(),
-        isNoCharge: activeCartButtons.includes('noCharge'),
-        isDoOver: activeCartButtons.includes('doOver'),
+        discount: discountAmount,
+        isNoCharge: false,
+        isDoOver: false,
         isDelivery: activeCartButtons.includes('delivery'),
         isPickup: activeCartButtons.includes('pickup'),
         notes: '',
@@ -402,13 +620,21 @@ export default function DropPage() {
 
       await addOperation(operationData);
 
+      // Refresh operations to update other pages
+      await refreshOperations();
+
       // Clear form after successful submission
       setSelectedCategory(null);
+      setCustomCategoryName('');
       setSelectedColor(null);
       setSelectedServices([]);
       setShoes([]);
       setSelectedCustomer(null);
       setOperationStatus('none');
+      setDiscountAmount(0);
+      setActiveCartButtons([]);
+      setOperationPayments([]);
+      setHasPayments(false);
 
       alert('Drop-off recorded successfully');
     } catch (error) {
@@ -417,6 +643,97 @@ export default function DropPage() {
         alert(`Failed to record drop-off: ${error.message}`);
       } else {
         alert('Failed to record drop-off');
+      }
+    }
+  };
+
+  const handlePaymentCompletion = async (payments: Array<{method: string; amount: number}>) => {
+    try {
+      // First create the operation
+      if (!selectedCustomer) {
+        alert('Please select a customer');
+        return;
+      }
+
+      if (shoes.length === 0) {
+        alert('Please add at least one shoe');
+        return;
+      }
+
+      const operationData = {
+        customer: selectedCustomer,
+        shoes: shoes,
+        status: 'pending' as const,
+        totalAmount: calculateTotal(),
+        discount: discountAmount,
+        isNoCharge: false,
+        isDoOver: false,
+        isDelivery: activeCartButtons.includes('delivery'),
+        isPickup: activeCartButtons.includes('pickup'),
+        notes: '',
+      };
+
+      const operation = await addOperation(operationData);
+
+      // Process payments
+      const response = await fetch(`http://localhost:3000/api/operations/${operation.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Payment failed');
+      }
+
+      const updatedOperation = await response.json();
+
+      // Store payments for display in payment summary
+      setOperationPayments(payments.map(p => ({
+        payment_method: p.method,
+        amount: p.amount
+      })));
+
+      // Set flag to hide "I Finished" button
+      setHasPayments(true);
+
+      // If store credit was used, deduct from customer account
+      const storeCreditPayment = payments.find(p => p.method === 'store_credit');
+      if (storeCreditPayment && selectedCustomer) {
+        await fetch(`http://localhost:3000/api/customers/${selectedCustomer.id}/credits/deduct`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: storeCreditPayment.amount,
+            description: `Payment for operation #${updatedOperation.id.slice(-6)}`
+          }),
+        });
+      }
+
+      // Refresh operations
+      await refreshOperations();
+
+      // Clear form
+      setSelectedCategory(null);
+      setCustomCategoryName('');
+      setSelectedColor(null);
+      setSelectedServices([]);
+      setShoes([]);
+      setSelectedCustomer(null);
+      setOperationStatus('none');
+      setDiscountAmount(0);
+      setActiveCartButtons([]);
+      setOperationPayments([]);
+      setHasPayments(false);
+
+      alert('Payment recorded successfully!');
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      if (error instanceof Error) {
+        alert(error.message || 'Failed to process payment');
+      } else {
+        alert('Failed to process payment');
       }
     }
   };
@@ -536,6 +853,9 @@ export default function DropPage() {
 
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [operationPayments, setOperationPayments] = useState<any[]>([]);
+  const [hasPayments, setHasPayments] = useState(false);
 
   const handleDiscount = async () => {
     if (shoes.length === 0) return;
@@ -649,13 +969,20 @@ export default function DropPage() {
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
             <h2 className="text-lg font-semibold mb-4 text-white flex items-center">
               <Scissors className="text-indigo-400 mr-2" />
-              Categories
+              Category
             </h2>
             <div className="grid grid-cols-3 gap-3">
               {categories.map((category) => (
                 <button
                   key={category.id}
-                  onClick={() => setSelectedCategory(category.id)}
+                  onClick={() => {
+                    setSelectedCategory(category.id);
+                    if (category.id === 'other') {
+                      setCustomCategoryName('');
+                    } else {
+                      setCustomCategoryName('');
+                    }
+                  }}
                   className={`bg-gray-900 hover:bg-gray-700 p-3 rounded-xl transition-all duration-300 group
                     ${selectedCategory === category.id ? 'ring-2 ring-indigo-500 bg-gray-700' : 'border border-gray-700 hover:border-indigo-500'}
                   `}
@@ -665,11 +992,100 @@ export default function DropPage() {
                 </button>
               ))}
             </div>
+
+            {/* Custom Category Input - Shows when "Other" is selected */}
+            {selectedCategory === 'other' && (
+              <div className="mt-4 p-3 bg-gray-700 rounded-lg border border-gray-600">
+                <label className="block text-sm text-gray-300 mb-2">
+                  Please specify the service type:
+                </label>
+                <input
+                  type="text"
+                  value={customCategoryName}
+                  onChange={(e) => setCustomCategoryName(e.target.value)}
+                  placeholder="e.g., Bag Repair, Belt Replacement, etc."
+                  className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  autoFocus
+                />
+                {customCategoryName && (
+                  <p className="text-sm text-green-400 mt-2">
+                    Custom: {customCategoryName}
+                  </p>
+                )}
+
+                {/* Manual Price Option */}
+                {customCategoryName && (
+                  <div className="mt-4 pt-4 border-t border-gray-600">
+                    <div className="flex items-center gap-3 mb-3">
+                      <input
+                        type="checkbox"
+                        id="useManualPrice"
+                        checked={useManualPrice}
+                        onChange={(e) => {
+                          setUseManualPrice(e.target.checked);
+                          if (e.target.checked) {
+                            setSelectedServices([]);
+                          } else {
+                            setManualPrice('');
+                          }
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <label htmlFor="useManualPrice" className="text-sm text-gray-300 cursor-pointer">
+                        Set custom price instead of selecting services
+                      </label>
+                    </div>
+
+                    {useManualPrice && (
+                      <div className="space-y-2">
+                        <label className="block text-sm text-gray-300">
+                          Enter total price (UGX):
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={manualPrice}
+                          onChange={(e) => setManualPrice(e.target.value)}
+                          placeholder="e.g., 50000"
+                          className="w-full bg-gray-600 rounded-lg px-4 py-3 text-white text-lg placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          autoFocus
+                        />
+                        {manualPrice && (
+                          <p className="text-sm text-green-400">
+                            Custom price: {formatCurrency(parseInt(manualPrice) || 0)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Quick Add Button */}
+                    {selectedCategory === 'other' && customCategoryName && useManualPrice && manualPrice && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => handleQuickAddToCart()}
+                          className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                          <Plus size={20} />
+                          <span>Quick Add to Cart - {formatCurrency(parseInt(manualPrice) || 0)}</span>
+                        </button>
+                        <p className="text-xs text-gray-400 text-center mt-2">
+                          Adds directly to cart and clears form for next entry
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Colors */}
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-            <h2 className="text-lg font-semibold mb-4 text-white">Colors</h2>
+            <h2 className="text-lg font-semibold mb-4 text-white flex items-center">
+              <Palette className="text-indigo-400 mr-2" />
+              Color (Optional)
+            </h2>
             <div className="grid grid-cols-4 gap-3">
               {colors.map((color) => (
                 <button
@@ -692,12 +1108,12 @@ export default function DropPage() {
                     )}
                   </span>
                 </button>
-              ))}
+                ))}
             </div>
           </div>
         </div>
 
-        {/* Middle Column - Customer and Current Selection */}
+        {/* Middle Column - Customer and Services */}
         <div className="col-span-6 space-y-6">
           {/* Customer Section */}
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
@@ -785,108 +1201,271 @@ export default function DropPage() {
             )}
           </div>
 
-          {/* Current Selection */}
+          {/* Service Selection */}
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-4">
-                <div className="p-3 bg-gray-700 rounded-xl">
-                  {selectedCategory ? (
-                    <span className="text-2xl">{categories.find(c => c.id === selectedCategory)?.icon}</span>
-                  ) : (
-                    <Scissors className="text-2xl text-gray-400" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">
-                    {selectedCategory 
-                      ? categories.find(c => c.id === selectedCategory)?.name 
-                      : 'Select Category'}
-                  </h3>
-                  {selectedColor && (
-                    <div className="flex items-center mt-2">
-                      <div 
-                        className={`w-4 h-4 rounded-lg ${colors.find(c => c.id === selectedColor)?.bgClass} mr-2`}
-                      />
-                      <span className="text-sm text-gray-400">
-                        {colors.find(c => c.id === selectedColor)?.name}
-                      </span>
+                <h2 className="text-lg font-semibold text-white flex items-center">
+                  <Scissors className="text-indigo-400 mr-2" />
+                  Select Services
+                </h2>
+                {isAdmin && (
+                  <button
+                    onClick={() => setAdminMode(!adminMode)}
+                    className={`flex items-center space-x-2 px-3 py-1 rounded-lg text-sm transition-colors ${
+                      adminMode
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    <Settings size={16} />
+                    <span>{adminMode ? 'Exit Admin Mode' : 'Admin Mode'}</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center space-x-3">
+                {selectedServices.length > 0 && (
+                  <>
+                    <div className="text-sm text-gray-400">
+                      {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} selected
+                    </div>
+                    <div className="text-xl font-semibold text-green-400">
+                      {formatCurrency(currentSelectionTotal)}
+                    </div>
+                  </>
+                )}
+                {adminMode && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleAddService}
+                      className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm transition-colors flex items-center"
+                    >
+                      <Plus size={16} className="mr-1" />
+                      Add Service
+                    </button>
+                    <button
+                      onClick={() => setCategoryModalOpen(true)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-sm transition-colors flex items-center"
+                    >
+                      <FolderOpen size={16} className="mr-1" />
+                      Manage Categories
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex items-center space-x-2 mb-4 overflow-x-auto pb-2">
+              <button
+                onClick={() => {
+                  setSelectedCategoryFilter('all');
+                  setServiceSearchTerm('');
+                }}
+                className={`px-3 py-1 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                  selectedCategoryFilter === 'all'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                All ({services?.length || 0})
+              </button>
+              {Array.isArray(services) && Array.from(new Set(services.map(s => s.category || 'other'))).sort().map(category => (
+                <button
+                  key={category}
+                  onClick={() => {
+                    setSelectedCategoryFilter(category);
+                    setServiceSearchTerm('');
+                  }}
+                  className={`px-3 py-1 rounded-lg text-sm whitespace-nowrap transition-colors capitalize ${
+                    selectedCategoryFilter === category
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {category} ({services.filter(s => (s.category || 'other') === category).length})
+                </button>
+              ))}
+            </div>
+
+            {/* Service Search Input */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                type="text"
+                placeholder="Search services..."
+                className="w-full pl-10 pr-10 py-3 bg-gray-800 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none border border-gray-700"
+                value={serviceSearchTerm}
+                onChange={(e) => setServiceSearchTerm(e.target.value)}
+              />
+              {serviceSearchTerm && (
+                <button
+                  onClick={() => setServiceSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  title="Clear search"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Services Grid */}
+            {(() => {
+              const filteredServices = Array.isArray(services) ? services.filter(service => {
+                // When searching, ignore category filter and search across all categories
+                if (serviceSearchTerm !== '') {
+                  return service.name.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+                }
+
+                // When not searching, apply category filter
+                return selectedCategoryFilter === 'all' ||
+                       (service.category || 'other') === selectedCategoryFilter;
+              }) : [];
+
+              return (
+                <>
+                  {/* Search result count */}
+                  {serviceSearchTerm && filteredServices.length > 0 && (
+                    <div className="text-sm text-gray-400 mb-3">
+                      Found {filteredServices.length} service{filteredServices.length !== 1 ? 's' : ''} matching "{serviceSearchTerm}"
                     </div>
                   )}
-                </div>
+
+                  <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto custom-scrollbar">
+                    {servicesLoading ? (
+                      <div className="col-span-2 text-center text-gray-400 py-8">
+                        Loading services...
+                      </div>
+                    ) : !Array.isArray(services) || services.length === 0 ? (
+                      <div className="col-span-2 text-center text-gray-400 py-8">
+                        No services available. Please add services first.
+                      </div>
+                    ) : filteredServices.length === 0 ? (
+                      <div className="col-span-2 text-center text-gray-400 py-8">
+                        {serviceSearchTerm
+                          ? `No services found matching "${serviceSearchTerm}"`
+                          : 'No services available in this category.'
+                        }
+                      </div>
+                    ) : (
+                      filteredServices.map((service) => (
+                  <button
+                    key={service.id}
+                    onClick={() => {
+                      if (!adminMode) {
+                        if (selectedServices.includes(service.id)) {
+                          setSelectedServices(prev => prev.filter(id => id !== service.id));
+                        } else {
+                          setSelectedServices(prev => [...prev, service.id]);
+                        }
+                      }
+                    }}
+                    className={`p-4 rounded-xl transition-all duration-300 relative ${
+                      selectedServices.includes(service.id)
+                        ? 'bg-indigo-600 hover:bg-indigo-700'
+                        : 'bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-indigo-500'
+                    } ${adminMode ? 'cursor-default' : ''}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-white">{service.name}</span>
+                          {service.category && (
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-600 text-gray-300 capitalize">
+                              {service.category}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`font-semibold ${
+                          selectedServices.includes(service.id) ? 'text-white' : 'text-indigo-400'
+                        }`}>
+                          {formatCurrency(service.price)}
+                        </span>
+                      </div>
+
+                      {adminMode && (
+                        <div className="flex items-center space-x-1 ml-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditService(service);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-blue-900/20 rounded-lg transition-colors"
+                            title="Edit service"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteService(service.id);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Delete service"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  ))
+                )}
               </div>
-              {selectedCategory && selectedColor && selectedServices.length > 0 && (
-                <div className="flex items-center space-x-4">
-                  <div className="text-xl font-semibold text-green-400">
-                    {formatCurrency(currentSelectionTotal)}
+            </>
+          );
+        })()}
+
+            {/* Color Selection and Add Button */}
+            {selectedServices.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm text-gray-400">Color:</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedColor(null)}
+                        className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                          selectedColor === null
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        None
+                      </button>
+                      {colors.slice(0, 8).map((color) => (
+                        <button
+                          key={color.id}
+                          onClick={() => setSelectedColor(color.id)}
+                          className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                            selectedColor === color.id
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title={color.name}
+                        >
+                          {color.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <button
                     onClick={handleAddShoe}
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center"
                   >
                     <Plus size={18} className="mr-2" />
-                    Add Item
+                    Add to Cart
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* Services Grid */}
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              {services.map((service) => (
-                <button
-                  key={service.id}
-                  onClick={() => {
-                    if (selectedServices.includes(service.id)) {
-                      setSelectedServices(prev => prev.filter(id => id !== service.id));
-                    } else {
-                      setSelectedServices(prev => [...prev, service.id]);
-                    }
-                  }}
-                  className={`p-4 rounded-xl transition-all duration-300 flex items-center justify-between
-                    ${selectedServices.includes(service.id)
-                      ? 'bg-indigo-600 hover:bg-indigo-700'
-                      : 'bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-indigo-500'
-                    }
-                  `}
-                >
-                  <span className="text-white">{service.name}</span>
-                  <span className={`font-semibold ${
-                    selectedServices.includes(service.id) ? 'text-white' : 'text-indigo-400'
-                  }`}>
-                    {formatCurrency(service.price)}
-                  </span>
-                </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-4">
-            <button
-              onClick={handleSubmit}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl transition-colors duration-200 flex items-center justify-center"
-            >
-              <Plus size={20} className="mr-2" />
-              Save
-            </button>
-            <button
-              onClick={handleHold}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-xl transition-colors duration-200"
-            >
-              Hold
-            </button>
-            <button
-              onClick={handleCancel}
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl transition-colors duration-200 flex items-center justify-center"
-            >
-              Cancel
-            </button>
-          </div>
         </div>
 
         {/* Right Column - Cart */}
         <div className="col-span-3">
-          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+          <div id="cart-summary" className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
             <h2 className="text-xl font-semibold text-white mb-6 flex items-center justify-between">
               <span>Cart Summary</span>
               <span className="text-green-400">{formatCurrency(calculateTotal())}</span>
@@ -894,39 +1473,49 @@ export default function DropPage() {
             <div className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto custom-scrollbar">
               {shoes.map((shoe, index) => (
                 <div key={shoe.id} className="bg-gray-900 rounded-xl p-4 border border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-2xl">
-                        {categories.find(c => c.id === shoe.category)?.icon}
-                      </span>
-                      <div>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center mb-2">
+                        {shoe.category && (
+                          <span className="text-2xl mr-2">
+                            {shoe.category.startsWith('other-')
+                              ? '🔧'
+                              : categories.find(c => c.id === shoe.category)?.icon
+                            }
+                          </span>
+                        )}
                         <h3 className="font-medium text-white">
-                          {categories.find(c => c.id === shoe.category)?.name}
+                          {shoe.description}
+                          {shoe.manualPrice && (
+                            <span className="ml-2 text-xs text-indigo-400 bg-indigo-900/50 px-2 py-1 rounded-full">
+                              Custom Price
+                            </span>
+                          )}
                         </h3>
-                        <div className="flex items-center mt-1">
-                          <div 
+                      </div>
+                      {shoe.color && shoe.color !== 'none' && (
+                        <div className="flex items-center">
+                          <div
                             className={`w-3 h-3 rounded-lg ${colors.find(c => c.id === shoe.color)?.bgClass} mr-2`}
                           />
                           <span className="text-sm text-gray-400">
                             {colors.find(c => c.id === shoe.color)?.name}
                           </span>
                         </div>
+                      )}
+                      <div className="mt-2 text-sm text-green-400 font-semibold">
+                        {shoe.manualPrice
+                          ? formatCurrency(shoe.manualPrice)
+                          : formatCurrency(shoe.services.reduce((sum, s) => sum + s.price, 0))
+                        }
                       </div>
                     </div>
                     <button
                       onClick={() => handleRemoveShoe(shoe.id)}
-                      className="text-gray-400 hover:text-red-400 transition-colors duration-200"
+                      className="text-gray-400 hover:text-red-400 transition-colors duration-200 ml-2"
                     >
                       <X size={20} />
                     </button>
-                  </div>
-                  <div className="space-y-2">
-                    {shoe.services.map((service) => (
-                      <div key={service.service_id} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-300">{service.name}</span>
-                        <span className="text-gray-400">{formatCurrency(service.price)}</span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               ))}
@@ -934,48 +1523,104 @@ export default function DropPage() {
 
             {shoes.length > 0 && (
               <div className="mt-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => toggleCartButton('noCharge')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('noCharge') ? 'bg-purple-700 text-white' : 'bg-purple-500 text-gray-200'} hover:bg-purple-600 transition-colors`}
-                  >
-                    No Charge
-                  </button>
-                  <button
-                    onClick={() => toggleCartButton('doOver')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('doOver') ? 'bg-blue-700 text-white' : 'bg-blue-500 text-gray-200'} hover:bg-blue-600 transition-colors`}
-                  >
-                    Do Over
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                {/* Quick Actions Row - Delivery, Pickup, Discount */}
+                <div className="grid grid-cols-3 gap-3">
                   <button
                     onClick={() => toggleCartButton('delivery')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('delivery') ? 'bg-orange-700 text-white' : 'bg-orange-500 text-gray-200'} hover:bg-orange-600 transition-colors`}
+                    className={`p-3 rounded-lg ${activeCartButtons.includes('delivery') ? 'bg-orange-700 text-white' : 'bg-orange-500 text-gray-200'} hover:bg-orange-600 transition-colors font-medium`}
                   >
                     Delivery
                   </button>
                   <button
                     onClick={() => toggleCartButton('pickup')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('pickup') ? 'bg-teal-700 text-white' : 'bg-teal-500 text-gray-200'} hover:bg-teal-600 transition-colors`}
+                    className={`p-3 rounded-lg ${activeCartButtons.includes('pickup') ? 'bg-teal-700 text-white' : 'bg-teal-500 text-gray-200'} hover:bg-teal-600 transition-colors font-medium`}
                   >
                     Pickup
                   </button>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <button
-                    onClick={() => toggleCartButton('discount')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('discount') ? 'bg-pink-700 text-white' : 'bg-pink-500 text-gray-200'} hover:bg-pink-600 transition-colors`}
+                    onClick={() => setShowDiscountModal(true)}
+                    className="p-3 rounded-lg bg-pink-500 text-gray-200 hover:bg-pink-600 transition-colors font-medium relative"
                   >
                     % Discount
-                  </button>
-                  <button
-                    onClick={() => toggleCartButton('splitTicket')}
-                    className={`p-2 rounded-lg ${activeCartButtons.includes('splitTicket') ? 'bg-indigo-700 text-white' : 'bg-indigo-500 text-gray-200'} hover:bg-indigo-600 transition-colors`}
-                  >
-                    Split Ticket
+                    {discountAmount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                        ✓
+                      </span>
+                    )}
                   </button>
                 </div>
+
+                {/* Discount Applied Display */}
+                {discountAmount > 0 && (
+                  <div className="bg-pink-900/30 rounded-lg p-3 flex justify-between items-center">
+                    <span className="text-pink-300 text-sm">Discount Applied:</span>
+                    <span className="text-pink-400 font-semibold">-{formatCurrency(discountAmount)}</span>
+                  </div>
+                )}
+
+                {/* Payment Section - Prominent, Full Width */}
+                <div className="bg-gradient-to-r from-purple-900/40 to-purple-800/40 border border-purple-700 rounded-lg p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <DollarSign size={18} className="text-purple-400" />
+                        Payment Options
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {selectedCustomer ? `Customer: ${selectedCustomer.name}` : 'Select a customer first'}
+                      </p>
+                      {selectedCustomer && selectedCustomer.accountBalance && selectedCustomer.accountBalance > 0 && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <DollarSign size={14} className="text-green-400" />
+                          <span className="text-xs text-green-400">
+                            Available Credit: {formatCurrency(selectedCustomer.accountBalance)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setIsPaymentModalOpen(true)}
+                      className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors flex items-center gap-2 shadow-lg"
+                    >
+                      <CreditCard size={18} />
+                      Record Payment
+                    </button>
+                  </div>
+
+                  {/* Payment Summary - Shows after payments are recorded */}
+                  {operationPayments && operationPayments.length > 0 && (
+                    <div className="bg-purple-900/30 rounded-lg p-3">
+                      <p className="text-xs text-purple-300 mb-2">Payments Recorded:</p>
+                      <div className="space-y-1">
+                        {operationPayments.map((payment: any, index: number) => (
+                          <div key={index} className="flex justify-between text-sm">
+                            <span className="text-gray-300">{payment.payment_method.replace('_', ' ')}</span>
+                            <span className="text-green-400 font-medium">
+                              {formatCurrency(payment.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* I Finished Button */}
+                {!hasPayments && (
+                  <button
+                    onClick={handleSubmit}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-xl transition-colors duration-200 flex items-center justify-center font-semibold text-lg shadow-lg hover:shadow-xl"
+                  >
+                    <CheckCircle size={24} className="mr-2" />
+                    I Finished
+                  </button>
+                )}
+
+                {hasPayments && (
+                  <div className="text-center text-sm text-gray-400 py-4">
+                    Payment recorded. Form will clear automatically.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -993,62 +1638,93 @@ export default function DropPage() {
       {showDiscountModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
-            <h2 className="text-xl font-semibold mb-4">Apply Discount</h2>
+            <h2 className="text-xl font-semibold mb-4 text-white">Apply Discount</h2>
+
+            {/* Current Total */}
+            <div className="bg-gray-700 rounded-lg p-3 mb-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300">Current Total:</span>
+                <span className="text-white font-semibold">{formatCurrency(shoes.reduce((total, shoe) => total + shoe.services.reduce((sum, s) => sum + s.price, 0), 0))}</span>
+              </div>
+            </div>
+
+            {/* Discount Input */}
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Discount Amount (UGX)
+            </label>
             <input
               type="number"
               value={discountAmount}
-              onChange={(e) => setDiscountAmount(Number(e.target.value))}
-              className="w-full bg-gray-700 rounded-lg p-2 mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value)))}
+              className="w-full bg-gray-700 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-white"
               placeholder="Enter discount amount"
+              min="0"
             />
+
+            {/* New Total */}
+            <div className="bg-indigo-900/30 rounded-lg p-3 mb-4 border border-indigo-700">
+              <div className="flex justify-between items-center">
+                <span className="text-indigo-300 font-medium">New Total:</span>
+                <span className="text-indigo-400 font-bold text-lg">{formatCurrency(calculateTotal())}</span>
+              </div>
+            </div>
+
             <div className="flex justify-end space-x-3">
               <button
-                onClick={() => setShowDiscountModal(false)}
+                onClick={() => {
+                  setShowDiscountModal(false);
+                  setDiscountAmount(0);
+                }}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200"
               >
                 Cancel
               </button>
               <button
-                onClick={handleApplyDiscount}
+                onClick={() => setShowDiscountModal(false)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors duration-200"
               >
-                Apply
+                Apply Discount
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Split Modal */}
-      {showSplitModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
-            <h2 className="text-xl font-semibold mb-4">Split Ticket</h2>
-            <input
-              type="number"
-              value={splitCount}
-              onChange={(e) => setSplitCount(Number(e.target.value))}
-              min="2"
-              className="w-full bg-gray-700 rounded-lg p-2 mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              placeholder="Enter number of splits"
-            />
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowSplitModal(false)}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApplySplit}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors duration-200"
-              >
-                Split
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Service CRUD Modal */}
+      {serviceModalOpen && (
+        <ServiceCRUDModal
+          isOpen={serviceModalOpen}
+          onClose={() => {
+            setServiceModalOpen(false);
+            setEditingService(null);
+          }}
+          onSave={handleSaveService}
+          service={editingService}
+          mode={editingService ? 'edit' : 'add'}
+        />
       )}
+
+      {/* Category Manager Modal */}
+      {categoryModalOpen && (
+        <CategoryManagerModal
+          isOpen={categoryModalOpen}
+          onClose={() => setCategoryModalOpen(false)}
+          services={services}
+          onRenameCategory={handleRenameCategory}
+          onDeleteCategory={handleDeleteCategory}
+        />
+      )}
+
+      {/* Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        totalAmount={calculateTotal()}
+        customer={selectedCustomer}
+        onComplete={async (payments) => {
+          await handlePaymentCompletion(payments);
+        }}
+      />
     </div>
   );
 }

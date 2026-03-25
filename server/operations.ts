@@ -13,6 +13,7 @@ db.exec(`
     status TEXT DEFAULT 'pending',
     total_amount REAL NOT NULL DEFAULT 0,
     paid_amount REAL DEFAULT 0,
+    discount REAL DEFAULT 0,
     notes TEXT,
     promised_date TEXT,
     created_at TEXT,
@@ -121,10 +122,28 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Get payment history for an operation
+router.get('/:id/payments', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const payments = await db.prepare(`
+      SELECT * FROM operation_payments
+      WHERE operation_id = ?
+      ORDER BY created_at DESC
+    `).all(id);
+
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+});
+
 // Create new operation
 router.post('/', async (req, res) => {
   console.log('Received operation request:', JSON.stringify(req.body, null, 2));
-  const { customer, shoes, status, totalAmount, isNoCharge, isDoOver, isDelivery, isPickup, notes } = req.body;
+  const { customer, shoes, status, totalAmount, discount, isNoCharge, isDoOver, isDelivery, isPickup, notes } = req.body;
   const now = new Date().toISOString();
 
   if (!customer || !customer.id) {
@@ -147,15 +166,16 @@ router.post('/', async (req, res) => {
 
       await db.prepare(`
         INSERT INTO operations (
-          id, customer_id, status, total_amount, notes, 
+          id, customer_id, status, total_amount, discount, notes,
           is_no_charge, is_do_over, is_delivery, is_pickup,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         operationId,
         customer.id,
         status || 'pending',
         totalAmount || 0,
+        discount || 0,
         notes || null,
         isNoCharge ? 1 : 0,
         isDoOver ? 1 : 0,
@@ -264,7 +284,8 @@ router.post('/', async (req, res) => {
         isNoCharge: Boolean(operation.is_no_charge),
         isDoOver: Boolean(operation.is_do_over),
         isDelivery: Boolean(operation.is_delivery),
-        isPickup: Boolean(operation.is_pickup)
+        isPickup: Boolean(operation.is_pickup),
+        discount: operation.discount || 0
       });
     } catch (error) {
       await db.run('ROLLBACK');
@@ -309,6 +330,59 @@ router.patch('/:id', async (req, res) => {
     res.json(transformOperation(operation));
   } catch (error) {
     res.status(500).json({ error: 'Failed to update operation' });
+  }
+});
+
+// Process payment with multiple methods
+router.post('/:id/payments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payments } = req.body; // Array of { method, amount, transaction_id }
+
+    if (!Array.isArray(payments) || payments.length === 0) {
+      return res.status(400).json({ error: 'Payments array is required' });
+    }
+
+    // Get operation
+    const operation = await db.get('SELECT * FROM operations WHERE id = ?', [id]);
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+    const now = new Date().toISOString();
+
+    await db.run('BEGIN TRANSACTION');
+
+    // Add each payment
+    for (const payment of payments) {
+      const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await db.run(`
+        INSERT INTO operation_payments (id, operation_id, payment_method, amount, transaction_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [paymentId, id, payment.method, payment.amount, payment.transaction_id || null, now]);
+    }
+
+    // Update operation paid_amount
+    const newPaidAmount = (operation.paid_amount || 0) + totalPaid;
+    await db.run(`
+      UPDATE operations
+      SET paid_amount = ?,
+          status = CASE WHEN ? >= total_amount THEN 'completed' ELSE status END,
+          updated_at = ?
+      WHERE id = ?
+    `, [newPaidAmount, newPaidAmount, now, id]);
+
+    await db.run('COMMIT');
+
+    // Return updated operation
+    const updatedOperation = await db.get('SELECT * FROM operations WHERE id = ?', [id]);
+    res.json(transformOperation(updatedOperation));
+
+  } catch (error) {
+    await db.run('ROLLBACK');
+    console.error('Error processing payment:', error);
+    res.status(500).json({ error: 'Failed to process payment' });
   }
 });
 

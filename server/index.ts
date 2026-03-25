@@ -10,6 +10,9 @@ import qrCodesRouter from './routes/qrcodes';
 import suppliesRouter from './routes/supplies';
 import categoriesRouter from './routes/categories';
 import productsRouter from './routes/products';
+import creditRoutes from './routes/credits';
+import businessRoutes from './routes/business';
+import authRoutes from './routes/auth';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
@@ -38,6 +41,9 @@ app.use('/api/qrcodes', qrCodesRouter);
 app.use('/api/supplies', suppliesRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/customers', creditRoutes);
+app.use('/api/business', businessRoutes);
+app.use('/api/auth', authRoutes);
 
 // Customer endpoints
 app.get('/api/customers', async (req, res) => {
@@ -267,6 +273,41 @@ app.post('/api/services', async (req, res) => {
   } catch (error) {
     console.error('Error creating service:', error);
     res.status(500).json({ error: 'Failed to create service' });
+  }
+});
+
+app.patch('/api/services/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, price, estimated_days, category } = req.body;
+    const now = new Date().toISOString();
+
+    await db.prepare(`
+      UPDATE services
+      SET name = ?, description = ?, price = ?, estimated_days = ?, category = ?, updated_at = ?
+      WHERE id = ?
+    `).run(name, description || null, price, estimated_days || null, category || null, now, id);
+
+    const service = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+    if (!service) {
+      return res.status(404).json({ error: 'Service not found' });
+    }
+    res.json(service);
+  } catch (error) {
+    console.error('Error updating service:', error);
+    res.status(500).json({ error: 'Failed to update service' });
+  }
+});
+
+app.delete('/api/services/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.prepare('DELETE FROM services WHERE id = ?').run(id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting service:', error);
+    res.status(500).json({ error: 'Failed to delete service' });
   }
 });
 

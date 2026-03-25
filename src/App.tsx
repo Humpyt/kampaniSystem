@@ -6,8 +6,10 @@ import StorePage from './pages/StorePage';
 import CustomerPage from './pages/CustomerPage';
 import DropPage from './pages/DropPage';
 import PickupPage from './pages/PickupPage';
+import BalancesPage from './pages/BalancesPage';
 import MessagePage from './pages/MessagePage';
 import OperationPage from './pages/OperationPage';
+import OperationDetailsPage from './pages/OperationDetailsPage';
 import SuppliesPage from './pages/SuppliesPage';
 import SalesPage from './pages/SalesPage';
 import SalesItems from './pages/SalesItems';
@@ -15,6 +17,7 @@ import TicketsPage from './pages/TicketsPage';
 import QRCodesPage from './pages/QRCodesPage';
 import MarketingPage from './pages/MarketingPage';
 import ReportsPage from './pages/ReportsPage';
+import BusinessTargetsPage from './pages/BusinessTargetsPage';
 import StaffPage from './pages/StaffPage';
 import NotificationsPage from './pages/NotificationsPage';
 import AdminPage from './pages/AdminPage';
@@ -29,7 +32,9 @@ import { OperationProvider } from './contexts/OperationContext';
 import { AdminProvider } from './contexts/AdminContext';
 import { CartProvider } from './contexts/CartContext';
 import { ProductProvider } from './contexts/ProductContext';
-import HoldQuickDropPage from './pages/HoldQuickDropPage';
+import { ServiceProvider } from './contexts/ServiceContext';
+import { useAuthStore } from './store/authStore';
+import { Navigate } from 'react-router-dom';
 import NoChargeDoOverPage from './pages/NoChargeDoOverPage';
 import TicketSearchPage from './pages/TicketSearchPage';
 import AssemblyPage from './pages/AssemblyPage';
@@ -37,7 +42,6 @@ import RackingPage from './pages/RackingPage';
 import PickupOrderPage from './pages/PickupOrderPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import CodPaymentPage from './pages/CodPaymentPage';
-import SaleItemsPage from './pages/SaleItemsPage';
 import ProductCategoryManager from './pages/ProductCategoryManager';
 
 const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boolean; toggleSidebar: () => void }) => {
@@ -74,6 +78,9 @@ const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boo
 function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const checkAuth = useAuthStore(state => state.checkAuth);
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const initializing = useAuthStore(state => state.initializing);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -88,6 +95,14 @@ function App() {
     };
   }, []);
 
+  // Initialize authentication on app mount
+  useEffect(() => {
+    const initializeAuth = async () => {
+      await checkAuth();
+    };
+    initializeAuth();
+  }, [checkAuth]);
+
   // Show offline indicator
   if (!isOnline) {
     return (
@@ -96,6 +111,15 @@ function App() {
           <h2 className="text-2xl font-bold mb-4">You're Offline</h2>
           <p className="text-gray-400">Please check your internet connection</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show loading while checking authentication
+  if (initializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
       </div>
     );
   }
@@ -112,40 +136,115 @@ function App() {
             <AdminProvider>
               <CartProvider>
                 <ProductProvider>
-                  <Routes>
+                  <ServiceProvider>
+                    <Routes>
+                    {/* Root route - redirect based on authentication */}
                     <Route
                       path="/"
+                      element={
+                        isAuthenticated ? (
+                          <Navigate to="/store" replace />
+                        ) : (
+                          <Navigate to="/login" replace />
+                        )
+                      }
+                    />
+
+                    {/* Login route - redirect if already authenticated */}
+                    <Route
+                      path="/login"
+                      element={
+                        isAuthenticated ? (
+                          <Navigate to="/store" replace />
+                        ) : (
+                          <LoginPage />
+                        )
+                      }
+                    />
+
+                    {/* Main app routes with layout */}
+                    <Route
+                      path="/*"
                       element={
                         <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
                       }
                     >
-                      <Route index element={<StorePage />} />
-                      <Route path="login" element={<LoginPage />} />
-                      <Route path="customers" element={<CustomerPage />} />
-                      <Route path="drop" element={<DropPage />} />
-                      <Route path="pickup" element={<PickupPage />} />
-                      <Route path="messages" element={<MessagePage />} />
-                      <Route path="operation" element={<OperationPage />} />
-                      <Route path="supplies" element={<SuppliesPage />} />
-                      <Route path="sales" element={<SalesPage />} />
-                      <Route path="sales-items" element={<SalesItems />} />
+                      <Route path="store" element={<StorePage />} />
+                      <Route path="customers" element={
+                        <ProtectedRoute permission="view_customers">
+                          <CustomerPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="drop" element={
+                        <ProtectedRoute permission="create_drop">
+                          <DropPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="pickup" element={
+                        <ProtectedRoute permission="create_pickup">
+                          <PickupPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="balances" element={<BalancesPage />} />
+                      <Route path="operations/details/:id" element={<OperationDetailsPage />} />
+                      <Route path="messages" element={
+                        <ProtectedRoute permission="send_messages">
+                          <MessagePage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="operation" element={
+                        <ProtectedRoute permission="view_operations">
+                          <OperationPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="supplies" element={
+                        <ProtectedRoute permission="manage_supplies" requiredRoles={['admin', 'manager']}>
+                          <SuppliesPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="sales" element={
+                        <ProtectedRoute permission="view_sales">
+                          <SalesPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="sales-items" element={
+                        <ProtectedRoute permission="view_sales">
+                          <SalesItems />
+                        </ProtectedRoute>
+                      } />
                       <Route path="manage-categories" element={<ProductCategoryManager />} />
                       <Route path="tickets" element={<TicketsPage />} />
-                      <Route path="qrcodes" element={<QRCodesPage />} />
-                      <Route path="marketing" element={<MarketingPage />} />
-                      <Route path="reports" element={<ReportsPage />} />
+                      <Route path="qrcodes" element={
+                        <ProtectedRoute permission="view_qrcodes">
+                          <QRCodesPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="marketing" element={
+                        <ProtectedRoute permission="view_marketing">
+                          <MarketingPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="reports" element={
+                        <ProtectedRoute permission="view_reports" requiredRoles={['admin', 'manager']}>
+                          <ReportsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="business-targets" element={
+                        <ProtectedRoute permission="view_business_targets">
+                          <BusinessTargetsPage />
+                        </ProtectedRoute>
+                      } />
                       <Route path="staff" element={
-                        <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                        <ProtectedRoute permission="manage_staff" requiredRoles={['admin', 'manager']}>
                           <StaffPage />
                         </ProtectedRoute>
                       } />
                       <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="admin" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute permission="manage_users" requiredRoles={['admin']}>
                           <AdminPage />
                         </ProtectedRoute>
                       } />
-                      <Route path="hold-quick-drop" element={<HoldQuickDropPage />} />
                       <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
                       <Route path="ticket-search" element={<TicketSearchPage />} />
                       <Route path="assembly" element={<AssemblyPage />} />
@@ -153,9 +252,9 @@ function App() {
                       <Route path="pickup-order" element={<PickupOrderPage />} />
                       <Route path="deliveries" element={<DeliveriesPage />} />
                       <Route path="cod-payment" element={<CodPaymentPage />} />
-                      <Route path="sale-items" element={<SaleItemsPage />} />
                     </Route>
-                  </Routes>
+                    </Routes>
+                  </ServiceProvider>
                 </ProductProvider>
               </CartProvider>
             </AdminProvider>

@@ -33,7 +33,7 @@ export async function seedProductsAndCategories() {
       {
         id: uuidv4(),
         name: 'Premium Shoe Polish Kit',
-        price: 24.99,
+        price: 95000,
         description: 'Complete shoe care kit with polish, brushes, and cloths',
         imageUrl: '',
         categoryId: categories[0].id,
@@ -45,7 +45,7 @@ export async function seedProductsAndCategories() {
       {
         id: uuidv4(),
         name: 'Heel Replacement',
-        price: 35.00,
+        price: 140000,
         description: 'Professional heel replacement service',
         imageUrl: '',
         categoryId: categories[1].id,
@@ -57,7 +57,7 @@ export async function seedProductsAndCategories() {
       {
         id: uuidv4(),
         name: 'Premium Shoe Laces',
-        price: 8.99,
+        price: 35000,
         description: 'High-quality wax cotton shoe laces',
         imageUrl: '',
         categoryId: categories[2].id,

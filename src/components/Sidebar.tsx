@@ -1,19 +1,20 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { 
-  ShoppingBag, 
-  LayoutDashboard, 
-  Users, 
-  Settings, 
-  LogOut, 
-  Wrench, 
-  Clock, 
-  UserCircle, 
-  DollarSign, 
-  Package, 
-  Archive, 
-  ChevronLeft, 
-  ChevronRight 
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
+import {
+  ShoppingBag,
+  LayoutDashboard,
+  Users,
+  Settings,
+  LogOut,
+  Wrench,
+  Clock,
+  UserCircle,
+  DollarSign,
+  Package,
+  Archive,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -51,6 +52,13 @@ const NavItem = ({ icon, label, onClick, isActive }: NavItemProps) => (
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse, onNavigate, currentView }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const logout = useAuthStore(state => state.logout);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const navGroups = [
     {
@@ -124,7 +132,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse, onNaviga
           onClick={() => onNavigate('account')}
           isActive={isActive('account')}
         />
-        <button className="flex items-center space-x-4 px-6 py-4 rounded-lg text-red-200 hover:bg-red-500/20 hover:text-red-100 transition-colors w-full">
+        <button
+          onClick={handleLogout}
+          className="flex items-center space-x-4 px-6 py-4 rounded-lg text-red-200 hover:bg-red-500/20 hover:text-red-100 transition-colors w-full"
+        >
           <LogOut className="h-5 w-5" />
           <span className="font-medium">Logout</span>
         </button>

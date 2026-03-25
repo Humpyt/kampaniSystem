@@ -30,7 +30,7 @@ const mockMessageHistory: MessageHistory[] = [
     id: '1',
     templateId: '1',
     customerName: 'John Smith',
-    content: 'Hello John Smith, your order #1234 is ready for pickup at RepairPRO. Total amount: $75.00. We\'re open Mon-Sat, 9AM-6PM.',
+    content: 'Hello John Smith, your order #1234 is ready for pickup at RepairPRO. Total amount: UGX 75,000. We\'re open Mon-Sat, 9AM-6PM.',
     sentAt: '2024-03-15T14:30:00',
     status: 'delivered'
   },
@@ -54,7 +54,7 @@ const mockMessageHistory: MessageHistory[] = [
     id: '4',
     templateId: '1',
     customerName: 'Emma Wilson',
-    content: 'Hello Emma Wilson, your order #1235 is ready for pickup at RepairPRO. Total amount: $45.00. We\'re open Mon-Sat, 9AM-6PM.',
+    content: 'Hello Emma Wilson, your order #1235 is ready for pickup at RepairPRO. Total amount: UGX 45,000. We\'re open Mon-Sat, 9AM-6PM.',
     sentAt: '2024-03-15T11:30:00',
     status: 'pending'
   }

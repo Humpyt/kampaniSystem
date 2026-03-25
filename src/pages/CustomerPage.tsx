@@ -1,14 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Search, Plus, Filter, Download, Phone, Mail, 
+import {
+  Search, Plus, Filter, Download, Phone, Mail,
   MapPin, Package, DollarSign, Calendar, Star,
-  ChevronDown, Edit2, Trash2, Upload, X
+  ChevronDown, Edit2, Trash2, Upload, X, AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { format, differenceInDays } from 'date-fns';
 import type { Customer, Transaction, Operation } from '../types';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useOperation } from '../contexts/OperationContext';
+import { AddCreditModal } from '../components/AddCreditModal';
+import { PaymentModal } from '../components/PaymentModal';
 
 interface CustomerFormData {
   name: string;
@@ -48,8 +50,14 @@ export default function CustomerPage() {
   const [showCustomerDetails, setShowCustomerDetails] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isAddCreditModalOpen, setIsAddCreditModalOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [creditTransactions, setCreditTransactions] = useState<any[]>([]);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [unpaidOperations, setUnpaidOperations] = useState<any[]>([]);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedOperationForPayment, setSelectedOperationForPayment] = useState<any>(null);
   const [evaluation, setEvaluation] = useState<CustomerEvaluation | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const transactionsPerPage = 3;
@@ -223,7 +231,101 @@ export default function CustomerPage() {
 
       setAlerts(alerts);
     }
-  }, [selectedCustomer?.id, operations]);
+  }, [selectedCustomer?.id]); // Only run when selected customer changes, not when operations array ref changes
+
+  // Fetch credit transactions when customer changes
+  useEffect(() => {
+    const fetchCreditTransactions = async () => {
+      if (selectedCustomer) {
+        try {
+          const response = await fetch(`http://localhost:3000/api/customers/${selectedCustomer.id}/credits`);
+          if (response.ok) {
+            const credits = await response.json();
+            setCreditTransactions(credits);
+          } else {
+            setCreditTransactions([]);
+          }
+        } catch (error) {
+          console.error('Error fetching credit transactions:', error);
+          setCreditTransactions([]);
+        }
+      }
+    };
+
+    fetchCreditTransactions();
+  }, [selectedCustomer?.id]);
+
+  // Merge credit transactions with operation transactions
+  useEffect(() => {
+    if (selectedCustomer) {
+      // Get customer's operations
+      const customerOperations = operations.filter(
+        op => op.customer?.id === selectedCustomer.id
+      );
+
+      // Convert credit transactions (only credit additions, not debits)
+      const creditTxns = creditTransactions
+        .filter(credit => credit.type === 'credit')
+        .map(credit => ({
+          id: credit.id,
+          type: 'credit',
+          amount: credit.amount,
+          date: credit.created_at,
+          description: credit.description || 'Credit added'
+        }));
+
+      // Convert operations to transactions
+      const operationTxns = customerOperations.map(op => ({
+        id: op.id,
+        type: 'payment',
+        amount: op.totalAmount,
+        date: op.createdAt,
+        description: op.shoes.map(shoe =>
+          `${shoe.category} - ${shoe.services.map(s => s.name).join(', ')}`
+        ).join('; ')
+      }));
+
+      // Combine and sort by date descending
+      const combined = [...creditTxns, ...operationTxns]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setAllTransactions(combined.slice(0, 10)); // Show last 10 transactions
+    }
+  }, [creditTransactions, operations, selectedCustomer]);
+
+  // Fetch unpaid operations for customer
+  useEffect(() => {
+    const fetchUnpaidOperations = async () => {
+      if (selectedCustomer) {
+        try {
+          // Fetch all operations
+          const response = await fetch('http://localhost:3000/api/operations');
+          if (response.ok) {
+            const allOps = await response.json();
+            // Filter for this customer's unpaid operations
+            const unpaid = allOps
+              .filter((op: any) =>
+                op.customer?.id === selectedCustomer.id &&
+                op.totalAmount > (op.paidAmount || 0)
+              )
+              .sort((a: any, b: any) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+            setUnpaidOperations(unpaid);
+          } else {
+            setUnpaidOperations([]);
+          }
+        } catch (error) {
+          console.error('Error fetching unpaid operations:', error);
+          setUnpaidOperations([]);
+        }
+      } else {
+        setUnpaidOperations([]);
+      }
+    };
+
+    fetchUnpaidOperations();
+  }, [selectedCustomer?.id]);
 
   // Get current transactions for pagination
   const indexOfLastTransaction = currentPage * transactionsPerPage;
@@ -235,11 +337,24 @@ export default function CustomerPage() {
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
   // Filter customers based on search term
-  const filteredCustomers = customers.filter(customer => 
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm) ||
-    customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
+
+  const filteredCustomers = customers
+    .filter(customer =>
+      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.phone.includes(searchTerm) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      switch(sortBy) {
+        case 'recent':
+          return new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime();
+        case 'spent':
+          return b.totalSpent - a.totalSpent;
+        default:
+          return a.name.localeCompare(b.name);
+      }
+    });
 
   const handleCustomerClick = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -301,6 +416,45 @@ export default function CustomerPage() {
         return 'bg-blue-500';
       default:
         return 'bg-gray-500';
+    }
+  };
+
+  const handlePaymentCompletion = async (payments: Array<{method: string; amount: number}>) => {
+    if (!selectedOperationForPayment || !selectedCustomer) return;
+
+    try {
+      const response = await fetch(`http://localhost:3000/api/operations/${selectedOperationForPayment.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Payment failed');
+      }
+
+      // Refresh unpaid operations
+      const unpaidResponse = await fetch('http://localhost:3000/api/operations');
+      if (unpaidResponse.ok) {
+        const allOps = await unpaidResponse.json();
+        const unpaid = allOps
+          .filter((op: any) =>
+            op.customer?.id === selectedCustomer.id &&
+            op.totalAmount > (op.paidAmount || 0)
+          )
+          .sort((a: any, b: any) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        setUnpaidOperations(unpaid);
+      }
+
+      setIsPaymentModalOpen(false);
+      setSelectedOperationForPayment(null);
+      alert('Payment recorded successfully!');
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      alert(error instanceof Error ? error.message : 'Failed to process payment');
     }
   };
 
@@ -366,25 +520,14 @@ export default function CustomerPage() {
             className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
           />
         </div>
-        <select 
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'name' | 'recent' | 'spent')}
           className="bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          onChange={(e) => {
-            const sortedCustomers = [...customers].sort((a, b) => {
-              switch(e.target.value) {
-                case 'recent':
-                  return new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime();
-                case 'spent':
-                  return b.totalSpent - a.totalSpent;
-                default:
-                  return a.name.localeCompare(b.name);
-              }
-            });
-            // Update customers through context
-          }}
         >
           <option value="name">Sort by Name</option>
           <option value="recent">Sort by Recent Visit</option>
-          <option value="spent">Sort by Total Spent</option>
+          <option value="spent">Sort by Highest Spent ⬇</option>
         </select>
       </div>
 
@@ -417,7 +560,7 @@ export default function CustomerPage() {
                   }`}
                 >
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-lg">{customer.name}</h3>
                       <div className="flex items-center text-gray-400 space-x-4 mt-1">
                         <span className="flex items-center">
@@ -431,13 +574,20 @@ export default function CustomerPage() {
                           </span>
                         )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-indigo-400 font-semibold">
-                        {formatCurrency(customer.totalSpent)}
+                      <div className="flex items-center gap-4 mt-2 text-sm">
+                        <span className="text-gray-400 flex items-center">
+                          <Package className="h-3 w-3 mr-1" />
+                          {customer.totalOrders} visit{customer.totalOrders !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-indigo-400 font-semibold">
+                          {formatCurrency(customer.totalSpent)} spent
+                        </span>
                       </div>
-                      <div className="text-sm text-gray-400">
-                        {customer.lastVisit 
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="text-xs text-gray-400">Last visit</div>
+                      <div className="text-sm text-gray-300">
+                        {customer.lastVisit
                           ? `${differenceInDays(new Date(), new Date(customer.lastVisit))} days ago`
                           : 'No visits yet'}
                       </div>
@@ -467,6 +617,13 @@ export default function CustomerPage() {
                 >
                   <Trash2 className="h-5 w-5" />
                 </button>
+                <button
+                  onClick={() => setIsAddCreditModalOpen(true)}
+                  className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 flex items-center gap-1"
+                >
+                  <DollarSign size={16} />
+                  Add Credit
+                </button>
               </div>
             </div>
 
@@ -480,11 +637,48 @@ export default function CustomerPage() {
                   </div>
                 </div>
                 <div className="bg-gray-800 p-4 rounded-lg">
-                  <div className="text-gray-400 text-sm">Orders</div>
+                  <div className="text-gray-400 text-sm">Total Visits</div>
                   <div className="text-xl font-bold text-indigo-400">
                     {selectedCustomer.totalOrders}
                   </div>
                 </div>
+
+                {/* Consolidated Account Balance */}
+                {(() => {
+                  const accountBalance = selectedCustomer.accountBalance || 0;
+                  const totalDebt = unpaidOperations.reduce(
+                    (sum, op) => sum + (op.totalAmount - (op.paidAmount || 0)),
+                    0
+                  );
+                  const netBalance = accountBalance - totalDebt;
+
+                  if (netBalance === 0) return null;
+
+                  const isPositive = netBalance > 0;
+                  const balanceColor = isPositive ? 'green' : 'red';
+
+                  return (
+                    <div className={`${isPositive ? 'bg-green-900/30 border-green-700' : 'bg-red-900/30 border-red-700'} border rounded-lg p-4 col-span-2`}>
+                      <div className={`${isPositive ? 'text-green-300' : 'text-red-300'} text-sm`}>Account Balance</div>
+                      <div className={`text-2xl font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCurrency(netBalance)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {isPositive ? 'Credit available' : 'Amount owed'}
+                        {accountBalance > 0 && (
+                          <span className={`ml-2 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            (Credit: {formatCurrency(accountBalance)})
+                          </span>
+                        )}
+                        {totalDebt > 0 && (
+                          <span className="ml-2 text-red-400">
+                            (Debt: {formatCurrency(totalDebt)})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Contact Info */}
@@ -510,44 +704,146 @@ export default function CustomerPage() {
               {/* Recent Transactions */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-indigo-400">Recent Transactions</h3>
-                {currentTransactions.map(transaction => (
-                  <div
-                    key={transaction.id}
-                    className="bg-gray-800 p-4 rounded-lg space-y-2"
-                  >
-                    <p className="text-sm text-gray-300">{transaction.description}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-400">
-                        {format(new Date(transaction.date), 'MMM d, yyyy')}
-                      </span>
-                      <span className={`text-lg font-semibold ${
-                        transaction.type === 'credit' ? 'text-red-400' : 'text-green-400'
-                      }`}>
-                        {transaction.type === 'credit' ? '-' : ''}{formatCurrency(transaction.amount)}
-                      </span>
+                {allTransactions.length > 0 ? (
+                  allTransactions.map(transaction => (
+                    <div
+                      key={transaction.id}
+                      className="bg-gray-800 p-4 rounded-lg space-y-2"
+                    >
+                      {/* Transaction Type Badge */}
+                      <div className="flex items-center gap-2 mb-1">
+                        {transaction.type === 'credit' && (
+                          <span className="px-2 py-1 text-xs bg-green-900/50 text-green-400 rounded-full">
+                            + Credit Added
+                          </span>
+                        )}
+                        {transaction.type === 'debit' && (
+                          <span className="px-2 py-1 text-xs bg-orange-900/50 text-orange-400 rounded-full">
+                            - Credit Used
+                          </span>
+                        )}
+                        {transaction.type === 'payment' && (
+                          <span className="px-2 py-1 text-xs bg-blue-900/50 text-blue-400 rounded-full">
+                            Service Payment
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-gray-300">{transaction.description}</p>
+                      <div className="flex justify-between items-center">
+                        <div className="flex flex-col">
+                          <span className="text-sm text-gray-400">
+                            {format(new Date(transaction.date), 'MMM d, yyyy')}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {format(new Date(transaction.date), 'h:mm a')}
+                          </span>
+                        </div>
+                        <span className={`text-lg font-semibold ${
+                          transaction.type === 'credit'
+                            ? 'text-green-400'
+                            : transaction.type === 'debit'
+                            ? 'text-orange-400'
+                            : 'text-blue-400'
+                        }`}>
+                          {transaction.type === 'debit' ? '-' : ''}
+                          {transaction.type === 'credit' ? '+' : ''}
+                          {formatCurrency(transaction.amount)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex justify-center space-x-2 mt-4">
-                    {Array.from({ length: totalPages }, (_, i) => (
-                      <button
-                        key={i + 1}
-                        onClick={() => paginate(i + 1)}
-                        className={`px-3 py-1 rounded ${
-                          currentPage === i + 1
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
+                  ))
+                ) : (
+                  <div className="bg-gray-800 p-6 rounded-lg text-center text-gray-400">
+                    <p>No transactions yet</p>
                   </div>
                 )}
               </div>
+
+              {/* Outstanding Debts Section */}
+              {unpaidOperations.length > 0 && (
+                <div id="outstanding-balances" className="space-y-4">
+                  <h3 className="text-lg font-semibold text-red-400 flex items-center gap-2">
+                    <AlertCircle size={20} />
+                    Outstanding Balances
+                  </h3>
+                  <div className="space-y-3">
+                    {unpaidOperations.map((op) => {
+                      const balance = op.totalAmount - (op.paidAmount || 0);
+                      const paidPercent = Math.round(((op.paidAmount || 0) / op.totalAmount) * 100);
+
+                      return (
+                        <div
+                          key={op.id}
+                          className="bg-gray-800 p-4 rounded-lg border border-red-900/50"
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex-1">
+                              <p className="text-white font-medium mb-1">
+                                Ticket #{op.id.slice(-6)}
+                              </p>
+                              <p className="text-sm text-gray-400 mb-2">
+                                {op.shoes?.map((shoe: any) =>
+                                  shoe.description || shoe.category
+                                ).join(', ') || 'Services'}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <Calendar size={12} />
+                                <span>
+                                  {format(new Date(op.createdAt), 'MMM d, yyyy')}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-red-400">
+                                {formatCurrency(balance)}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                of {formatCurrency(op.totalAmount)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div className="mb-3">
+                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                              <span>Paid</span>
+                              <span>{paidPercent}%</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-2">
+                              <div
+                                className="bg-green-500 h-2 rounded-full transition-all"
+                                style={{ width: `${paidPercent}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedOperationForPayment(op);
+                                setIsPaymentModalOpen(true);
+                              }}
+                              className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors"
+                            >
+                              Record Payment
+                            </button>
+                            <button
+                              onClick={() => {
+                                window.location.href = `/operations/details/${op.id}`;
+                              }}
+                              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Customer Notes */}
               {selectedCustomer.notes && (
@@ -718,6 +1014,72 @@ export default function CustomerPage() {
           </div>
         </div>
       )}
+
+      {/* Add Credit Modal */}
+      <AddCreditModal
+        isOpen={isAddCreditModalOpen}
+        onClose={() => setIsAddCreditModalOpen(false)}
+        customer={selectedCustomer}
+        outstandingBalance={unpaidOperations.reduce((sum, op) => sum + (op.totalAmount - (op.paidAmount || 0)), 0)}
+        onAddCredit={async (amount, description) => {
+          const response = await fetch(`http://localhost:3000/api/customers/${selectedCustomer?.id}/credits`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount,
+              description,
+              createdBy: 'system'
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to add credit');
+          }
+
+          // Auto-apply credit to outstanding debts
+          try {
+            const autoPayResponse = await fetch(`http://localhost:3000/api/customers/${selectedCustomer?.id}/apply-credit-to-debts`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (autoPayResponse.ok) {
+              const autoPayResult = await autoPayResponse.json();
+              if (autoPayResult.paymentsMade && autoPayResult.paymentsMade.length > 0) {
+                const debtCount = autoPayResult.paymentsMade.length;
+                const remainingCredit = autoPayResult.remainingCredit;
+                alert(
+                  `Credit added successfully!\n\n` +
+                  `Automatically applied to ${debtCount} outstanding debt${debtCount > 1 ? 's' : ''}.\n` +
+                  (remainingCredit > 0 ? `Remaining credit: ${formatCurrency(remainingCredit)}` : '')
+                );
+              } else if (autoPayResult.message === 'No outstanding debts') {
+                alert(`Credit added successfully!\n\nNo outstanding debts to pay off.`);
+              }
+            }
+          } catch (error) {
+            console.error('Error auto-applying credit:', error);
+            // Don't fail credit addition if auto-pay fails
+            alert('Credit added successfully!');
+          }
+
+          // Refresh customers list
+          window.location.reload();
+        }}
+      />
+
+      {/* Payment Modal for Outstanding Balances */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => {
+          setIsPaymentModalOpen(false);
+          setSelectedOperationForPayment(null);
+        }}
+        totalAmount={selectedOperationForPayment?.totalAmount - (selectedOperationForPayment?.paidAmount || 0) || 0}
+        customer={selectedCustomer}
+        onComplete={handlePaymentCompletion}
+      />
     </div>
   );
 }

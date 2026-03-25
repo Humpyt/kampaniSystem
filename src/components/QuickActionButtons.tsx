@@ -1,11 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Package, ShoppingBag, ArrowDownToLine } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 
 const QuickActionButtons = () => {
   const navigate = useNavigate();
+  const logout = useAuthStore(state => state.logout);
 
   const handleLogout = () => {
-    // Add logout logic here
+    logout();
     navigate('/login');
   };
 
@@ -31,7 +33,7 @@ const QuickActionButtons = () => {
 
       {/* Sales Items Button */}
       <button
-        onClick={() => navigate('/sales-items')}
+        onClick={() => navigate('/sales')}
         className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-lg flex flex-col items-center gap-2 transition-colors"
       >
         <ShoppingBag size={24} />

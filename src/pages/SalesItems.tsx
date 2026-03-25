@@ -3,6 +3,7 @@ import { ShoppingCart, Minus, Plus, Printer, X, Scan, Search, Tag, Package, Doll
 import { Link } from 'react-router-dom';
 import AddProductModal from '../components/AddProductModal';
 import { useProducts } from '../contexts/ProductContext';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface CartItem {
   item: {
@@ -172,19 +173,19 @@ const SalesItems: React.FC = () => {
           <div className="flex space-x-8">
             <div>
               <span className="text-gray-400">Subtotal</span>
-              <div className="text-white">${subtotal.toFixed(2)}</div>
+              <div className="text-white">{formatCurrency(subtotal)}</div>
             </div>
             <div>
               <span className="text-gray-400">Discount/Upcharge</span>
-              <div className="text-white">${discountOrUpcharge.toFixed(2)}</div>
+              <div className="text-white">{formatCurrency(discountOrUpcharge)}</div>
             </div>
             <div>
               <span className="text-gray-400">Tax</span>
-              <div className="text-white">${tax.toFixed(2)}</div>
+              <div className="text-white">{formatCurrency(tax)}</div>
             </div>
             <div>
               <span className="text-gray-400">Total</span>
-              <div className="text-green-500 font-bold">${total.toFixed(2)}</div>
+              <div className="text-green-500 font-bold">{formatCurrency(total)}</div>
             </div>
           </div>
           <div className="flex space-x-2">
@@ -248,7 +249,7 @@ const SalesItems: React.FC = () => {
               <div className="p-4">
                 <h3 className="text-white font-medium text-lg mb-2">{item.name}</h3>
                 <p className="text-green-500 font-bold">
-                  ${item.price.toFixed(2)}
+                  {formatCurrency(item.price)}
                 </p>
               </div>
             </button>
@@ -281,7 +282,7 @@ const SalesItems: React.FC = () => {
                   <div>
                     <div className="font-medium text-gray-200">{item.item.name}</div>
                     <div className="text-sm text-gray-400">
-                      ${item.item.price.toFixed(2)} x {item.quantity}
+                      {formatCurrency(item.item.price)} x {item.quantity}
                     </div>
                   </div>
                 </div>

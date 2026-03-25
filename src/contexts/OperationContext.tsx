@@ -28,16 +28,18 @@ interface Operation {
   isDelivery?: boolean;
   isPickup?: boolean;
   notes?: string;
+  created_by?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 interface OperationContextType {
   operations: Operation[];
-  addOperation: (operation: Omit<Operation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Operation>;
+  addOperation: (operation: Omit<Operation, 'id' | 'createdAt' | 'updatedAt' | 'created_by'>) => Promise<Operation>;
   updateOperation: (id: string, operation: Partial<Operation>) => Promise<void>;
   deleteOperation: (id: string) => Promise<void>;
   getOperation: (id: string) => Operation | undefined;
+  refreshOperations: () => Promise<void>;
 }
 
 const OperationContext = createContext<OperationContextType | undefined>(undefined);
@@ -63,14 +65,22 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     fetchOperations();
   }, []);
 
-  const addOperation = useCallback(async (operationData: Omit<Operation, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addOperation = useCallback(async (operationData: Omit<Operation, 'id' | 'createdAt' | 'updatedAt' | 'created_by'>) => {
     try {
+      // Get current user from localStorage
+      const authUserStr = localStorage.getItem('auth_user');
+      const authUser = authUserStr ? JSON.parse(authUserStr) : null;
+      const userId = authUser?.id || null;
+
       const response = await fetch('http://localhost:3000/api/operations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(operationData),
+        body: JSON.stringify({
+          ...operationData,
+          created_by: userId
+        }),
       });
 
       if (!response.ok) {
@@ -80,10 +90,10 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       }
 
       const newOperation = await response.json() as Operation;
-      
+
       // Update the operations state immediately with type safety
       setOperations(prevOperations => [...prevOperations, newOperation]);
-      
+
       return newOperation;
     } catch (error) {
       console.error('Error adding operation:', error);
@@ -134,6 +144,20 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     return operations.find(op => op.id === id);
   }, [operations]);
 
+  const refreshOperations = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/operations');
+      if (!response.ok) {
+        throw new Error('Failed to fetch operations');
+      }
+      const data = await response.json();
+      setOperations(data);
+    } catch (error) {
+      console.error('Error refreshing operations:', error);
+      throw error;
+    }
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       operations,
@@ -141,8 +165,9 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       updateOperation,
       deleteOperation,
       getOperation,
+      refreshOperations,
     }),
-    [operations]
+    [operations, refreshOperations]
   );
 
   return (

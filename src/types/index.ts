@@ -32,6 +32,7 @@ export interface Customer {
   totalSpent: number;
   lastVisit: string;
   loyaltyPoints: number;
+  accountBalance?: number;
 }
 
 export interface Transaction {

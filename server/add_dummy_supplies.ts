@@ -9,7 +9,7 @@ const dummySupplies = [
     description: 'Strong instant adhesive for quick repairs',
     on_hand: 50,
     min_stock: 10,
-    cost: 2.99,
+    cost: 11362,
     unit: 'bottle'
   },
   {
@@ -18,7 +18,7 @@ const dummySupplies = [
     description: 'Professional grade adhesive for soles',
     on_hand: 25,
     min_stock: 5,
-    cost: 15.99,
+    cost: 60762,
     unit: 'can'
   },
   {
@@ -27,7 +27,7 @@ const dummySupplies = [
     description: 'Flexible adhesive for rubber materials',
     on_hand: 30,
     min_stock: 8,
-    cost: 8.99,
+    cost: 34162,
     unit: 'bottle'
   },
 
@@ -38,7 +38,7 @@ const dummySupplies = [
     description: 'Premium quality leather for repairs',
     on_hand: 100,
     min_stock: 20,
-    cost: 12.99,
+    cost: 49362,
     unit: 'sqft'
   },
   {
@@ -47,7 +47,7 @@ const dummySupplies = [
     description: 'Durable rubber for sole replacement',
     on_hand: 150,
     min_stock: 30,
-    cost: 6.99,
+    cost: 26562,
     unit: 'sheet'
   },
 
@@ -58,7 +58,7 @@ const dummySupplies = [
     description: 'Replacement tips for high heels',
     on_hand: 200,
     min_stock: 50,
-    cost: 0.99,
+    cost: 3762,
     unit: 'pair'
   },
   {
@@ -67,7 +67,7 @@ const dummySupplies = [
     description: 'Standard replacement heel caps',
     on_hand: 300,
     min_stock: 75,
-    cost: 1.49,
+    cost: 5662,
     unit: 'pair'
   },
 
@@ -78,7 +78,7 @@ const dummySupplies = [
     description: 'Professional leather cleaning solution',
     on_hand: 40,
     min_stock: 10,
-    cost: 9.99,
+    cost: 37962,
     unit: 'bottle'
   },
   {
@@ -87,7 +87,7 @@ const dummySupplies = [
     description: 'Soft brush for suede cleaning',
     on_hand: 25,
     min_stock: 5,
-    cost: 4.99,
+    cost: 18962,
     unit: 'piece'
   },
 
@@ -98,7 +98,7 @@ const dummySupplies = [
     description: 'Comfortable memory foam insoles',
     on_hand: 75,
     min_stock: 15,
-    cost: 7.99,
+    cost: 30362,
     unit: 'pair'
   },
   {
@@ -107,7 +107,7 @@ const dummySupplies = [
     description: 'Premium leather sock lining material',
     on_hand: 50,
     min_stock: 10,
-    cost: 5.99,
+    cost: 22762,
     unit: 'sqft'
   },
 
@@ -118,7 +118,7 @@ const dummySupplies = [
     description: 'Small nails for sole attachment',
     on_hand: 1000,
     min_stock: 200,
-    cost: 0.05,
+    cost: 190,
     unit: 'piece'
   },
   {
@@ -127,7 +127,7 @@ const dummySupplies = [
     description: 'Steel pins for heel repair',
     on_hand: 500,
     min_stock: 100,
-    cost: 0.10,
+    cost: 380,
     unit: 'piece'
   }
 ];

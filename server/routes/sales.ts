@@ -1,6 +1,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../database';
+import { authenticateToken } from './auth';
 
 const router = express.Router();
 
@@ -77,16 +78,17 @@ router.get('/', async (req, res) => {
 });
 
 // Record a new sale
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { customerId, saleType, referenceId, totalAmount, paymentMethod } = req.body;
     const now = new Date().toISOString();
-    
+    const userId = req.user?.id || null;
+
     const result = await db.prepare(`
       INSERT INTO sales (
-        id, customer_id, sale_type, reference_id, 
-        total_amount, payment_method, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, customer_id, sale_type, reference_id,
+        total_amount, payment_method, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       uuidv4(),
       customerId,
@@ -94,6 +96,7 @@ router.post('/', async (req, res) => {
       referenceId,
       totalAmount,
       paymentMethod,
+      userId,
       now,
       now
     );

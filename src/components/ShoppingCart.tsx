@@ -9,6 +9,7 @@ import {
   faCheck
 } from '@fortawesome/free-solid-svg-icons';
 import { useCart } from '../contexts/CartContext';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export default function ShoppingCart() {
   const [isOpen, setIsOpen] = useState(false);
@@ -85,7 +86,7 @@ export default function ShoppingCart() {
                       >
                         <div className="flex-1">
                           <h3 className="text-white font-medium">{item.name}</h3>
-                          <p className="text-gray-400">${item.price.toFixed(2)}</p>
+                          <p className="text-gray-400">{formatCurrency(item.price)}</p>
                         </div>
                         
                         <div className="flex items-center space-x-3">
@@ -120,7 +121,7 @@ export default function ShoppingCart() {
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-white font-medium">Total:</span>
                   <span className="text-white text-xl font-bold">
-                    ${total.toFixed(2)}
+                    {formatCurrency(total)}
                   </span>
                 </div>
                 <button
@@ -142,7 +143,7 @@ export default function ShoppingCart() {
                   ) : (
                     <>
                       <span>Checkout</span>
-                      {total > 0 && <span>(${total.toFixed(2)})</span>}
+                      {total > 0 && <span>({formatCurrency(total)})</span>}
                     </>
                   )}
                 </button>

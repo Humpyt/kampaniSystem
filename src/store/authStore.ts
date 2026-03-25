@@ -1,64 +1,154 @@
 import { create } from 'zustand';
-import type { AuthState, User } from '../types';
 
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@repairpro.com',
-    password: 'admin123', // Added password
-    name: 'Admin User',
-    role: 'admin',
-    permissions: ['all'],
-    active: true,
-    lastLogin: '2024-03-15T08:30:00Z'
-  },
-  {
-    id: '2',
-    email: 'manager@repairpro.com',
-    password: 'manager123', // Added password
-    name: 'Manager User',
-    role: 'manager',
-    permissions: ['manage_staff', 'manage_orders', 'view_reports'],
-    active: true,
-    lastLogin: '2024-03-15T09:15:00Z'
-  },
-  {
-    id: '3',
-    email: 'staff1@repairpro.com',
-    password: 'staff123', // Added password
-    name: 'Staff User',
-    role: 'staff',
-    permissions: ['process_orders'],
-    active: true,
-    lastLogin: '2024-03-15T08:45:00Z'
-  }
-];
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'manager' | 'staff';
+  permissions: string[];
+}
 
-export const useAuthStore = create<AuthState>((set) => ({
+interface AuthState {
+  user: AuthUser | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  initializing: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+  checkAuth: () => Promise<void>;
+  updateUser: (data: Partial<AuthUser>) => void;
+  hasPermission: (permission: string) => boolean;
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  token: null,
   isAuthenticated: false,
+  initializing: true,
 
   login: async (email: string, password: string) => {
-    const user = mockUsers.find(u => u.email === email && u.password === password);
-    if (user) {
-      const { password: _, ...userWithoutPassword } = user;
-      set({ user: userWithoutPassword, isAuthenticated: true });
-      localStorage.setItem('user', JSON.stringify(userWithoutPassword));
-    } else {
-      throw new Error('Invalid credentials');
+    try {
+      const response = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Login failed');
+      }
+
+      const data = await response.json();
+      const { user, token } = data;
+
+      set({
+        user,
+        token,
+        isAuthenticated: true,
+        initializing: false,
+      });
+
+      // Store in localStorage
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem('auth_user', JSON.stringify(user));
+    } catch (error) {
+      console.error('Login error:', error);
+      set({ initializing: false });
+      throw error;
     }
   },
 
   logout: () => {
-    set({ user: null, isAuthenticated: false });
-    localStorage.removeItem('user');
+    set({
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      initializing: false,
+    });
+
+    // Clear localStorage
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
   },
 
   checkAuth: async () => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      set({ user, isAuthenticated: true });
+    const token = localStorage.getItem('auth_token');
+    const userStr = localStorage.getItem('auth_user');
+
+    if (token && userStr) {
+      try {
+        // Verify token is still valid by fetching current user
+        const response = await fetch('http://localhost:3000/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const user = await response.json();
+          set({
+            user,
+            token,
+            isAuthenticated: true,
+            initializing: false,
+          });
+        } else {
+          // Token invalid, clear storage
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          set({ user: null, token: null, isAuthenticated: false, initializing: false });
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+        // Clear invalid auth data
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        set({ user: null, token: null, isAuthenticated: false, initializing: false });
+      }
+    } else {
+      // No token found, not initializing
+      set({ initializing: false });
     }
-  }
+  },
+
+  updateUser: (data: Partial<AuthUser>) => {
+    const { user } = get();
+    if (user) {
+      const updatedUser = { ...user, ...data };
+      set({ user: updatedUser });
+      localStorage.setItem('auth_user', JSON.stringify(updatedUser));
+    }
+  },
+
+  hasPermission: (permission: string) => {
+    const { user } = get();
+    if (!user) return false;
+
+    // Admin has all permissions
+    if (user.role === 'admin') return true;
+
+    // Check if user has specific permission
+    return user.permissions?.includes(permission) || false;
+  },
 }));
+
+// Helper hook to get auth token for API calls
+export const getAuthToken = () => {
+  return localStorage.getItem('auth_token');
+};
+
+// Helper function to make authenticated API calls
+export const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = getAuthToken();
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+  });
+};

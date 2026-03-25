@@ -8,7 +8,22 @@ export const api = {
     getAll: async (): Promise<Customer[]> => {
       const response = await fetch(`${API_URL}/customers`);
       if (!response.ok) throw new Error('Failed to fetch customers');
-      return response.json();
+      const data = await response.json();
+      // Transform snake_case to camelCase
+      return data.map((customer: any) => ({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email || '',
+        address: customer.address || '',
+        notes: customer.notes || '',
+        status: customer.status || 'active',
+        totalOrders: customer.total_orders || 0,
+        totalSpent: customer.total_spent || 0,
+        lastVisit: customer.last_visit || '',
+        loyaltyPoints: customer.loyalty_points || 0,
+        accountBalance: customer.account_balance,
+      }));
     },
 
     create: async (customer: Omit<Customer, 'id'>): Promise<Customer> => {
