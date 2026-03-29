@@ -623,4 +623,317 @@ router.put('/targets/staff/:userId/targets', async (req, res) => {
   }
 });
 
+// ==================== COMMISSION ARCHIVE ENDPOINTS ====================
+
+// Get commission archives
+router.get('/commissions/archives', async (req, res) => {
+  try {
+    const { year, month, status, userId, limit = 100, offset = 0 } = req.query;
+
+    let query = `
+      SELECT ca.*, u.name as user_name, u.email as user_email
+      FROM commission_archives ca
+      LEFT JOIN users u ON ca.user_id = u.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (year) {
+      query += ' AND ca.year = ?';
+      params.push(Number(year));
+    }
+    if (month) {
+      query += ' AND ca.month = ?';
+      params.push(Number(month));
+    }
+    if (status) {
+      query += ' AND ca.status = ?';
+      params.push(status);
+    }
+    if (userId) {
+      query += ' AND ca.user_id = ?';
+      params.push(userId);
+    }
+
+    query += ' ORDER BY ca.year DESC, ca.month DESC LIMIT ? OFFSET ?';
+    params.push(Number(limit), Number(offset));
+
+    const archives = await db.prepare(query).all(...params);
+
+    // Get totals
+    let totalsQuery = `
+      SELECT
+        COUNT(*) as count,
+        COALESCE(SUM(commission_amount), 0) as total_commissions,
+        COALESCE(SUM(total_sales), 0) as total_sales,
+        SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid_count,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count
+      FROM commission_archives ca
+      WHERE 1=1
+    `;
+    const totalsParams: any[] = [];
+    if (year) {
+      totalsQuery += ' AND ca.year = ?';
+      totalsParams.push(Number(year));
+    }
+    if (month) {
+      totalsQuery += ' AND ca.month = ?';
+      totalsParams.push(Number(month));
+    }
+    if (status) {
+      totalsQuery += ' AND ca.status = ?';
+      totalsParams.push(status);
+    }
+    if (userId) {
+      totalsQuery += ' AND ca.user_id = ?';
+      totalsParams.push(userId);
+    }
+
+    const totals = await db.prepare(totalsQuery).get(...totalsParams);
+
+    res.json({
+      archives,
+      totals,
+      limit: Number(limit),
+      offset: Number(offset)
+    });
+  } catch (error) {
+    console.error('Error fetching commission archives:', error);
+    res.status(500).json({ error: 'Failed to fetch commission archives' });
+  }
+});
+
+// Get commission by staff (for bar chart)
+router.get('/commissions/by-staff', async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const now = new Date();
+    const targetYear = year ? Number(year) : now.getFullYear();
+    const targetMonth = month ? Number(month) : now.getMonth() + 1;
+
+    // First try to get from archives
+    let archives = await db.prepare(`
+      SELECT ca.*, u.name as user_name
+      FROM commission_archives ca
+      LEFT JOIN users u ON ca.user_id = u.id
+      WHERE ca.year = ? AND ca.month = ?
+      ORDER BY ca.commission_amount DESC
+    `).all(targetYear, targetMonth);
+
+    // If no archives, calculate from operations
+    if (archives.length === 0) {
+      const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+      const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-31`;
+
+      const staffSales = await db.prepare(`
+        SELECT
+          u.id as user_id,
+          u.name as user_name,
+          COALESCE(SUM(o.total_amount), 0) as total_sales
+        FROM users u
+        LEFT JOIN operations o ON u.id = o.created_by
+          AND o.created_at >= ? AND o.created_at <= ?
+          AND o.status = 'completed'
+        WHERE u.role IN ('staff', 'manager')
+        GROUP BY u.id, u.name
+        HAVING total_sales > 0
+        ORDER BY total_sales DESC
+      `).all(startDate, endDate);
+
+      archives = staffSales.map((staff: any) => {
+        const tier = getCommissionTier(staff.total_sales);
+        return {
+          user_id: staff.user_id,
+          user_name: staff.user_name,
+          total_sales: staff.total_sales,
+          commission_rate: tier.rate,
+          commission_amount: staff.total_sales * tier.rate,
+          year: targetYear,
+          month: targetMonth
+        };
+      });
+    }
+
+    res.json({ staff: archives });
+  } catch (error) {
+    console.error('Error fetching commission by staff:', error);
+    res.status(500).json({ error: 'Failed to fetch commission by staff' });
+  }
+});
+
+// Get commission trends (for line chart)
+router.get('/commissions/trends', async (req, res) => {
+  try {
+    const { months = 6 } = req.query;
+    const now = new Date();
+
+    const trends = [];
+    for (let i = Number(months) - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+
+      const archives = await db.prepare(`
+        SELECT
+          COALESCE(SUM(commission_amount), 0) as total_commissions,
+          COUNT(*) as staff_count
+        FROM commission_archives
+        WHERE year = ? AND month = ?
+      `).get(year, month) as any;
+
+      const topPerformer = await db.prepare(`
+        SELECT ca.*, u.name as user_name
+        FROM commission_archives ca
+        LEFT JOIN users u ON ca.user_id = u.id
+        WHERE ca.year = ? AND ca.month = ?
+        ORDER BY ca.commission_amount DESC
+        LIMIT 1
+      `).get(year, month) as any;
+
+      trends.push({
+        month: `${year}-${String(month).padStart(2, '0')}`,
+        year,
+        month,
+        totalCommissions: archives.total_commissions,
+        staffCount: archives.staff_count,
+        topPerformer: topPerformer ? {
+          userId: topPerformer.user_id,
+          userName: topPerformer.user_name,
+          commissionAmount: topPerformer.commission_amount
+        } : null
+      });
+    }
+
+    const avgMonthly = trends.reduce((sum, t) => sum + t.totalCommissions, 0) / trends.length;
+
+    res.json({ trends, averageMonthlyCommission: avgMonthly });
+  } catch (error) {
+    console.error('Error fetching commission trends:', error);
+    res.status(500).json({ error: 'Failed to fetch commission trends' });
+  }
+});
+
+// Archive previous month's commissions
+router.post('/commissions/archive', async (req, res) => {
+  try {
+    const { year: providedYear, month: providedMonth } = req.body;
+    const now = new Date();
+
+    // Default to previous month
+    let targetYear = providedYear;
+    let targetMonth = providedMonth;
+
+    if (!targetYear || !targetMonth) {
+      const prevMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      prevMonth.setMonth(prevMonth.getMonth() - 1);
+      targetYear = prevMonth.getFullYear();
+      targetMonth = prevMonth.getMonth() + 1;
+    }
+
+    const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+    const endDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-31`;
+
+    // Get or create admin user for created_by
+    const adminUser = await db.prepare(`
+      SELECT id FROM users WHERE role = 'admin' LIMIT 1
+    `).get() as any;
+    const createdBy = adminUser?.id || null;
+
+    // Calculate commissions for each staff member
+    const staffCommissions = await db.prepare(`
+      SELECT
+        u.id as user_id,
+        u.name as user_name,
+        COALESCE(SUM(o.total_amount), 0) as total_sales
+      FROM users u
+      LEFT JOIN operations o ON u.id = o.created_by
+        AND o.created_at >= ? AND o.created_at <= ?
+        AND o.status = 'completed'
+      WHERE u.role IN ('staff', 'manager')
+      GROUP BY u.id, u.name
+    `).all(startDate, endDate);
+
+    const archives = [];
+    for (const staff of staffCommissions) {
+      if (staff.total_sales <= 0) continue;
+
+      const tier = getCommissionTier(staff.total_sales);
+      const commissionAmount = staff.total_sales * tier.rate;
+      const archiveId = `ca_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Check if already exists
+      const existing = await db.prepare(`
+        SELECT id FROM commission_archives WHERE user_id = ? AND year = ? AND month = ?
+      `).get(staff.user_id, targetYear, targetMonth);
+
+      if (existing) {
+        // Update existing
+        await db.prepare(`
+          UPDATE commission_archives
+          SET total_sales = ?, commission_rate = ?, commission_amount = ?, archived_at = CURRENT_TIMESTAMP
+          WHERE user_id = ? AND year = ? AND month = ?
+        `).run(staff.total_sales, tier.rate, commissionAmount, staff.user_id, targetYear, targetMonth);
+      } else {
+        // Insert new
+        await db.prepare(`
+          INSERT INTO commission_archives (id, user_id, year, month, total_sales, commission_rate, commission_amount, status, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        `).run(archiveId, staff.user_id, targetYear, targetMonth, staff.total_sales, tier.rate, commissionAmount, createdBy);
+      }
+
+      archives.push({
+        userId: staff.user_id,
+        userName: staff.user_name,
+        totalSales: staff.total_sales,
+        commissionRate: tier.rate,
+        commissionAmount
+      });
+    }
+
+    res.json({
+      success: true,
+      archivedCount: archives.length,
+      year: targetYear,
+      month: targetMonth,
+      archives
+    });
+  } catch (error) {
+    console.error('Error archiving commissions:', error);
+    res.status(500).json({ error: 'Failed to archive commissions' });
+  }
+});
+
+// Mark commission as paid
+router.patch('/commissions/:id/mark-paid', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const archive = await db.prepare(`
+      SELECT * FROM commission_archives WHERE id = ?
+    `).get(id);
+
+    if (!archive) {
+      return res.status(404).json({ error: 'Commission archive not found' });
+    }
+
+    await db.prepare(`
+      UPDATE commission_archives
+      SET status = 'paid', paid_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id);
+
+    const updated = await db.prepare(`
+      SELECT ca.*, u.name as user_name
+      FROM commission_archives ca
+      LEFT JOIN users u ON ca.user_id = u.id
+      WHERE ca.id = ?
+    `).get(id);
+
+    res.json({ success: true, archive: updated });
+  } catch (error) {
+    console.error('Error marking commission as paid:', error);
+    res.status(500).json({ error: 'Failed to mark commission as paid' });
+  }
+});
+
 export default router;

@@ -378,6 +378,23 @@ db.exec(`
     created_by TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Commission archives table for monthly commission snapshots
+  CREATE TABLE IF NOT EXISTS commission_archives (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    total_sales REAL NOT NULL DEFAULT 0,
+    commission_rate REAL NOT NULL,
+    commission_amount REAL NOT NULL DEFAULT 0,
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'paid')),
+    archived_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    paid_at TEXT,
+    created_by TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, year, month)
+  );
 `);
 
 // Initialize database with indexes
@@ -392,6 +409,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);
   CREATE INDEX IF NOT EXISTS idx_sales_created_by ON sales(created_by);
   CREATE INDEX IF NOT EXISTS idx_qrcodes_type ON qrcodes(type);
+  CREATE INDEX IF NOT EXISTS idx_commission_archives_user ON commission_archives(user_id);
+  CREATE INDEX IF NOT EXISTS idx_commission_archives_year_month ON commission_archives(year, month);
+  CREATE INDEX IF NOT EXISTS idx_commission_archives_status ON commission_archives(status);
   CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
