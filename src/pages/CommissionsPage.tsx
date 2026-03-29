@@ -158,7 +158,7 @@ export default function CommissionsPage() {
     }));
 
     const lineData = trends.map(t => ({
-      month: t.month.slice(5),
+      month: String(t.month).padStart(2, '0'),
       commissions: t.totalCommissions,
       staff: t.staffCount
     }));
