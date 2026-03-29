@@ -566,4 +566,102 @@ router.get('/profit-summary', async (req, res) => {
   }
 });
 
+// GET /api/analytics/daily-balance - Returns daily balance sheet with sales/expenses breakdown by payment method
+router.get('/daily-balance', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const startOfDay = `${targetDate} 00:00:00`;
+    const endOfDay = `${targetDate} 23:59:59`;
+
+    // Get sales breakdown by payment method
+    const salesResult = await db.prepare(`
+      SELECT
+        COALESCE(payment_method, 'Cash') as paymentMethod,
+        COALESCE(SUM(total_amount), 0) as total
+      FROM operations
+      WHERE created_at >= ? AND created_at <= ?
+      GROUP BY payment_method
+    `).all(startOfDay, endOfDay) as any[];
+
+    // Get expenses breakdown by payment method
+    const expensesResult = await db.prepare(`
+      SELECT
+        COALESCE(payment_method, 'Cash') as paymentMethod,
+        COALESCE(SUM(amount), 0) as total
+      FROM expenses
+      WHERE date = ?
+      GROUP BY payment_method
+    `).all(targetDate) as any[];
+
+    // Build sales by method map
+    const salesByMethod: Record<string, number> = {
+      'Cash': 0,
+      'Mobile Money': 0,
+      'Credit Card': 0,
+      'Bank Transfer': 0,
+      'Cheque': 0
+    };
+    for (const s of salesResult) {
+      salesByMethod[s.paymentMethod] = s.total;
+    }
+
+    // Build expenses by method map
+    const expensesByMethod: Record<string, number> = {
+      'Cash': 0,
+      'Mobile Money': 0,
+      'Credit Card': 0,
+      'Bank Transfer': 0,
+      'Cheque': 0
+    };
+    for (const e of expensesResult) {
+      expensesByMethod[e.paymentMethod] = e.total;
+    }
+
+    // Calculate totals
+    const totalSales = Object.values(salesByMethod).reduce((a, b) => a + b, 0);
+    const totalExpenses = Object.values(expensesByMethod).reduce((a, b) => a + b, 0);
+    const cashAtHand = salesByMethod['Cash'] - expensesByMethod['Cash'];
+    const mobileMoneyBalance = salesByMethod['Mobile Money'] - expensesByMethod['Mobile Money'];
+    const cardBalance = salesByMethod['Credit Card'] - expensesByMethod['Credit Card'];
+    const bankTransferBalance = salesByMethod['Bank Transfer'] - expensesByMethod['Bank Transfer'];
+    const chequeBalance = salesByMethod['Cheque'] - expensesByMethod['Cheque'];
+
+    res.json({
+      date: targetDate,
+      sales: {
+        total: totalSales,
+        byMethod: {
+          cash: salesByMethod['Cash'],
+          mobileMoney: salesByMethod['Mobile Money'],
+          card: salesByMethod['Credit Card'],
+          bankTransfer: salesByMethod['Bank Transfer'],
+          cheque: salesByMethod['Cheque']
+        }
+      },
+      expenses: {
+        total: totalExpenses,
+        byMethod: {
+          cash: expensesByMethod['Cash'],
+          mobileMoney: expensesByMethod['Mobile Money'],
+          card: expensesByMethod['Credit Card'],
+          bankTransfer: expensesByMethod['Bank Transfer'],
+          cheque: expensesByMethod['Cheque']
+        }
+      },
+      balance: {
+        cashAtHand,
+        mobileMoney: mobileMoneyBalance,
+        card: cardBalance,
+        bankTransfer: bankTransferBalance,
+        cheque: chequeBalance
+      },
+      netBalance: totalSales - totalExpenses
+    });
+  } catch (error) {
+    console.error('Error fetching daily balance:', error);
+    res.status(500).json({ error: 'Failed to fetch daily balance' });
+  }
+});
+
 export default router;

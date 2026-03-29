@@ -148,3 +148,48 @@ export const getProfitSummary = async (): Promise<ProfitSummary> => {
 
   return response.json();
 };
+
+export interface DailyBalance {
+  date: string;
+  sales: {
+    total: number;
+    byMethod: {
+      cash: number;
+      mobileMoney: number;
+      card: number;
+      bankTransfer: number;
+      cheque: number;
+    };
+  };
+  expenses: {
+    total: number;
+    byMethod: {
+      cash: number;
+      mobileMoney: number;
+      card: number;
+      bankTransfer: number;
+      cheque: number;
+    };
+  };
+  balance: {
+    cashAtHand: number;
+    mobileMoney: number;
+    card: number;
+    bankTransfer: number;
+    cheque: number;
+  };
+  netBalance: number;
+}
+
+export const getDailyBalance = async (date?: string): Promise<DailyBalance> => {
+  const params = date ? `?date=${date}` : '';
+  const response = await fetch(`${API_BASE}/analytics/daily-balance${params}`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch daily balance');
+  }
+
+  return response.json();
+};

@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Filter, Search, Package, DollarSign, CheckCircle, Receipt, TrendingUp, TrendingDown, Wallet, Minus, ArrowRightLeft } from 'lucide-react';
+import { Calendar, Clock, Filter, Search, Package, DollarSign, CheckCircle, Receipt, TrendingUp, TrendingDown, Wallet, Minus, ArrowRightLeft, Printer, FileDown, X } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { useAuthStore } from '../store/authStore';
 import { useExpenses } from '../contexts/ExpenseContext';
-import { getProfitSummary, ProfitSummary } from '../api/expenses';
+import { getProfitSummary, ProfitSummary, getDailyBalance, DailyBalance } from '../api/expenses';
 import { format } from 'date-fns';
 
 // Helper function to safely format dates
@@ -30,6 +30,63 @@ export default function OperationPage() {
   const { expenses, fetchExpenses, fetchAnalytics } = useExpenses();
   const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
   const [activeTab, setActiveTab] = useState<'operations' | 'expenses'>('operations');
+  const [balanceSheetOpen, setBalanceSheetOpen] = useState(false);
+  const [balanceSheetDate, setBalanceSheetDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dailyBalance, setDailyBalance] = useState<DailyBalance | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const balanceRef = useRef<HTMLDivElement>(null);
+
+  // Fetch balance sheet data
+  const fetchBalanceSheet = useCallback(async () => {
+    setBalanceLoading(true);
+    try {
+      const data = await getDailyBalance(balanceSheetDate);
+      setDailyBalance(data);
+    } catch (error) {
+      console.error('Failed to fetch balance sheet:', error);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [balanceSheetDate]);
+
+  useEffect(() => {
+    if (balanceSheetOpen) {
+      fetchBalanceSheet();
+    }
+  }, [balanceSheetOpen, fetchBalanceSheet]);
+
+  // Print balance sheet
+  const handlePrint = () => {
+    const printContent = balanceRef.current;
+    if (!printContent) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write('<html><head><title>Daily Balance Sheet</title>');
+    printWindow.document.write('<style>');
+    printWindow.document.write(`
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      h1 { font-size: 24px; margin-bottom: 5px; }
+      .date { color: #666; margin-bottom: 20px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+      th { background: #f5f5f5; }
+      .total-row { font-weight: bold; background: #f9f9f9; }
+      .cash-at-hand { background: #e8f5e9; font-weight: bold; }
+      .positive { color: green; }
+      .negative { color: red; }
+      @media print { body { padding: 0; } }
+    `);
+    printWindow.document.write('</style></head><body>');
+    printWindow.document.write(printContent.innerHTML);
+    printWindow.document.write('</body></html>');
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  // Download as PDF (simple approach using print)
+  const handleDownloadPdf = () => {
+    handlePrint();
+  };
 
   // Fetch profit summary
   useEffect(() => {
@@ -175,6 +232,14 @@ export default function OperationPage() {
               </div>
             </button>
           </div>
+          {/* Balance Sheet Button */}
+          <button
+            onClick={() => setBalanceSheetOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-all"
+          >
+            <Wallet size={16} />
+            Balance Sheet
+          </button>
           {activeTab === 'operations' && (
             <div className="flex items-center space-x-2 text-gray-400 bg-gray-800 px-3 py-2 rounded-lg">
               <Package className="h-4 w-4" />
@@ -576,6 +641,173 @@ export default function OperationPage() {
           </tbody>
         </table>
       </div>
+      )}
+
+      {/* Balance Sheet Modal */}
+      {balanceSheetOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-white">Daily Balance Sheet</h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="date"
+                    value={balanceSheetDate}
+                    onChange={(e) => setBalanceSheetDate(e.target.value)}
+                    className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+                  />
+                  <button
+                    onClick={fetchBalanceSheet}
+                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm"
+                  >
+                    Load
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrint}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
+                >
+                  <Printer size={16} />
+                  Print
+                </button>
+                <button
+                  onClick={handleDownloadPdf}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
+                >
+                  <FileDown size={16} />
+                  Save PDF
+                </button>
+                <button
+                  onClick={() => setBalanceSheetOpen(false)}
+                  className="p-2 text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6" ref={balanceRef}>
+              {balanceLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+                </div>
+              ) : dailyBalance ? (
+                <div className="space-y-6">
+                  {/* Date Header */}
+                  <div className="text-center border-b border-gray-700 pb-4">
+                    <h3 className="text-lg font-semibold text-white">Balance Sheet</h3>
+                    <p className="text-gray-400 text-sm">{format(new Date(dailyBalance.date), 'MMMM d, yyyy')}</p>
+                  </div>
+
+                  {/* Sales Section */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-indigo-400 uppercase tracking-wide mb-3">Day's Sales</h4>
+                    <div className="bg-gray-900/50 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Cash Sales</td>
+                            <td className="px-4 py-2 text-right text-white font-medium">{formatCurrency(dailyBalance.sales.byMethod.cash)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Mobile Money</td>
+                            <td className="px-4 py-2 text-right text-white font-medium">{formatCurrency(dailyBalance.sales.byMethod.mobileMoney)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Card Payments</td>
+                            <td className="px-4 py-2 text-right text-white font-medium">{formatCurrency(dailyBalance.sales.byMethod.card)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Bank Transfer</td>
+                            <td className="px-4 py-2 text-right text-white font-medium">{formatCurrency(dailyBalance.sales.byMethod.bankTransfer)}</td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2 text-gray-300">Cheque</td>
+                            <td className="px-4 py-2 text-right text-white font-medium">{formatCurrency(dailyBalance.sales.byMethod.cheque)}</td>
+                          </tr>
+                          <tr className="total-row border-t-2 border-gray-600">
+                            <td className="px-4 py-2 text-white font-bold">Total Sales</td>
+                            <td className="px-4 py-2 text-right text-white font-bold">{formatCurrency(dailyBalance.sales.total)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Expenses Section */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-rose-400 uppercase tracking-wide mb-3">Less: Expenses</h4>
+                    <div className="bg-gray-900/50 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Cash Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-medium">-{formatCurrency(dailyBalance.expenses.byMethod.cash)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Mobile Money Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-medium">-{formatCurrency(dailyBalance.expenses.byMethod.mobileMoney)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Card Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-medium">-{formatCurrency(dailyBalance.expenses.byMethod.card)}</td>
+                          </tr>
+                          <tr className="border-b border-gray-700">
+                            <td className="px-4 py-2 text-gray-300">Bank Transfer Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-medium">-{formatCurrency(dailyBalance.expenses.byMethod.bankTransfer)}</td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2 text-gray-300">Cheque Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-medium">-{formatCurrency(dailyBalance.expenses.byMethod.cheque)}</td>
+                          </tr>
+                          <tr className="total-row border-t-2 border-gray-600">
+                            <td className="px-4 py-2 text-white font-bold">Total Expenses</td>
+                            <td className="px-4 py-2 text-right text-rose-400 font-bold">-{formatCurrency(dailyBalance.expenses.total)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Cash at Hand Section */}
+                  <div>
+                    <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h4 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide">Cash at Hand</h4>
+                          <p className="text-xs text-gray-400 mt-1">Cash Sales minus Cash Expenses</p>
+                        </div>
+                        <p className={`text-2xl font-bold ${dailyBalance.balance.cashAtHand >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {formatCurrency(dailyBalance.balance.cashAtHand)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary */}
+                  <div className="bg-gray-900/50 rounded-xl p-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300">Net Balance</span>
+                      <span className={`text-lg font-bold ${dailyBalance.netBalance >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                        {formatCurrency(dailyBalance.netBalance)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Total Sales - Total Expenses</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-400">
+                  Select a date and click Load to view balance sheet
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
