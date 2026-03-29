@@ -23,6 +23,7 @@ const safeFormat = (date: string | Date | null | undefined, formatStr: string) =
 export default function OperationPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
   const [timeFilter, setTimeFilter] = useState<'today' | 'tomorrow' | 'all' | 'custom'>('today');
   const [customDate, setCustomDate] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -771,22 +772,26 @@ export default function OperationPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSaveArchive}
-                  className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm"
-                  title="Save to Archive"
-                >
-                  <Save size={16} />
-                  Save
-                </button>
-                {isFromArchive && (
-                  <button
-                    onClick={handleDeleteArchive}
-                    className="flex items-center gap-2 px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm"
-                    title="Delete Archive"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      onClick={handleSaveArchive}
+                      className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm"
+                      title="Save to Archive"
+                    >
+                      <Save size={16} />
+                      Save
+                    </button>
+                    {isFromArchive && (
+                      <button
+                        onClick={handleDeleteArchive}
+                        className="flex items-center gap-2 px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm"
+                        title="Delete Archive"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </>
                 )}
                 <button
                   onClick={handlePrint}
@@ -847,7 +852,7 @@ export default function OperationPage() {
                         `}
                       >
                         {format(day, 'd')}
-                        {hasArchive && (
+                        {isAdmin && hasArchive && (
                           <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-emerald-500 rounded-full" />
                         )}
                       </button>
@@ -856,33 +861,35 @@ export default function OperationPage() {
                 </div>
 
                 {/* Recent Archives */}
-                <div className="mt-6">
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Recent Archives</h4>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {archives.slice(0, 10).map(archive => (
-                      <button
-                        key={archive.id}
-                        onClick={() => {
-                          setBalanceSheetDate(archive.date);
-                          setIsFromArchive(true);
-                          setBalanceLoading(true);
-                          getBalanceArchive(archive.date).then(setDailyBalance).finally(() => setBalanceLoading(false));
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-gray-700 transition-colors ${
-                          archive.date === balanceSheetDate ? 'bg-indigo-600/30 text-indigo-300' : 'text-gray-400'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span>{format(new Date(archive.date), 'MMM d, yyyy')}</span>
-                          <span className="text-emerald-400">{formatCurrency(archive.cashAtHand)}</span>
-                        </div>
-                      </button>
-                    ))}
-                    {archives.length === 0 && (
-                      <p className="text-xs text-gray-500 italic">No archives yet</p>
-                    )}
+                {isAdmin && (
+                  <div className="mt-6">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Recent Archives</h4>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {archives.slice(0, 10).map(archive => (
+                        <button
+                          key={archive.id}
+                          onClick={() => {
+                            setBalanceSheetDate(archive.date);
+                            setIsFromArchive(true);
+                            setBalanceLoading(true);
+                            getBalanceArchive(archive.date).then(setDailyBalance).finally(() => setBalanceLoading(false));
+                          }}
+                          className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-gray-700 transition-colors ${
+                            archive.date === balanceSheetDate ? 'bg-indigo-600/30 text-indigo-300' : 'text-gray-400'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span>{format(new Date(archive.date), 'MMM d, yyyy')}</span>
+                            <span className="text-emerald-400">{formatCurrency(archive.cashAtHand)}</span>
+                          </div>
+                        </button>
+                      ))}
+                      {archives.length === 0 && (
+                        <p className="text-xs text-gray-500 italic">No archives yet</p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Main Content */}
