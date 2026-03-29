@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
+import { PaymentModal } from '../components/PaymentModal';
 import { Search, Package, DollarSign, CreditCard, Banknote, CheckSquare, Gift, X, Plus, Minus, RefreshCw } from 'lucide-react';
 
 interface PickupTicket {
@@ -25,12 +26,10 @@ interface PickupTicket {
 }
 
 export default function PickupPage() {
-  const { operations } = useOperation();
+  const { operations, refreshOperations } = useOperation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'check' | 'store_credit'>('cash');
-  const [amountTendered, setAmountTendered] = useState<number>(0);
-  const [showNumpad, setShowNumpad] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [discount, setDiscount] = useState<number>(0);
 
   // Convert operations to pickup tickets
@@ -73,11 +72,10 @@ export default function PickupPage() {
   }, 0);
 
   const finalAmount = selectedTotal - discount;
-  const change = Math.max(0, amountTendered - finalAmount);
 
   const handleSelectTicket = (ticketId: string) => {
-    setSelectedTickets(prev => 
-      prev.includes(ticketId) 
+    setSelectedTickets(prev =>
+      prev.includes(ticketId)
         ? prev.filter(id => id !== ticketId)
         : [...prev, ticketId]
     );
@@ -91,58 +89,29 @@ export default function PickupPage() {
     setSelectedTickets([]);
   };
 
-  const handleNumpadClick = (value: string) => {
-    if (value === 'C') {
-      setAmountTendered(0);
-    } else if (value === '.') {
-      if (!amountTendered.toString().includes('.')) {
-        setAmountTendered(Number(amountTendered.toString() + '.'));
-      }
-    } else {
-      const newValue = Number(amountTendered.toString() + value);
-      setAmountTendered(newValue);
-    }
-  };
-
-  const handlePayment = async () => {
-    if (selectedTickets.length === 0) {
-      alert('Please select tickets to process payment');
-      return;
-    }
-
-    if (amountTendered < finalAmount && paymentMethod === 'cash') {
-      alert('Amount tendered must be greater than or equal to the total amount');
-      return;
-    }
-
+  const handlePaymentComplete = async (payments: Array<{ method: string; amount: number }>) => {
     try {
       // Process payment for each selected ticket
       for (const ticketId of selectedTickets) {
-        const ticket = tickets.find(t => t.id === ticketId);
-        if (!ticket) continue;
-
-        await fetch(`http://localhost:3000/api/operations/${ticketId}/complete`, {
+        const response = await fetch(`http://localhost:3000/api/operations/${ticketId}/payments`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            paymentMethod,
-            amountPaid: ticket.total,
-            discount: discount / selectedTickets.length, // Split discount evenly
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payments }),
         });
+        if (!response.ok) {
+          throw new Error('Payment failed');
+        }
       }
 
-      // Clear selections and reset form
+      // Refresh operations to remove paid items
+      await refreshOperations();
+
+      // Clear selections and close modal
       setSelectedTickets([]);
-      setAmountTendered(0);
       setDiscount(0);
-      setShowNumpad(false);
-      
-      alert('Payment processed successfully!');
+      setIsPaymentModalOpen(false);
     } catch (error) {
-      console.error('Error processing payment:', error);
+      console.error('Payment error:', error);
       alert('Failed to process payment. Please try again.');
     }
   };
@@ -294,104 +263,33 @@ export default function PickupPage() {
               </div>
             </div>
 
-            {/* Payment Method Selection */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <button
-                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
-                  paymentMethod === 'cash' 
-                    ? 'bg-green-900/40 text-green-400 ring-2 ring-green-500/50' 
-                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
-                }`}
-                onClick={() => setPaymentMethod('cash')}
-              >
-                <Banknote className="h-5 w-5" />
-                <span>Cash</span>
-              </button>
-              <button
-                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
-                  paymentMethod === 'card' 
-                    ? 'bg-blue-900/40 text-blue-400 ring-2 ring-blue-500/50' 
-                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
-                }`}
-                onClick={() => setPaymentMethod('card')}
-              >
-                <CreditCard className="h-5 w-5" />
-                <span>Card</span>
-              </button>
-              <button
-                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
-                  paymentMethod === 'check' 
-                    ? 'bg-purple-900/40 text-purple-400 ring-2 ring-purple-500/50' 
-                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
-                }`}
-                onClick={() => setPaymentMethod('check')}
-              >
-                <CheckSquare className="h-5 w-5" />
-                <span>Check</span>
-              </button>
-              <button
-                className={`p-4 rounded-lg flex items-center justify-center space-x-3 transition-all ${
-                  paymentMethod === 'store_credit' 
-                    ? 'bg-yellow-900/40 text-yellow-400 ring-2 ring-yellow-500/50' 
-                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800'
-                }`}
-                onClick={() => setPaymentMethod('store_credit')}
-              >
-                <Gift className="h-5 w-5" />
-                <span>Store Credit</span>
-              </button>
-            </div>
-
-            {/* Amount Tendered Section */}
-            {paymentMethod === 'cash' && (
-              <div className="space-y-4 mb-6">
-                <div className="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg">
-                  <span className="text-gray-300">Amount Tendered</span>
-                  <span className="text-gray-200 font-medium">{formatCurrency(amountTendered)}</span>
-                </div>
-                <div className="flex justify-between items-center bg-green-900/30 p-4 rounded-lg">
-                  <span className="text-gray-300">Change</span>
-                  <span className="text-green-400 font-medium">{formatCurrency(change)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Numpad */}
-            {showNumpad && (
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'C'].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => handleNumpadClick(num)}
-                    className="p-4 text-lg font-medium rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700 transition-colors"
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setShowNumpad(!showNumpad)}
-                className="flex items-center justify-center space-x-2 p-4 rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700 transition-colors"
-              >
-                {showNumpad ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-                <span>{showNumpad ? 'Hide Numpad' : 'Show Numpad'}</span>
-              </button>
-              <button
-                onClick={handlePayment}
-                className="flex items-center justify-center space-x-2 p-4 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={selectedTickets.length === 0}
-              >
-                <DollarSign className="h-5 w-5" />
-                <span>Process Payment</span>
-              </button>
-            </div>
+            {/* Record Payment Button */}
+            <button
+              onClick={() => {
+                if (selectedTickets.length === 0) {
+                  alert('Please select tickets to process payment');
+                  return;
+                }
+                setIsPaymentModalOpen(true);
+              }}
+              disabled={selectedTickets.length === 0}
+              className="w-full flex items-center justify-center gap-2 p-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors"
+            >
+              <CreditCard size={20} />
+              <span>Record Payment</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        totalAmount={finalAmount}
+        customer={null}
+        onComplete={handlePaymentComplete}
+      />
     </div>
   );
 }

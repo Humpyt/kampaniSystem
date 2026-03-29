@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { getProfitSummary, getDailyBalance } from '../api/expenses';
 import {
   faTicket, faSearch, faBoxesStacked, faWarehouse, faHandshake,
   faTruckFast, faMoneyBillTransfer,
@@ -15,6 +16,19 @@ export default function StorePage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState({
+    monthlyCollected: 0,
+    monthlyTarget: 1000000,
+    dailyCollected: 0,
+    dailyTarget: 300000,
+    jobsMonthly: 0,
+    jobsToday: 0,
+    jobsPending: 0,
+    jobsCollectedMonth: 0
+  });
+
+  const canSeeAllData = user?.role === 'admin' || user?.role === 'manager';
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -23,19 +37,54 @@ export default function StorePage() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleQuickAction = (path: string) => navigate(path);
+  useEffect(() => {
+    const fetchStoreData = async () => {
+      try {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
 
-  // Mocked data for the new dashboard cards (based on implementation plan)
-  const dashboardStats = {
-    monthlyCollected: 450000,
-    monthlyTarget: 1000000,
-    dailyCollected: 120000,
-    dailyTarget: 300000,
-    jobsMonthly: 1250,
-    jobsToday: 24,
-    jobsPending: 154,
-    jobsCollectedMonth: 1096
-  };
+        // Fetch profit summary for monthly revenue
+        const profitData = await getProfitSummary();
+
+        // Fetch daily balance for today's revenue
+        const dailyData = await getDailyBalance(today);
+
+        // Fetch operations (filtered by staff if needed)
+        const operationsUrl = canSeeAllData
+          ? 'http://localhost:3000/api/operations'
+          : `http://localhost:3000/api/operations?created_by=${user?.id}`;
+        const opsResponse = await fetch(operationsUrl);
+        const operations = await opsResponse.json();
+
+        // Filter operations by date
+        const jobsThisMonth = Array.isArray(operations) ? operations.filter((op: any) =>
+          op.createdAt && op.createdAt >= monthStart
+        ) : [];
+        const jobsToday = Array.isArray(operations) ? operations.filter((op: any) =>
+          op.createdAt && op.createdAt.startsWith(today)
+        ) : [];
+
+        setDashboardStats({
+          monthlyCollected: profitData.salesThisMonth || 0,
+          dailyCollected: dailyData.sales?.total || 0,
+          jobsMonthly: jobsThisMonth.length,
+          jobsToday: jobsToday.length,
+          jobsPending: jobsThisMonth.filter((op: any) => op.status === 'pending').length,
+          jobsCollectedMonth: jobsThisMonth.filter((op: any) => op.status === 'completed').length,
+          monthlyTarget: 1000000,
+          dailyTarget: 300000,
+        });
+      } catch (error) {
+        console.error('Error fetching store data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStoreData();
+  }, [user, canSeeAllData]);
+
+  const handleQuickAction = (path: string) => navigate(path);
 
   // Helper component for the segmented progress bars
   const SegmentedProgressBar = ({ value, max }: { value: number, max: number }) => {
