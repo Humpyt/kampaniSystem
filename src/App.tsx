@@ -34,6 +34,7 @@ import { ProductProvider } from './contexts/ProductContext';
 import { ServiceProvider } from './contexts/ServiceContext';
 import { StaffMessageProvider } from './contexts/StaffMessageContext';
 import { RetailProductProvider } from './contexts/RetailProductContext';
+import { ExpenseProvider } from './contexts/ExpenseContext';
 import { useAuthStore } from './store/authStore';
 import { Navigate } from 'react-router-dom';
 import NoChargeDoOverPage from './pages/NoChargeDoOverPage';
@@ -151,7 +152,8 @@ function App() {
                   <RetailProductProvider>
                     <ServiceProvider>
                       <StaffMessageProvider>
-                      <Routes>
+                        <ExpenseProvider>
+                        <Routes>
                     {/* Root route - redirect based on authentication */}
                     <Route
                       path="/"
@@ -217,7 +219,7 @@ function App() {
                         </ProtectedRoute>
                       } />
                       <Route path="expenses" element={
-                        <ProtectedRoute permission="view_reports" requiredRoles={['admin', 'manager']}>
+                        <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
                           <ExpensesPage />
                         </ProtectedRoute>
                       } />
@@ -287,6 +289,7 @@ function App() {
                       } />
                     </Route>
                       </Routes>
+                        </ExpenseProvider>
                       </StaffMessageProvider>
                     </ServiceProvider>
                   </RetailProductProvider>

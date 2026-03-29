@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Filter, Search, Package, DollarSign, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, Filter, Search, Package, DollarSign, CheckCircle, Receipt, TrendingUp, TrendingDown, Wallet, Minus, ArrowRightLeft } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { useAuthStore } from '../store/authStore';
+import { useExpenses } from '../contexts/ExpenseContext';
+import { getProfitSummary, ProfitSummary } from '../api/expenses';
 import { format } from 'date-fns';
 
 // Helper function to safely format dates
@@ -25,6 +27,30 @@ export default function OperationPage() {
   const [customDate, setCustomDate] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const { operations } = useOperation();
+  const { expenses, fetchExpenses, fetchAnalytics } = useExpenses();
+  const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
+  const [activeTab, setActiveTab] = useState<'operations' | 'expenses'>('operations');
+
+  // Fetch profit summary
+  useEffect(() => {
+    const fetchProfit = async () => {
+      try {
+        const data = await getProfitSummary();
+        setProfitSummary(data);
+      } catch (error) {
+        console.error('Failed to fetch profit summary:', error);
+      }
+    };
+    fetchProfit();
+  }, []);
+
+  // Fetch expenses when expenses tab is active
+  useEffect(() => {
+    if (activeTab === 'expenses') {
+      fetchExpenses();
+      fetchAnalytics();
+    }
+  }, [activeTab, fetchExpenses, fetchAnalytics]);
 
   // Memoize workItems to avoid recomputing on every render
   const workItems = useMemo(() => operations.map(operation => ({
@@ -103,25 +129,226 @@ export default function OperationPage() {
     [filteredWorkItems]
   );
 
+  const getCategoryIcon = (category: string) => {
+    if (category.includes('Supplies') || category.includes('Materials')) return <Package size={14} />;
+    if (category.includes('Rent') || category.includes('Utilities')) return <Calendar size={14} />;
+    if (category.includes('Marketing') || category.includes('Advertising')) return <TrendingUp size={14} />;
+    if (category.includes('Salaries') || category.includes('Wages')) return <Wallet size={14} />;
+    return <Receipt size={14} />;
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Operations</h1>
           <p className="text-gray-400">Manage daily repair operations and workflow</p>
         </div>
-        <div className="flex space-x-4">
-          <div className="flex items-center space-x-2 text-gray-400">
-            <Package className="h-5 w-5" />
-            <span>Total Items: {filteredWorkItems.length}</span>
-            <DollarSign className="h-5 w-5 ml-4" />
-            <span>Value: {formatCurrency(totalValue)}</span>
+        <div className="flex items-center gap-3">
+          {/* Tab Toggle */}
+          <div className="flex bg-gray-800 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('operations')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'operations'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft size={14} />
+                Operations
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('expenses')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'expenses'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Receipt size={14} />
+                Expenses
+              </div>
+            </button>
+          </div>
+          {activeTab === 'operations' && (
+            <div className="flex items-center space-x-2 text-gray-400 bg-gray-800 px-3 py-2 rounded-lg">
+              <Package className="h-4 w-4" />
+              <span className="text-sm">{filteredWorkItems.length}</span>
+              <DollarSign className="h-4 w-4 ml-2" />
+              <span className="text-sm">{formatCurrency(totalValue)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Financial Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        {/* Total Sales */}
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium flex items-center gap-1">
+              <TrendingUp size={12} />
+              TOTAL SALES
+            </span>
+            <Wallet size={16} className="text-indigo-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(profitSummary?.totalSales || 0)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium ${(profitSummary?.salesTrend || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {(profitSummary?.salesTrend || 0) >= 0 ? '+' : ''}{profitSummary?.salesTrend || 0}%
+            </span>
+            <span className="text-indigo-300/60 text-xs">vs last month</span>
+          </div>
+        </div>
+
+        {/* Total Expenses */}
+        <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-rose-300 text-xs font-medium flex items-center gap-1">
+              <TrendingDown size={12} />
+              TOTAL EXPENSES
+            </span>
+            <Wallet size={16} className="text-rose-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(profitSummary?.totalExpenses || 0)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium ${(profitSummary?.expenseTrend || 0) <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {(profitSummary?.expenseTrend || 0) >= 0 ? '+' : ''}{profitSummary?.expenseTrend || 0}%
+            </span>
+            <span className="text-rose-300/60 text-xs">vs last month</span>
+          </div>
+        </div>
+
+        {/* Net Profit */}
+        <div className={`bg-gradient-to-br rounded-xl p-4 border ${
+          (profitSummary?.netProfit || 0) >= 0
+            ? 'from-emerald-900/50 to-emerald-800/30 border-emerald-700/50'
+            : 'from-rose-900/50 to-rose-800/30 border-rose-700/50'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs font-medium flex items-center gap-1 ${
+              (profitSummary?.netProfit || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+            }`}>
+              <Minus size={12} />
+              NET PROFIT
+            </span>
+            <Wallet size={16} className={(profitSummary?.netProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'} />
+          </div>
+          <p className={`text-2xl font-bold mb-1 ${
+            (profitSummary?.netProfit || 0) >= 0 ? 'text-white' : 'text-rose-300'
+          }`}>
+            {formatCurrency(profitSummary?.netProfit || 0)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium ${(profitSummary?.profitTrend || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {(profitSummary?.profitTrend || 0) >= 0 ? '+' : ''}{profitSummary?.profitTrend || 0}%
+            </span>
+            <span className="text-emerald-300/60 text-xs">vs last month</span>
           </div>
         </div>
       </div>
 
+      {/* This Month Summary */}
+      <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+        <div className="text-center">
+          <p className="text-gray-400 text-xs mb-1">Sales This Month</p>
+          <p className="text-lg font-bold text-indigo-400">{formatCurrency(profitSummary?.salesThisMonth || 0)}</p>
+        </div>
+        <div className="text-center border-x border-gray-700">
+          <p className="text-gray-400 text-xs mb-1">Expenses This Month</p>
+          <p className="text-lg font-bold text-rose-400">{formatCurrency(profitSummary?.expensesThisMonth || 0)}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-gray-400 text-xs mb-1">Profit This Month</p>
+          <p className={`text-lg font-bold ${(profitSummary?.profitThisMonth || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {formatCurrency(profitSummary?.profitThisMonth || 0)}
+          </p>
+        </div>
+      </div>
+
+      {activeTab === 'expenses' && (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden mb-6">
+          <div className="p-4 border-b border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-200">All Expenses</h3>
+          </div>
+          <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
+            {expenses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Receipt className="text-gray-500 mb-2" size={32} />
+                <p className="text-gray-400 text-sm">No expenses recorded yet</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-700">
+                {expenses.map((exp) => (
+                  <div
+                    key={exp.id}
+                    className="p-4 hover:bg-gray-750/50 transition-colors group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          exp.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' :
+                          exp.status === 'overdue' ? 'bg-rose-500/10 text-rose-400' :
+                          'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          {getCategoryIcon(exp.category)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-white">{exp.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{exp.category}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-gray-500">
+                              {format(new Date(exp.date), 'MMM d, yyyy')}
+                            </span>
+                            <span className="text-gray-600">•</span>
+                            <span className="text-[10px] text-gray-500">
+                              by {exp.createdByName || 'Unknown'}
+                            </span>
+                            {exp.vendor && (
+                              <>
+                                <span className="text-gray-600">•</span>
+                                <span className="text-[10px] text-gray-500">{exp.vendor}</span>
+                              </>
+                            )}
+                          </div>
+                          {exp.notes && (
+                            <p className="text-[10px] text-gray-500 mt-1 truncate max-w-xs">{exp.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <p className="text-sm font-semibold text-white">{formatCurrency(exp.amount)}</p>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          exp.status === 'paid' ? 'bg-emerald-100 text-emerald-800' :
+                          exp.status === 'overdue' ? 'bg-rose-100 text-rose-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {exp.status}
+                        </span>
+                        {exp.paymentMethod && (
+                          <span className="text-[10px] text-gray-500">{exp.paymentMethod}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Search and Filters */}
+      {activeTab === 'operations' && (
       <div className="card-bevel p-4 mb-6">
         <div className="flex space-x-4">
           <div className="flex-1 relative">
@@ -184,6 +411,7 @@ export default function OperationPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Work Table */}
       <div className="card-bevel overflow-hidden">
