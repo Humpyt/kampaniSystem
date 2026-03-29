@@ -11,6 +11,9 @@ import { useCustomer } from '../contexts/CustomerContext';
 import { useOperation } from '../contexts/OperationContext';
 import { AddCreditModal } from '../components/AddCreditModal';
 import { PaymentModal } from '../components/PaymentModal';
+import CustomerSummaryCards from '../components/customers/CustomerSummaryCards';
+import CustomerListRow from '../components/customers/CustomerListRow';
+import CustomerFilters from '../components/customers/CustomerFilters';
 
 interface CustomerFormData {
   name: string;
@@ -338,13 +341,19 @@ export default function CustomerPage() {
 
   // Filter customers based on search term
   const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
+  const [minVisits, setMinVisits] = useState<number>(0);
+  const [minSpent, setMinSpent] = useState<number>(0);
 
   const filteredCustomers = customers
-    .filter(customer =>
-      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone.includes(searchTerm) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter(customer => {
+      const matchesSearch =
+        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.phone.includes(searchTerm) ||
+        customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesVisits = customer.totalOrders >= minVisits;
+      const matchesSpent = customer.totalSpent >= minSpent;
+      return matchesSearch && matchesVisits && matchesSpent;
+    })
     .sort((a, b) => {
       switch(sortBy) {
         case 'recent':
@@ -508,33 +517,25 @@ export default function CustomerPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="relative col-span-2">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Search by name, phone, or email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          />
-        </div>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'name' | 'recent' | 'spent')}
-          className="bg-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="recent">Sort by Recent Visit</option>
-          <option value="spent">Sort by Highest Spent ⬇</option>
-        </select>
-      </div>
+      {/* Summary Cards */}
+      <CustomerSummaryCards customers={filteredCustomers} />
+
+      {/* Filters */}
+      <CustomerFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        minVisits={minVisits}
+        onMinVisitsChange={setMinVisits}
+        minSpent={minSpent}
+        onMinSpentChange={setMinSpent}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+      />
 
       {/* Main Content */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Customer List */}
-        <div className="col-span-2 bg-gray-900 rounded-xl p-4 max-h-[calc(100vh-240px)] overflow-y-auto">
+        <div className="col-span-2 bg-gray-800 rounded-xl border border-gray-700 max-h-[calc(100vh-340px)] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
@@ -545,55 +546,34 @@ export default function CustomerPage() {
             </div>
           ) : filteredCustomers.length === 0 ? (
             <div className="text-gray-400 p-4 text-center">
-              {searchTerm ? 'No customers found matching your search' : 'No customers yet'}
+              {searchTerm || minVisits > 0 || minSpent > 0
+                ? 'No customers match your filters'
+                : 'No customers yet'}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="divide-y divide-gray-700">
               {filteredCustomers.map((customer) => (
-                <div
+                <CustomerListRow
                   key={customer.id}
+                  customer={customer}
+                  isSelected={selectedCustomer?.id === customer.id}
                   onClick={() => handleCustomerClick(customer)}
-                  className={`p-4 rounded-lg cursor-pointer transition-all duration-200 ${
-                    selectedCustomer?.id === customer.id
-                      ? 'bg-indigo-600'
-                      : 'bg-gray-800 hover:bg-gray-700'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{customer.name}</h3>
-                      <div className="flex items-center text-gray-400 space-x-4 mt-1">
-                        <span className="flex items-center">
-                          <Phone className="h-4 w-4 mr-1" />
-                          {customer.phone}
-                        </span>
-                        {customer.email && (
-                          <span className="flex items-center">
-                            <Mail className="h-4 w-4 mr-1" />
-                            {customer.email}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4 mt-2 text-sm">
-                        <span className="text-gray-400 flex items-center">
-                          <Package className="h-3 w-3 mr-1" />
-                          {customer.totalOrders} visit{customer.totalOrders !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-indigo-400 font-semibold">
-                          {formatCurrency(customer.totalSpent)} spent
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right ml-4">
-                      <div className="text-xs text-gray-400">Last visit</div>
-                      <div className="text-sm text-gray-300">
-                        {customer.lastVisit
-                          ? `${differenceInDays(new Date(), new Date(customer.lastVisit))} days ago`
-                          : 'No visits yet'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  onEdit={() => {
+                    setSelectedCustomer(customer);
+                    setFormData({
+                      name: customer.name,
+                      phone: customer.phone,
+                      email: customer.email || '',
+                      address: customer.address || '',
+                      notes: customer.notes || ''
+                    });
+                    setShowEditModal(true);
+                  }}
+                  onDelete={() => {
+                    setSelectedCustomer(customer);
+                    setShowDeleteConfirm(true);
+                  }}
+                />
               ))}
             </div>
           )}
