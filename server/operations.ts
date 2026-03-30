@@ -41,7 +41,10 @@ const getRetailItemsByOperationIds = async (operationIds: string[]) => {
 // Get all operations
 router.get('/', async (req, res) => {
   try {
-    const { created_by } = req.query;
+    const { created_by, status, limit = 100, offset = 0 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit as string) || 100, 500);
+    const parsedOffset = parseInt(offset as string) || 0;
+
     let query = `
       SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
       FROM operations o
@@ -49,15 +52,31 @@ router.get('/', async (req, res) => {
       LEFT JOIN users u ON o.created_by = u.id
     `;
     const params: any[] = [];
+    const conditions: string[] = [];
 
     if (created_by) {
-      query += ` WHERE o.created_by = ?`;
+      conditions.push(`o.created_by = ?`);
       params.push(created_by);
     }
 
-    query += ` ORDER BY o.created_at DESC`;
+    if (status) {
+      conditions.push(`o.status = ?`);
+      params.push(status);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
+    }
+
+    query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`;
+    params.push(parsedLimit, parsedOffset);
 
     const operations = await db.prepare(query).all(...params);
+
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as total FROM operations ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}`;
+    const countParams = conditions.length > 0 ? params.slice(0, -2) : [];
+    const { total } = await db.prepare(countQuery).get(...countParams);
 
     // Optimization: Fetch all shoes in a single query instead of N+1 queries
     const operationIds = operations.map((op: any) => op.id);
@@ -102,7 +121,15 @@ router.get('/', async (req, res) => {
       retailItems: retailItemsMap.get(operation.id) || []
     }));
 
-    res.json(operationsWithShoes.map(transformOperation));
+    res.json({
+      data: operationsWithShoes.map(transformOperation),
+      pagination: {
+        total,
+        limit: parsedLimit,
+        offset: parsedOffset,
+        hasMore: parsedOffset + parsedLimit < total
+      }
+    });
   } catch (error) {
     console.error('Failed to fetch operations:', error);
     res.status(500).json({ error: 'Failed to fetch operations' });

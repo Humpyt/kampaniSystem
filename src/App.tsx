@@ -1,25 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Routes, Route, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import StorePage from './pages/StorePage';
-import CustomerPage from './pages/CustomerPage';
 import DropPage from './pages/DropPage';
 import PickupPage from './pages/PickupPage';
 import BalancesPage from './pages/BalancesPage';
 import MessagePage from './pages/MessagePage';
 import OperationPage from './pages/OperationPage';
 import OperationDetailsPage from './pages/OperationDetailsPage';
-import SalesPage from './pages/SalesPage';
 import SalesItems from './pages/SalesItems';
 import TicketsPage from './pages/TicketsPage';
 import QRCodesPage from './pages/QRCodesPage';
 import MarketingPage from './pages/MarketingPage';
-import ReportsPage from './pages/ReportsPage';
-import BusinessTargetsPage from './pages/BusinessTargetsPage';
-import StaffPage from './pages/StaffPage';
 import NotificationsPage from './pages/NotificationsPage';
-import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import MainMenu from './components/MainMenu';
@@ -44,9 +38,7 @@ import PickupOrderPage from './pages/PickupOrderPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import CodPaymentPage from './pages/CodPaymentPage';
 import ProductCategoryManager from './pages/ProductCategoryManager';
-import ExpensesPage from './pages/ExpensesPage';
 import ReadyToPickPage from './pages/ReadyToPickPage';
-import InvoicesPage from './pages/InvoicesPage';
 import UnpaidBalancesPage from './pages/UnpaidBalancesPage';
 import DiscountsPage from './pages/DiscountsPage';
 import NewCustomersPage from './pages/NewCustomersPage';
@@ -54,6 +46,23 @@ import StockLevelsPage from './pages/StockLevelsPage';
 import CustomerRankingsPage from './pages/CustomerRankingsPage';
 import MostPerformingPage from './pages/MostPerformingPage';
 import CreditListPage from './pages/CreditListPage';
+import InvoicesPage from './pages/InvoicesPage';
+
+// Lazy load heavy pages for better performance
+const CustomerPage = lazy(() => import('./pages/CustomerPage'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const BusinessTargetsPage = lazy(() => import('./pages/BusinessTargetsPage'));
+const StaffPage = lazy(() => import('./pages/StaffPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+  </div>
+);
 
 const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boolean; toggleSidebar: () => void }) => {
   return (
@@ -186,7 +195,9 @@ function App() {
                       <Route path="store" element={<StorePage />} />
                       <Route path="customers" element={
                         <ProtectedRoute permission="view_customers">
-                          <CustomerPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <CustomerPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="drop" element={
@@ -213,12 +224,16 @@ function App() {
                       } />
                       <Route path="expenses" element={
                         <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
-                          <ExpensesPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <ExpensesPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="sales" element={
                         <ProtectedRoute permission="view_sales">
-                          <SalesPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <SalesPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="sales-items" element={
@@ -240,23 +255,31 @@ function App() {
                       } />
                       <Route path="reports" element={
                         <ProtectedRoute permission="view_reports" requiredRoles={['admin', 'manager']}>
-                          <ReportsPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <ReportsPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="business-targets" element={
                         <ProtectedRoute permission="view_business_targets">
-                          <BusinessTargetsPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <BusinessTargetsPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="staff" element={
                         <ProtectedRoute permission="manage_staff" requiredRoles={['admin', 'manager']}>
-                          <StaffPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <StaffPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="admin" element={
                         <ProtectedRoute permission="manage_users" requiredRoles={['admin']}>
-                          <AdminPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <AdminPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                       <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />

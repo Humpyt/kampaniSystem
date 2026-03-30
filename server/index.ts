@@ -60,11 +60,39 @@ app.use('/api/expenses', expensesRouter);
 // Customer endpoints
 app.get('/api/customers', async (req, res) => {
   try {
-    const customers = await db.prepare(`
-      SELECT * FROM customers
-      ORDER BY name ASC
-    `).all();
-    res.json(customers);
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const search = req.query.search as string;
+
+    let query = `SELECT * FROM customers`;
+    const params: any[] = [];
+
+    if (search) {
+      query += ` WHERE name LIKE ? OR phone LIKE ?`;
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const customers = await db.prepare(query).all(...params);
+
+    // Get total count for pagination
+    const countQuery = search
+      ? `SELECT COUNT(*) as total FROM customers WHERE name LIKE ? OR phone LIKE ?`
+      : `SELECT COUNT(*) as total FROM customers`;
+    const countParams = search ? [`%${search}%`, `%${search}%`] : [];
+    const { total } = await db.prepare(countQuery).get(...countParams);
+
+    res.json({
+      data: customers,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total
+      }
+    });
   } catch (error) {
     console.error('Error fetching customers:', error);
     res.status(500).json({ error: 'Failed to fetch customers' });

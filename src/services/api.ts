@@ -5,12 +5,19 @@ const API_URL = '/api';
 export const api = {
   // Customer endpoints
   customers: {
-    getAll: async (): Promise<Customer[]> => {
-      const response = await fetch(`${API_URL}/customers`);
+    getAll: async (params?: { limit?: number; offset?: number; search?: string }): Promise<{ data: Customer[]; pagination: { total: number; hasMore: boolean } }> => {
+      const searchParams = new URLSearchParams();
+      if (params?.limit) searchParams.set('limit', String(params.limit));
+      if (params?.offset) searchParams.set('offset', String(params.offset));
+      if (params?.search) searchParams.set('search', params.search);
+
+      const response = await fetch(`${API_URL}/customers?${searchParams}`);
       if (!response.ok) throw new Error('Failed to fetch customers');
-      const data = await response.json();
+      const result = await response.json();
+
       // Transform snake_case to camelCase
-      return data.map((customer: any) => ({
+      return {
+        data: result.data.map((customer: any) => ({
         id: customer.id,
         name: customer.name,
         phone: customer.phone,
@@ -23,7 +30,9 @@ export const api = {
         lastVisit: customer.last_visit || '',
         loyaltyPoints: customer.loyalty_points || 0,
         accountBalance: customer.account_balance,
-      }));
+      })),
+        pagination: result.pagination
+      };
     },
 
     create: async (customer: Omit<Customer, 'id'>): Promise<Customer> => {
