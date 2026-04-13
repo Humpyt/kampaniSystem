@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import type { Customer } from '../types';
+import type { Customer, CartItem } from '../types';
 import { getAuthToken } from '../store/authStore';
+import { api } from '../services/api';
 
 interface ShoeService {
   service_id: string;
@@ -42,12 +43,21 @@ interface OperationContextType {
   deleteOperation: (id: string) => Promise<void>;
   getOperation: (id: string) => Operation | undefined;
   refreshOperations: () => Promise<void>;
+  cartItems: CartItem[];
+  ticketNumber: string;
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (id: string) => void;
+  clearCart: () => void;
+  setTicketNumber: (num: string) => void;
+  fetchTicketNumber: () => Promise<string>;
 }
 
 const OperationContext = createContext<OperationContextType | undefined>(undefined);
 
 export function OperationProvider({ children }: { children: React.ReactNode }) {
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [ticketNumber, setTicketNumber] = useState<string>('');
 
   // Fetch operations when component mounts
   useEffect(() => {
@@ -197,6 +207,17 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       deleteOperation,
       getOperation,
       refreshOperations,
+      cartItems,
+      ticketNumber,
+      addToCart: (item: CartItem) => setCartItems(prev => [...prev, item]),
+      removeFromCart: (id: string) => setCartItems(prev => prev.filter(i => i.id !== id)),
+      clearCart: () => { setCartItems([]); setTicketNumber(''); },
+      setTicketNumber,
+      fetchTicketNumber: async () => {
+        const num = await api.ticket.getNext();
+        setTicketNumber(num);
+        return num;
+      },
     }),
     [operations, refreshOperations]
   );
