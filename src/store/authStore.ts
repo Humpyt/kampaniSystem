@@ -20,6 +20,20 @@ interface AuthState {
   hasPermission: (permission: string) => boolean;
 }
 
+const parseResponseBody = async (response: Response) => {
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return { error: rawText };
+  }
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
@@ -36,13 +50,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         body: JSON.stringify({ email, password }),
       });
 
+      const payload = await parseResponseBody(response);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Login failed');
+        const message =
+          payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'Login service is unavailable. Please check that the server is running.';
+        throw new Error(message);
       }
 
-      const data = await response.json();
-      const { user, token } = data;
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('user' in payload) ||
+        !('token' in payload)
+      ) {
+        throw new Error('Login service returned an invalid response.');
+      }
+
+      const { user, token } = payload as { user: AuthUser; token: string };
 
       set({
         user,
@@ -88,7 +115,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
 
         if (response.ok) {
-          const user = await response.json();
+          const payload = await parseResponseBody(response);
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Authentication check returned an invalid response.');
+          }
+
+          const user = payload as AuthUser;
           set({
             user,
             token,
