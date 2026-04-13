@@ -237,8 +237,7 @@ export async function seedUsers(pool: Pool): Promise<void> {
   }
 
   console.log('Users seeded successfully');
-  console.log('Created default users with passwords: admin@repairpro.com/admin123, manager@repairpro.com/manager123, staff1@repairpro.com/staff123');
-  console.log('Created additional staff: stella@repairpro.com/stella123 (admin), esther@repairpro.com/esther123, ritah@repairpro.com/ritah123, noelah@repairpro.com/noelah123, danielah@repairpro.com/danielah123');
+  console.log('Created default users with hashed passwords');
 }
 
 /**
@@ -327,11 +326,16 @@ export async function seedProductsAndCategories(pool: Pool): Promise<void> {
  * Call all seed functions in order
  */
 export async function seedAll(pool: Pool): Promise<void> {
-  await seedSalesCategories(pool);
-  await seedServices(pool);
-  await seedColors(pool);
-  await seedUsers(pool);
-  await syncRetailProducts(pool);
-  await seedProductsAndCategories(pool);
-  console.log('All seeds completed successfully');
+  try {
+    await seedSalesCategories(pool);
+    await seedServices(pool);
+    await seedColors(pool);
+    await seedUsers(pool);
+    await syncRetailProducts(pool);
+    await seedProductsAndCategories(pool);
+    console.log('All seeds completed successfully');
+  } catch (error) {
+    console.error('Seed failed:', error);
+    throw error;
+  }
 }
