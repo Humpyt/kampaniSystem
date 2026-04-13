@@ -2,30 +2,59 @@ import React from 'react';
 import { Chip, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent } from '@mui/material';
 
 interface CascadeSelectProps {
+  label: string;
   options: string[];
-  value: string[];
-  onChange: (memos: string[]) => void;
+  value: string;
+  onChange: (value: string) => void;
+  onClear: () => void;
   disabled: boolean;
+  placeholder?: string;
 }
 
 const CascadeSelect: React.FC<CascadeSelectProps> = ({
+  label,
   options,
   value,
   onChange,
+  onClear,
   disabled,
+  placeholder = 'Select...',
 }) => {
-  const handleChange = (event: SelectChangeEvent<string[]>) => {
-    const selected = event.target.value as string[];
-    onChange(selected);
+  const handleChange = (event: SelectChangeEvent<string>) => {
+    onChange(event.target.value as string);
   };
 
+  // Locked state: has value, show as chip
+  if (value && !disabled) {
+    return (
+      <Chip
+        label={value}
+        onDelete={onClear}
+        sx={{
+          bgcolor: 'rgba(245, 158, 11, 0.15)',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          color: '#F59E0B',
+          fontWeight: 500,
+          '& .MuiChip-deleteIcon': {
+            color: '#F59E0B',
+            '&:hover': { color: '#FBBF24' },
+          },
+        }}
+      />
+    );
+  }
+
+  // Disabled state: greyed out, not interactive
   if (disabled) {
     return (
-      <FormControl disabled size="small" sx={{ minWidth: 200 }}>
-        <InputLabel>Memos</InputLabel>
-        <Select multiple value={[]} label="Memos">
+      <FormControl disabled size="small" sx={{ minWidth: 160 }}>
+        <InputLabel>{label}</InputLabel>
+        <Select value="" label={label}>
+          <MenuItem value="">
+            <em>{placeholder}</em>
+          </MenuItem>
           {options.map((option) => (
-            <MenuItem key={option} value={option} dense>
+            <MenuItem key={option} value={option}>
               {option}
             </MenuItem>
           ))}
@@ -34,34 +63,16 @@ const CascadeSelect: React.FC<CascadeSelectProps> = ({
     );
   }
 
+  // Active state: no value, open dropdown
   return (
-    <FormControl size="small" sx={{ minWidth: 200 }}>
-      <InputLabel>Memos</InputLabel>
-      <Select
-        multiple
-        value={value}
-        label="Memos"
-        onChange={handleChange}
-        renderValue={(selected) => (
-          <div className="flex flex-wrap gap-1">
-            {(selected as string[]).map((memo) => (
-              <Chip
-                key={memo}
-                label={memo}
-                size="small"
-                onDelete={() => onChange(value.filter(v => v !== memo))}
-                sx={{
-                  bgcolor: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid rgba(59, 130, 246, 0.4)',
-                  color: '#3B82F6',
-                }}
-              />
-            ))}
-          </div>
-        )}
-      >
+    <FormControl size="small" sx={{ minWidth: 160 }}>
+      <InputLabel>{label}</InputLabel>
+      <Select value={value} label={label} onChange={handleChange}>
+        <MenuItem value="">
+          <em>{placeholder}</em>
+        </MenuItem>
         {options.map((option) => (
-          <MenuItem key={option} value={option} dense>
+          <MenuItem key={option} value={option}>
             {option}
           </MenuItem>
         ))}
