@@ -119,6 +119,7 @@ export async function createSchema(pool: Pool): Promise<void> {
         paid_amount DECIMAL(12,2) DEFAULT 0,
         discount DECIMAL(12,2) DEFAULT 0,
         payment_method TEXT,
+        ticket_number TEXT UNIQUE,  -- Format: YYYY-MM-XXXX
         notes TEXT,
         promised_date DATE,
         is_no_charge BOOLEAN DEFAULT false,
