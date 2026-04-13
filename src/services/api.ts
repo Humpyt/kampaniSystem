@@ -143,4 +143,30 @@ export const api = {
       return data.ticket_number;
     },
   },
+
+  // Operation endpoints
+  operations: {
+    create: async (data: {
+      ticket_number: string;
+      customer_id?: string;
+      items: Array<{
+        category: string;
+        color: string;
+        brand: string;
+        material: string;
+        shortDescription: string;
+        memos: string[];
+        services: Array<{ service: string; variation: string }>;
+        price: number;
+      }>;
+    }): Promise<{ id: string }> => {
+      const response = await fetch(`${API_URL}/operations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to create operation');
+      return response.json();
+    },
+  },
 };
