@@ -74,10 +74,12 @@ export default function DropPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [ticketLoading, setTicketLoading] = useState(false);
 
   // Fetch ticket number on mount
   useEffect(() => {
-    fetchTicketNumber();
+    setTicketLoading(true);
+    fetchTicketNumber().finally(() => setTicketLoading(false));
   }, [fetchTicketNumber]);
 
   const filteredCustomers = customers.filter(c =>
@@ -142,6 +144,10 @@ export default function DropPage() {
 
   const handleComplete = async () => {
     if (!ticketNumber) return;
+    if (!selectedCustomer) {
+      toast.error('Please select a customer');
+      return;
+    }
 
     try {
       const { api } = await import('../services/api');
@@ -189,7 +195,11 @@ export default function DropPage() {
       {/* Page Header */}
       <div className="flex items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold text-white">NEW DROP</h1>
-        {ticketNumber && <TicketBadge ticketNumber={ticketNumber} />}
+        {ticketLoading ? (
+          <span className="text-gray-400 text-sm">Loading...</span>
+        ) : ticketNumber ? (
+          <TicketBadge ticketNumber={ticketNumber} />
+        ) : null}
         {selectedCustomer && (
           <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
             <User className="w-4 h-4 text-gray-400" />
