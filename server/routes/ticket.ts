@@ -5,16 +5,20 @@ const router = Router();
 
 // GET /api/ticket/next - Get next ticket number for current month
 router.get('/next', async (req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+
     const now = new Date();
     const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Query for highest existing ticket number matching ${yearMonth}-%
-    const result = await pool.query(
+    // Lock the highest existing ticket row to prevent concurrent reads
+    const result = await client.query(
       `SELECT ticket_number FROM operations
        WHERE ticket_number LIKE $1
        ORDER BY ticket_number DESC
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [`${yearMonth}-%`]
     );
 
@@ -29,10 +33,14 @@ router.get('/next', async (req, res) => {
     }
 
     const ticket_number = `${yearMonth}-${String(sequence).padStart(4, '0')}`;
+    await client.query('COMMIT');
     res.json({ ticket_number });
   } catch (error) {
-    console.error('Error generating ticket number:', error);
+    await client.query('ROLLBACK');
+    console.error('ticket/next error:', error);
     res.status(500).json({ error: 'Failed to generate ticket number' });
+  } finally {
+    client.release();
   }
 });
 
