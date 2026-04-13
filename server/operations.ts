@@ -21,12 +21,12 @@ const getRetailItemsByOperationIds = async (operationIds: string[]) => {
     return retailItemsMap;
   }
 
-  const placeholders = operationIds.map(() => '?').join(',');
-  const retailItems = await db.prepare(`
+  const placeholders = operationIds.map((_, i) => `$${i + 1}`).join(',');
+  const retailItems = await db.all(`
     SELECT * FROM operation_retail_items
     WHERE operation_id IN (${placeholders})
     ORDER BY created_at ASC
-  `).all(...operationIds);
+  `, operationIds);
 
   for (const item of retailItems) {
     if (!retailItemsMap.has(item.operation_id)) {
@@ -55,12 +55,12 @@ router.get('/', async (req, res) => {
     const conditions: string[] = [];
 
     if (created_by) {
-      conditions.push(`o.created_by = ?`);
+      conditions.push(`o.created_by = $${params.length + 1}`);
       params.push(created_by);
     }
 
     if (status) {
-      conditions.push(`o.status = ?`);
+      conditions.push(`o.status = $${params.length + 1}`);
       params.push(status);
     }
 
@@ -68,15 +68,15 @@ router.get('/', async (req, res) => {
       query += ` WHERE ` + conditions.join(' AND ');
     }
 
-    query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY o.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(parsedLimit, parsedOffset);
 
-    const operations = await db.prepare(query).all(...params);
+    const operations = await db.all(query, params);
 
     // Get total count
     const countQuery = `SELECT COUNT(*) as total FROM operations ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}`;
     const countParams = conditions.length > 0 ? params.slice(0, -2) : [];
-    const { total } = await db.prepare(countQuery).get(...countParams);
+    const { total } = await db.get(countQuery, countParams);
 
     // Optimization: Fetch all shoes in a single query instead of N+1 queries
     const operationIds = operations.map((op: any) => op.id);
@@ -84,14 +84,14 @@ router.get('/', async (req, res) => {
     const retailItemsMap = await getRetailItemsByOperationIds(operationIds);
 
     if (operationIds.length > 0) {
-      const placeholders = operationIds.map(() => '?').join(',');
-      const allShoes = await db.prepare(`
+      const placeholders = operationIds.map((_, i) => `$${i + 1}`).join(',');
+      const allShoes = await db.all(`
         SELECT os.*, s.name as service_name, s.price as service_base_price
         FROM operation_shoes os
         LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
         LEFT JOIN services s ON oss.service_id = s.id
         WHERE os.operation_id IN (${placeholders})
-      `).all(...operationIds);
+      `, operationIds);
 
       // Group shoes by operation_id
       for (const shoe of allShoes) {
@@ -140,26 +140,26 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const operation = await db.prepare(`
+    const operation = await db.get(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
-      WHERE o.id = ?
-    `).get(id);
+      WHERE o.id = $1
+    `, [id]);
 
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
     }
 
     // Get shoes and services for this operation
-    const shoes = await db.prepare(`
+    const shoes = await db.all(`
       SELECT os.*, s.name as service_name, s.price as service_base_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
       LEFT JOIN services s ON oss.service_id = s.id
-      WHERE os.operation_id = ?
-    `).all(id);
+      WHERE os.operation_id = $1
+    `, [id]);
 
     const operationWithShoes = {
       ...operation,
@@ -190,11 +190,11 @@ router.get('/:id/payments', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const payments = await db.prepare(`
+    const payments = await db.all(`
       SELECT * FROM operation_payments
-      WHERE operation_id = ?
+      WHERE operation_id = $1
       ORDER BY created_at DESC
-    `).all(id);
+    `, [id]);
 
     res.json(payments);
   } catch (error) {
@@ -239,20 +239,18 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    await db.run('BEGIN TRANSACTION');
-
-    try {
+    await db.withTransaction(async (client) => {
       // Insert the operation
       const operationId = uuidv4();
       console.log('Creating operation with ID:', operationId);
 
-      await db.prepare(`
+      await client.run(`
         INSERT INTO operations (
           id, customer_id, status, total_amount, discount, notes, promised_date,
           is_no_charge, is_do_over, is_delivery, is_pickup,
           created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `, [
         operationId,
         customer.id,
         status || 'pending',
@@ -267,7 +265,7 @@ router.post('/', async (req, res) => {
         created_by || null,
         now,
         now
-      );
+      ]);
 
       // Insert each shoe
       for (let index = 0; index < normalizedShoes.length; index++) {
@@ -275,11 +273,11 @@ router.post('/', async (req, res) => {
         console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2));
         const shoeId = uuidv4();
 
-        await db.prepare(`
+        await client.run(`
           INSERT INTO operation_shoes (
             id, operation_id, category, shoe_size, color, color_description, notes, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
           shoeId,
           operationId,
           shoe.category,
@@ -289,7 +287,7 @@ router.post('/', async (req, res) => {
           shoe.notes || null,
           now,
           now
-        );
+        ]);
 
         // Insert services for each shoe
         if (Array.isArray(shoe.services)) {
@@ -301,12 +299,12 @@ router.post('/', async (req, res) => {
               throw new Error(`Missing service_id for service ${sIndex + 1} of shoe ${index + 1}`);
             }
 
-            await db.prepare(`
+            await client.run(`
               INSERT INTO operation_services (
                 id, operation_shoe_id, service_id, quantity, price, notes,
                 created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [
               uuidv4(),
               shoeId,
               service.service_id,
@@ -315,7 +313,7 @@ router.post('/', async (req, res) => {
               service.notes || null,
               now,
               now
-            );
+            ]);
           }
         }
       }
@@ -331,11 +329,11 @@ router.post('/', async (req, res) => {
           throw new Error(`Invalid retail item at position ${index + 1}`);
         }
 
-        await db.prepare(`
+        await client.run(`
           INSERT INTO operation_retail_items (
             id, operation_id, product_id, product_name, unit_price, quantity, total_price, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
           uuidv4(),
           operationId,
           item.productId || null,
@@ -344,39 +342,39 @@ router.post('/', async (req, res) => {
           quantity,
           totalPrice,
           now
-        );
+        ]);
       }
 
       // Return the created operation with all related data
-      const operation = await db.prepare(`
-        SELECT 
+      const operation = await client.get(`
+        SELECT
           o.*,
           c.name as customer_name,
           c.phone as customer_phone,
           c.email as customer_email
         FROM operations o
         LEFT JOIN customers c ON o.customer_id = c.id
-        WHERE o.id = ?
-      `).get(operationId);
+        WHERE o.id = $1
+      `, [operationId]);
 
       // Get shoes for this operation
-      const operationShoes = await db.prepare(`
-        SELECT * FROM operation_shoes WHERE operation_id = ?
-      `).all(operationId);
+      const operationShoes = await client.all(`
+        SELECT * FROM operation_shoes WHERE operation_id = $1
+      `, [operationId]);
       const operationRetailItems = (await getRetailItemsByOperationIds([operationId])).get(operationId) || [];
 
       // Get services for each shoe
       const shoesWithServices = [];
       for (const shoe of operationShoes) {
-        const services = await db.prepare(`
-          SELECT 
+        const services = await client.all(`
+          SELECT
             os.*,
             s.name as service_name,
             s.price as service_base_price
           FROM operation_services os
           LEFT JOIN services s ON os.service_id = s.id
-          WHERE os.operation_shoe_id = ?
-        `).all(shoe.id);
+          WHERE os.operation_shoe_id = $1
+        `, [shoe.id]);
 
         shoesWithServices.push({
           ...shoe,
@@ -391,31 +389,29 @@ router.post('/', async (req, res) => {
       }
 
       // Update customer stats: increment total_orders and update last_visit
-      await db.prepare(`
+      await client.run(`
         UPDATE customers
         SET total_orders = total_orders + 1,
-            last_visit = ?
-        WHERE id = ?
-      `).run(now, customer.id);
-
-      await db.run('COMMIT');
+            last_visit = $1
+        WHERE id = $2
+      `, [now, customer.id]);
 
       // Auto-generate invoice since no payment was made yet
       try {
         const invoiceId = uuidv4();
         const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-        await db.prepare(`
+        await client.run(`
           INSERT INTO invoices (
             id, operation_id, type, invoice_number, customer_name, customer_phone,
             subtotal, discount, total, amount_paid, payment_method, notes,
             promised_date, generated_by, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        `, [
           invoiceId, operationId, 'invoice', invoiceNumber,
           customer.name, customer.phone || '',
           finalTotalAmount + discountAmount, discountAmount, finalTotalAmount,
           0, null, notes || null, promisedDate || null, created_by || null, now, now
-        );
+        ]);
         generatedDocumentId = invoiceId;
       } catch (err) {
         console.error('Failed to auto-generate invoice:', err);
@@ -433,10 +429,7 @@ router.post('/', async (req, res) => {
         generatedDocumentId,
         generatedDocumentType: generatedDocumentId ? 'invoice' : null,
       }));
-    } catch (error) {
-      await db.run('ROLLBACK');
-      throw error;
-    }
+    });
   } catch (error) {
     console.error('Error creating operation:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create operation' });
@@ -451,27 +444,27 @@ router.patch('/:id', async (req, res) => {
     const now = new Date().toISOString();
 
     const setClauses = Object.keys(updates)
-      .map(key => {
+      .map((key, i) => {
         const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-        return `${dbKey} = ?`;
+        return `${dbKey} = $${i + 1}`;
       })
-      .concat(['updated_at = ?'])
+      .concat([`updated_at = $${Object.keys(updates).length + 1}`])
       .join(', ');
 
     const values = [...Object.values(updates), now, id];
 
-    await db.prepare(`
+    await db.run(`
       UPDATE operations
       SET ${setClauses}
-      WHERE id = ?
-    `).run(...values);
+      WHERE id = $${values.length}
+    `, values);
 
-    const operation = await db.prepare(`
+    const operation = await db.get(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = ?
-    `).get(id);
+      WHERE o.id = $1
+    `, [id]);
 
     res.json(transformOperation(operation));
   } catch (error) {
@@ -494,7 +487,7 @@ router.post('/:id/payments', async (req, res) => {
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = ?
+      WHERE o.id = $1
     `, [id]);
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
@@ -503,108 +496,106 @@ router.post('/:id/payments', async (req, res) => {
     const totalPaid = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
     const now = new Date().toISOString();
 
-    await db.run('BEGIN TRANSACTION');
-
-    // Add each payment
-    for (const payment of payments) {
-      const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await db.run(`
-        INSERT INTO operation_payments (id, operation_id, payment_method, amount, transaction_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [paymentId, id, payment.method, payment.amount, payment.transaction_id || null, now]);
-    }
-
-    // Update operation paid_amount
-    const newPaidAmount = (operation.paid_amount || 0) + totalPaid;
-    await db.run(`
-      UPDATE operations
-      SET paid_amount = ?,
-          status = CASE WHEN ? >= total_amount THEN 'completed' ELSE status END,
-          updated_at = ?
-      WHERE id = ?
-    `, [newPaidAmount, newPaidAmount, now, id]);
-
-    // Update customer stats: add to total_spent and update last_visit
-    await db.prepare(`
-      UPDATE customers
-      SET total_spent = total_spent + ?,
-          last_visit = ?
-      WHERE id = ?
-    `).run(totalPaid, now, (operation as any).customer_id);
-
-    // Auto-capture 2% credit on transaction
-    const creditAmount = Math.round(totalPaid * 0.02);
-    if (creditAmount > 0) {
-      const customerId = (operation as any).customer_id;
-      const creditTransactionId = `credit_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const currentCustomer = await db.get('SELECT account_balance FROM customers WHERE id = ?', [customerId]);
-      const newCreditBalance = (currentCustomer?.account_balance || 0) + creditAmount;
-      await db.run(`
-        INSERT INTO customer_credits (id, customer_id, amount, balance_after, type, description, created_by, created_at)
-        VALUES (?, ?, ?, ?, 'credit', ?, ?, ?)
-      `, [creditTransactionId, customerId, creditAmount, newCreditBalance, '2% transaction credit', null, now]);
-      await db.run('UPDATE customers SET account_balance = ? WHERE id = ?', [newCreditBalance, customerId]);
-    }
-
-    await db.run('COMMIT');
-
     let generatedDocumentId: string | null = null;
     let generatedDocumentType: 'invoice' | 'receipt' | null = null;
 
-    // Auto-generate receipt if fully paid
-    if (newPaidAmount >= (operation as any).total_amount) {
-      try {
-        // Check if receipt already exists
-        const existingReceipt = await db.get(
-          'SELECT id FROM invoices WHERE operation_id = ? AND type = ?',
-          [id, 'receipt']
-        );
-        if (!existingReceipt) {
-          const invoiceId = uuidv4();
-          const invoiceNumber = `RCP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-          await db.prepare(`
-            INSERT INTO invoices (
-              id, operation_id, type, invoice_number, customer_name, customer_phone,
-              subtotal, discount, total, amount_paid, payment_method, notes,
-              promised_date, generated_by, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            invoiceId, id, 'receipt', invoiceNumber,
-            (operation as any).customer_name || '', (operation as any).customer_phone || '',
-            (operation as any).total_amount + ((operation as any).discount || 0),
-            (operation as any).discount || 0,
-            (operation as any).total_amount,
-            newPaidAmount,
-            payments[0]?.method || null,
-            (operation as any).notes,
-            (operation as any).promised_date,
-            null, now, now
+    await db.withTransaction(async (client) => {
+      // Add each payment
+      for (const payment of payments) {
+        const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await client.run(`
+          INSERT INTO operation_payments (id, operation_id, payment_method, amount, transaction_id, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [paymentId, id, payment.method, payment.amount, payment.transaction_id || null, now]);
+      }
+
+      // Update operation paid_amount
+      const newPaidAmount = (operation.paid_amount || 0) + totalPaid;
+      await client.run(`
+        UPDATE operations
+        SET paid_amount = $1,
+            status = CASE WHEN $2 >= total_amount THEN 'completed' ELSE status END,
+            updated_at = $3
+        WHERE id = $4
+      `, [newPaidAmount, newPaidAmount, now, id]);
+
+      // Update customer stats: add to total_spent and update last_visit
+      await client.run(`
+        UPDATE customers
+        SET total_spent = total_spent + $1,
+            last_visit = $2
+        WHERE id = $3
+      `, [totalPaid, now, (operation as any).customer_id]);
+
+      // Auto-capture 2% credit on transaction
+      const creditAmount = Math.round(totalPaid * 0.02);
+      if (creditAmount > 0) {
+        const customerId = (operation as any).customer_id;
+        const creditTransactionId = `credit_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const currentCustomer = await client.get('SELECT account_balance FROM customers WHERE id = $1', [customerId]);
+        const newCreditBalance = (currentCustomer?.account_balance || 0) + creditAmount;
+        await client.run(`
+          INSERT INTO customer_credits (id, customer_id, amount, balance_after, type, description, created_by, created_at)
+          VALUES ($1, $2, $3, $4, 'credit', $5, $6, $7)
+        `, [creditTransactionId, customerId, creditAmount, newCreditBalance, '2% transaction credit', null, now]);
+        await client.run('UPDATE customers SET account_balance = $1 WHERE id = $2', [newCreditBalance, customerId]);
+      }
+
+      // Auto-generate receipt if fully paid
+      if (newPaidAmount >= (operation as any).total_amount) {
+        try {
+          // Check if receipt already exists
+          const existingReceipt = await client.get(
+            'SELECT id FROM invoices WHERE operation_id = $1 AND type = $2',
+            [id, 'receipt']
           );
-          generatedDocumentId = invoiceId;
-        } else {
-          generatedDocumentId = (existingReceipt as any).id;
+          if (!existingReceipt) {
+            const invoiceId = uuidv4();
+            const invoiceNumber = `RCP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+            await client.run(`
+              INSERT INTO invoices (
+                id, operation_id, type, invoice_number, customer_name, customer_phone,
+                subtotal, discount, total, amount_paid, payment_method, notes,
+                promised_date, generated_by, created_at, updated_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            `, [
+              invoiceId, id, 'receipt', invoiceNumber,
+              (operation as any).customer_name || '', (operation as any).customer_phone || '',
+              (operation as any).total_amount + ((operation as any).discount || 0),
+              (operation as any).discount || 0,
+              (operation as any).total_amount,
+              newPaidAmount,
+              payments[0]?.method || null,
+              (operation as any).notes,
+              (operation as any).promised_date,
+              null, now, now
+            ]);
+            generatedDocumentId = invoiceId;
+          } else {
+            generatedDocumentId = (existingReceipt as any).id;
+          }
+          generatedDocumentType = 'receipt';
+        } catch (err) {
+          console.error('Failed to auto-generate receipt:', err);
         }
-        generatedDocumentType = 'receipt';
-      } catch (err) {
-        console.error('Failed to auto-generate receipt:', err);
+      } else {
+        const existingInvoice = await client.get(
+          'SELECT id FROM invoices WHERE operation_id = $1 AND type = $2',
+          [id, 'invoice']
+        );
+        if (existingInvoice) {
+          generatedDocumentId = (existingInvoice as any).id;
+          generatedDocumentType = 'invoice';
+        }
       }
-    } else {
-      const existingInvoice = await db.get(
-        'SELECT id FROM invoices WHERE operation_id = ? AND type = ?',
-        [id, 'invoice']
-      );
-      if (existingInvoice) {
-        generatedDocumentId = (existingInvoice as any).id;
-        generatedDocumentType = 'invoice';
-      }
-    }
+    });
 
     // Return updated operation
     const updatedOperation = await db.get(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = ?
+      WHERE o.id = $1
     `, [id]);
     const retailItems = (await getRetailItemsByOperationIds([id])).get(id) || [];
     res.json(transformOperation({
@@ -615,7 +606,6 @@ router.post('/:id/payments', async (req, res) => {
     }));
 
   } catch (error) {
-    await db.run('ROLLBACK');
     console.error('Error processing payment:', error);
     res.status(500).json({ error: 'Failed to process payment' });
   }
