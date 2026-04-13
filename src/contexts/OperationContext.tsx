@@ -199,6 +199,30 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const addToCart = useCallback((item: CartItem) => {
+    setCartItems(prev => [...prev, item]);
+  }, []);
+
+  const removeFromCart = useCallback((id: string) => {
+    setCartItems(prev => prev.filter(i => i.id !== id));
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCartItems([]);
+    setTicketNumber('');
+  }, []);
+
+  const fetchTicketNumber = useCallback(async () => {
+    try {
+      const num = await api.ticket.getNext();
+      setTicketNumber(num);
+      return num;
+    } catch (err) {
+      console.error('Failed to fetch ticket number:', err);
+      throw err;
+    }
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       operations,
@@ -209,17 +233,13 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       refreshOperations,
       cartItems,
       ticketNumber,
-      addToCart: (item: CartItem) => setCartItems(prev => [...prev, item]),
-      removeFromCart: (id: string) => setCartItems(prev => prev.filter(i => i.id !== id)),
-      clearCart: () => { setCartItems([]); setTicketNumber(''); },
+      addToCart,
+      removeFromCart,
+      clearCart,
       setTicketNumber,
-      fetchTicketNumber: async () => {
-        const num = await api.ticket.getNext();
-        setTicketNumber(num);
-        return num;
-      },
+      fetchTicketNumber,
     }),
-    [operations, refreshOperations]
+    [operations, refreshOperations, cartItems, ticketNumber, setCartItems, setTicketNumber, addToCart, removeFromCart, clearCart, fetchTicketNumber]
   );
 
   return (
