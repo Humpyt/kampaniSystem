@@ -133,4 +133,13 @@ export const api = {
       return response.json();
     },
   },
+
+  // Ticket endpoints
+  ticket: {
+    getNext: async (): Promise<string> => {
+      const response = await fetch(`${API_URL}/ticket/next`);
+      const data = await response.json();
+      return data.ticket_number;
+    },
+  },
 };
