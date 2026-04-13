@@ -44,7 +44,22 @@ export const api = {
         body: JSON.stringify(customer),
       });
       if (!response.ok) throw new Error('Failed to create customer');
-      return response.json();
+      const created: any = await response.json();
+      // Transform snake_case from API to camelCase for frontend
+      return {
+        id: created.id,
+        name: created.name,
+        phone: created.phone,
+        email: created.email || '',
+        address: created.address || '',
+        notes: created.notes || '',
+        status: created.status || 'active',
+        totalOrders: created.total_orders || 0,
+        totalSpent: created.total_spent || 0,
+        lastVisit: created.last_visit || '',
+        loyaltyPoints: created.loyalty_points || 0,
+        accountBalance: created.account_balance,
+      };
     },
 
     update: async (id: string, customer: Partial<Customer>): Promise<Customer> => {
