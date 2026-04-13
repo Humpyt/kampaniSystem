@@ -1,22 +1,122 @@
-import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { Pool, PoolClient } from 'pg';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  database: 'cavemo-repair',
+  user: 'postgres',
+  max: 20,
+  idleTimeoutMillis: 30000,
+});
 
-// Initialize database
-const db = new sqlite3.Database(path.join(__dirname, 'database.db'));
+// withTransaction helper
+export async function withTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
-// Promisify database methods
-db.run = promisify(db.run.bind(db)) as any;
-db.get = promisify(db.get.bind(db)) as any;
-db.all = promisify(db.all.bind(db)) as any;
-db.exec = promisify(db.exec.bind(db)) as any;
+// Normalize params: flatten arrays to match SQLite behavior
+const normalizeParams = (params: any[]): any[] => {
+  if (params.length === 1 && Array.isArray(params[0])) {
+    return params[0];
+  }
+  return params;
+};
+
+// Convert pg result to SQLite-like { lastID, changes }
+interface SqliteRunResult {
+  lastID: number;
+  changes: number;
+}
+
+// Create the database interface
+const createDatabase = () => {
+  // raw query returning rows array
+  const query = async (sql: string, params: any[] = []): Promise<any[]> => {
+    const result = await pool.query(sql, normalizeParams(params));
+    return result.rows;
+  };
+
+  // single row query
+  const queryOne = async (sql: string, params: any[] = []): Promise<any> => {
+    const rows = await query(sql, params);
+    return rows[0] || null;
+  };
+
+  // db.run - returns { lastID, changes }
+  const run = async (sql: string, ...params: any[]): Promise<SqliteRunResult> => {
+    const normalized = normalizeParams(params);
+    const result = await pool.query(sql, normalized);
+    // PostgreSQL doesn't have lastID like SQLite, but we can get last insert id from RETURNING
+    // For INSERT with RETURNING, we can get it from the result
+    const lastID = result.rows[0]?.id || 0;
+    const changes = result.rowCount || 0;
+    return { lastID, changes };
+  };
+
+  // db.get - single row
+  const get = async (sql: string, ...params: any[]): Promise<any> => {
+    return queryOne(sql, params);
+  };
+
+  // db.all - array of rows
+  const all = async (sql: string, ...params: any[]): Promise<any[]> => {
+    return query(sql, params);
+  };
+
+  // db.exec - for DDL statements (no params, synchronous-like)
+  const exec = async (sql: string): Promise<void> => {
+    await pool.query(sql);
+  };
+
+  // db.prepare - returns object with run/get/all for legacy compatibility
+  const prepare = (sql: string) => {
+    return {
+      run: (...params: any[]) => run(sql, ...params),
+      get: (...params: any[]) => get(sql, ...params),
+      all: (...params: any[]) => all(sql, ...params),
+    };
+  };
+
+  // Legacy transaction wrapper (alias for withTransaction)
+  const transaction = (fn: (client: PoolClient) => Promise<any>) => {
+    return withTransaction(fn);
+  };
+
+  const db: any = {
+    run,
+    get,
+    all,
+    exec,
+    query,
+    queryOne,
+    withTransaction,
+    transaction,
+    prepare,
+    pool,
+  };
+
+  return db;
+};
+
+const db = createDatabase();
 
 // Enable foreign keys
-db.exec('PRAGMA foreign_keys = ON;');
+db.exec('PRAGMA foreign_keys = ON;').catch(() => {
+  // PostgreSQL handles foreign keys differently, ignore if this fails
+});
 
 // Create tables
 db.exec(`
@@ -424,50 +524,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status);
 `);
 
-// Migration: Add image_url column to retail_products if it doesn't exist
-try {
-  const result = db.exec("PRAGMA table_info(retail_products)");
-  const columns = result[0]?.values?.map((v: any[]) => v[1]) || [];
-  if (!columns.includes('image_url')) {
-    db.exec('ALTER TABLE retail_products ADD COLUMN image_url TEXT');
-    console.log('Migration: Added image_url column to retail_products table');
-  }
-} catch (e) {
-  // Migration already applied or other error, continue
-}
-
-// Create a wrapper to mimic better-sqlite3's prepare interface
-const createStatement = (sql: string) => {
-  return {
-    run: (...params: any[]) => db.run(sql, params),
-    get: (...params: any[]) => db.get(sql, params),
-    all: (...params: any[]) => db.all(sql, params),
-  };
-};
-
-// Extend db with prepare method
-(db as any).prepare = createStatement;
-
-// Add transaction method (simplified)
-(db as any).transaction = (fn: Function) => {
-  return async (...args: any[]) => {
-    await db.run('BEGIN TRANSACTION');
-    try {
-      const result = await fn(...args);
-      await db.run('COMMIT');
-      return result;
-    } catch (error) {
-      await db.run('ROLLBACK');
-      throw error;
-    }
-  };
-};
-
-// Add name property
-Object.defineProperty(db, 'name', {
-  get: () => path.join(__dirname, 'database.db')
-});
-
 // Function to seed retail products
 export const seedRetailProducts = async () => {
   try {
@@ -531,7 +587,7 @@ export const seedRetailProducts = async () => {
     for (const product of retailProducts) {
       await db.run(
         `INSERT INTO retail_products (id, name, category, description, default_price, icon, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [product.id, product.name, product.category, product.description, product.default_price, product.icon, 1, now, now]
       );
     }
@@ -619,8 +675,8 @@ const syncRetailProductsCatalog = async () => {
       consumedProductIds.add(match.id);
       await db.run(
         `UPDATE retail_products
-         SET name = ?, category = ?, description = ?, default_price = ?, icon = ?, display_order = ?, is_active = 1, updated_at = ?
-         WHERE id = ?`,
+         SET name = $1, category = $2, description = $3, default_price = $4, icon = $5, display_order = $6, is_active = 1, updated_at = $7
+         WHERE id = $8`,
         [
           product.name,
           product.category,
@@ -636,7 +692,7 @@ const syncRetailProductsCatalog = async () => {
       await db.run(
         `INSERT INTO retail_products (
           id, name, category, description, default_price, icon, display_order, is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9)`,
         [
           uuidv4(),
           product.name,
@@ -700,6 +756,13 @@ const initializeDatabase = async () => {
       // Column already exists, ignore error
     }
 
+    // Migration: Add image_url to retail_products if it doesn't exist
+    try {
+      await db.run(`ALTER TABLE retail_products ADD COLUMN image_url TEXT`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
     // Migration: Add product_id to operation_retail_items if it doesn't exist
     try {
       await db.run(`ALTER TABLE operation_retail_items ADD COLUMN product_id TEXT`);
@@ -720,7 +783,7 @@ const initializeDatabase = async () => {
       for (const category of defaultCategories) {
         await db.run(
           `INSERT INTO sales_categories (id, name, description, created_at, updated_at)
-           VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+           VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           [category.id, category.name, category.description]
         );
       }
@@ -738,7 +801,7 @@ const initializeDatabase = async () => {
       for (const service of defaultServices) {
         await db.run(
           `INSERT INTO services (id, name, price, estimated_days, category, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           [service.id, service.name, service.price, service.estimated_days, service.category]
         );
       }
@@ -755,14 +818,20 @@ const initializeDatabase = async () => {
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['admin-001', 'Admin User', 'admin@repairpro.com', adminPassword, 'admin', 'active', now, now]
       );
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['manager-001', 'Manager User', 'manager@repairpro.com', managerPassword, 'manager', 'active', now, now]
+      );
+
+      await db.run(
+        `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        ['staff-001', 'Staff User', 'staff1@repairpro.com', staffPassword, 'staff', 'active', now, now]
       );
 
       // Add new staff members
@@ -774,31 +843,31 @@ const initializeDatabase = async () => {
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['staff-002', 'Stella', 'stella@repairpro.com', stellaPassword, 'admin', 'active', now, now]
       );
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['staff-003', 'Esther', 'esther@repairpro.com', estherPassword, 'staff', 'active', now, now]
       );
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['staff-004', 'Ritah', 'ritah@repairpro.com', ritahPassword, 'staff', 'active', now, now]
       );
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['staff-005', 'Noelah', 'noelah@repairpro.com', noelahPassword, 'staff', 'active', now, now]
       );
 
       await db.run(
         `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         ['staff-006', 'Danielah', 'danielah@repairpro.com', danielahPassword, 'staff', 'active', now, now]
       );
 
@@ -813,7 +882,7 @@ const initializeDatabase = async () => {
       for (const permission of adminPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-admin-${permission}`, 'admin-001', permission, 1, now]
         );
       }
@@ -828,7 +897,7 @@ const initializeDatabase = async () => {
       for (const permission of managerPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-manager-${permission}`, 'manager-001', permission, 1, now]
         );
       }
@@ -843,7 +912,7 @@ const initializeDatabase = async () => {
       for (const permission of staffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-staff-${permission}`, 'staff-001', permission, 1, now]
         );
       }
@@ -852,7 +921,7 @@ const initializeDatabase = async () => {
       for (const permission of adminPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-stella-${permission}`, 'staff-002', permission, 1, now]
         );
       }
@@ -861,7 +930,7 @@ const initializeDatabase = async () => {
       for (const permission of staffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-esther-${permission}`, 'staff-003', permission, 1, now]
         );
       }
@@ -870,7 +939,7 @@ const initializeDatabase = async () => {
       for (const permission of staffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-ritah-${permission}`, 'staff-004', permission, 1, now]
         );
       }
@@ -879,7 +948,7 @@ const initializeDatabase = async () => {
       for (const permission of staffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-noelah-${permission}`, 'staff-005', permission, 1, now]
         );
       }
@@ -888,7 +957,7 @@ const initializeDatabase = async () => {
       for (const permission of staffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [`perm-danielah-${permission}`, 'staff-006', permission, 1, now]
         );
       }
@@ -908,13 +977,51 @@ const initializeDatabase = async () => {
       for (const target of staffTargets) {
         await db.run(
           `INSERT INTO staff_targets (id, user_id, daily_target, monthly_target, effective_date, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [`target-${target.userId}`, target.userId, target.dailyTarget, target.monthlyTarget, now, now, now]
         );
       }
 
       console.log('Created default users: admin@repairpro.com/admin123, manager@repairpro.com/manager123, staff1@repairpro.com/staff123');
       console.log('Created additional staff: stella@repairpro.com/stella123 (admin), esther@repairpro.com/esther123, ritah@repairpro.com/ritah123, noelah@repairpro.com/noelah123, danielah@repairpro.com/danielah123');
+    }
+
+    // Backfill the original staff1 account for older databases that were seeded
+    // before the user row existed but still reference its permissions/targets.
+    const staffOne = await db.get(
+      'SELECT id FROM users WHERE id = $1 OR email = $2',
+      ['staff-001', 'staff1@repairpro.com']
+    );
+
+    if (!staffOne) {
+      const bcrypt = await import('bcryptjs');
+      const now = new Date().toISOString();
+      const staffPassword = await bcrypt.default.hash('staff123', 10);
+      const staffPermissions = [
+        'view_customers', 'create_drop', 'create_pickup', 'send_messages',
+        'view_operations', 'view_sales', 'view_marketing', 'view_qrcodes',
+        'view_business_targets'
+      ];
+
+      await db.run(
+        `INSERT INTO users (id, name, email, password_hash, role, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        ['staff-001', 'Staff User', 'staff1@repairpro.com', staffPassword, 'staff', 'active', now, now]
+      );
+
+      for (const permission of staffPermissions) {
+        await db.run(
+          `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [`perm-staff-${permission}`, 'staff-001', permission, 1, now]
+        );
+      }
+
+      await db.run(
+        `INSERT INTO staff_targets (id, user_id, daily_target, monthly_target, effective_date, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ['target-staff-001', 'staff-001', 1000000, 26000000, now, now, now]
+      );
     }
   } catch (error) {
     console.error('Error initializing database:', error);
