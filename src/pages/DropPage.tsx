@@ -580,7 +580,7 @@ export default function DropPage() {
 
       case 'variation':
         return (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="text-sm text-gray-400 mb-2">What needs fixing?</div>
             <div className="grid grid-cols-2 gap-2">
               {SERVICE_VARIATIONS.map(v => (
@@ -597,7 +597,31 @@ export default function DropPage() {
                 </button>
               ))}
             </div>
-            </div>
+            {form.variation && (
+              <button
+                onClick={() => {
+                  if (form.category && form.variation) {
+                    const item: CartItem = {
+                      id: crypto.randomUUID(),
+                      category: form.category,
+                      color: form.color,
+                      brand: form.brand,
+                      material: form.material,
+                      shortDescription: form.shortDescription,
+                      memos: form.memos,
+                      services: [{ service: form.service, variation: form.variation }],
+                      price: parseInt(form.price, 10) || 0,
+                    };
+                    handleDone(item);
+                  }
+                }}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors text-lg flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" />
+                Done - Add to Cart
+              </button>
+            )}
+          </div>
         );
 
       default:
@@ -694,17 +718,11 @@ export default function DropPage() {
         </div>
 
         {/* Right sidebar - Cart Summary */}
-        <div className="w-[480px] flex-shrink-0">
+        <div className="w-1/2 flex-shrink-0">
           <CartSummary
             items={cartItems}
             ticketNumber={ticketNumber}
             onRemoveItem={removeFromCart}
-            onUpdateItemPrice={(id, price) => {
-              const item = cartItems.find(i => i.id === id);
-              if (item) {
-                updateCartItem?.(id, { ...item, price });
-              }
-            }}
             onComplete={handleComplete}
             disabled={cartItems.length === 0}
             previewItem={previewItem}
