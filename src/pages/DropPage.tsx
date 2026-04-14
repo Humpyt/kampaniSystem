@@ -117,19 +117,6 @@ export default function DropPage() {
   const [activeStep, setActiveStep] = useState<StepName>('customer');
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
 
-  // Compute preview item for real-time cart preview
-  const previewItem: CartItem | null = form.category ? {
-    id: 'preview',
-    category: form.category,
-    color: form.color,
-    brand: form.brand,
-    material: form.material,
-    shortDescription: form.shortDescription,
-    memos: form.memos,
-    services: form.service || form.variation ? [{ service: form.service, variation: form.variation }] : [],
-    price: parseInt(form.price, 10) || 0,
-  } : null;
-
   // Fetch ticket number and colors on mount
   useEffect(() => {
     setTicketLoading(true);
@@ -718,16 +705,13 @@ export default function DropPage() {
         </div>
 
         {/* Right sidebar - Cart Summary */}
-        <div className="w-1/2 flex-shrink-0">
+        <div className="w-[35%] flex-shrink-0">
           <CartSummary
             items={cartItems}
             ticketNumber={ticketNumber}
             onRemoveItem={removeFromCart}
             onComplete={handleComplete}
             disabled={cartItems.length === 0}
-            previewItem={previewItem}
-            onPriceChange={(price) => setForm(prev => ({ ...prev, price: price.toString() }))}
-            onDone={handleDone}
           />
         </div>
       </div>
