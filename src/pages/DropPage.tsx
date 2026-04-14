@@ -631,6 +631,16 @@ export default function DropPage() {
                 </button>
               ))}
             </div>
+            {form.variation && (
+              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+                <div className="text-amber-400 font-semibold mb-1">Price input is in the cart</div>
+                <div className="text-amber-300/70 text-sm">Enter the price on the right panel to complete your item</div>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <span className="text-2xl">👉</span>
+                  <span className="text-white font-medium">Scroll down to see the cart</span>
+                </div>
+              </div>
+            )}
           </div>
         );
 
