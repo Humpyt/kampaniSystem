@@ -115,6 +115,7 @@ export default function DropPage() {
   const [colors, setColors] = useState<ColorOption[]>([]);
   const [activeStep, setActiveStep] = useState<StepName>('customer');
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
+  const [customCategory, setCustomCategory] = useState('');
 
   // Fetch ticket number and colors on mount
   useEffect(() => {
@@ -170,6 +171,7 @@ export default function DropPage() {
   };
 
   const handleCategorySelect = (category: string) => {
+    setCustomCategory('');
     setForm(prev => ({ ...prev, category }));
     if (category !== 'Other') {
       advanceStep('category');
@@ -439,18 +441,23 @@ export default function DropPage() {
                 type="text"
                 placeholder="Enter custom category..."
                 autoFocus
+                value={customCategory}
                 className="w-full px-4 py-3 bg-gray-700 rounded-xl text-white placeholder-gray-400 border border-gray-600 focus:border-indigo-500 outline-none"
-                onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
+                onChange={(e) => setCustomCategory(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && form.category && form.category !== 'Other') {
+                  if (e.key === 'Enter' && customCategory) {
+                    setForm(prev => ({ ...prev, category: customCategory }));
                     advanceStep('category');
                   }
                 }}
               />
             )}
-            {form.category && form.category !== 'Other' && (
+            {form.category === 'Other' && customCategory && (
               <button
-                onClick={() => advanceStep('category')}
+                onClick={() => {
+                  setForm(prev => ({ ...prev, category: customCategory }));
+                  advanceStep('category');
+                }}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
               >
                 Continue
