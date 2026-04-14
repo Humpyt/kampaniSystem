@@ -139,15 +139,30 @@ export default function DropPage() {
     fetchColors();
   }, []);
 
-  // Auto-add to cart when price is entered (after variation is selected)
-  useEffect(() => {
-    if (form.category && form.variation && form.price && parseInt(form.price, 10) > 0) {
-      const timer = setTimeout(() => {
-        handleAddToCart();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [form.price, form.category, form.variation]);
+  // Build preview item from current form state
+  const previewItem: CartItem | null = form.category ? {
+    id: 'preview',
+    category: form.category,
+    color: form.color,
+    brand: form.brand,
+    material: form.material,
+    shortDescription: form.shortDescription,
+    memos: form.memos,
+    services: form.service && form.variation ? [{ service: form.service, variation: form.variation }] : [],
+    price: parseInt(form.price, 10) || 0,
+  } : null;
+
+  const handlePreviewPriceChange = (price: number) => {
+    setForm(prev => ({ ...prev, price: price.toString() }));
+  };
+
+  const handlePreviewDone = (item: CartItem) => {
+    const finalItem: CartItem = {
+      ...item,
+      id: crypto.randomUUID(),
+    };
+    handleDone(finalItem);
+  };
 
   // Advance to next step
   const advanceStep = (currentStep: StepName) => {
@@ -616,30 +631,6 @@ export default function DropPage() {
                 </button>
               ))}
             </div>
-            {form.variation && (
-              <button
-                onClick={() => {
-                  if (form.category && form.variation) {
-                    const item: CartItem = {
-                      id: crypto.randomUUID(),
-                      category: form.category,
-                      color: form.color,
-                      brand: form.brand,
-                      material: form.material,
-                      shortDescription: form.shortDescription,
-                      memos: form.memos,
-                      services: [{ service: form.service, variation: form.variation }],
-                      price: parseInt(form.price, 10) || 0,
-                    };
-                    handleDone(item);
-                  }
-                }}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors text-lg flex items-center justify-center gap-2"
-              >
-                <Check className="w-5 h-5" />
-                Done - Add to Cart
-              </button>
-            )}
           </div>
         );
 
@@ -727,6 +718,9 @@ export default function DropPage() {
             onRemoveItem={removeFromCart}
             onComplete={handleComplete}
             disabled={cartItems.length === 0}
+            previewItem={previewItem}
+            onPriceChange={handlePreviewPriceChange}
+            onDone={handlePreviewDone}
           />
         </div>
       </div>
