@@ -12,6 +12,7 @@ interface CartSummaryProps {
   disabled?: boolean;
   previewItem?: CartItemType | null;
   onPriceChange?: (price: number) => void;
+  onDone?: (item: CartItemType) => void;
 }
 
 const CartSummary: React.FC<CartSummaryProps> = ({
@@ -22,6 +23,7 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   disabled = false,
   previewItem = null,
   onPriceChange,
+  onDone,
 }) => {
   const total = items.reduce((sum, item) => sum + item.price, 0);
   const itemCount = items.length;
@@ -75,15 +77,24 @@ const CartSummary: React.FC<CartSummaryProps> = ({
                   {/* Price input for preview */}
                   <div className="mt-3 pt-3 border-t border-indigo-200">
                     <label className="text-xs text-indigo-600 font-medium mb-1.5 block">Set Price (UGX)</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={previewItem.price || ''}
-                        onChange={(e) => onPriceChange?.(parseInt(e.target.value, 10) || 0)}
-                        className="w-full pl-4 pr-16 py-3 bg-white rounded-xl text-gray-800 font-bold text-lg placeholder-gray-300 border-2 border-indigo-200 focus:border-indigo-500 focus:outline-none transition-colors"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">UGX</span>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={previewItem.price || ''}
+                          onChange={(e) => onPriceChange?.(parseInt(e.target.value, 10) || 0)}
+                          className="w-full pl-4 pr-16 py-3 bg-white rounded-xl text-gray-800 font-bold text-lg placeholder-gray-300 border-2 border-indigo-200 focus:border-indigo-500 focus:outline-none transition-colors"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">UGX</span>
+                      </div>
+                      <button
+                        onClick={() => previewItem && onDone?.(previewItem)}
+                        disabled={!previewItem.price || previewItem.price === 0}
+                        className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors"
+                      >
+                        Done
+                      </button>
                     </div>
                   </div>
                 </div>
