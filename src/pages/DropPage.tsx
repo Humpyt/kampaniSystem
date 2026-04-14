@@ -170,23 +170,8 @@ export default function DropPage() {
     }
   };
 
-  // Edit a collapsed step - resets subsequent steps
+  // Edit a collapsed step - just navigate, keep form values intact
   const editStep = (step: StepName) => {
-    setForm(prev => {
-      const stepIndex = STEPS_ORDER.indexOf(step);
-      // Clear all steps after this one
-      return {
-        ...prev,
-        color: stepIndex >= STEPS_ORDER.indexOf('color') ? prev.color : '',
-        brand: stepIndex >= STEPS_ORDER.indexOf('brand') ? prev.brand : '',
-        material: stepIndex >= STEPS_ORDER.indexOf('material') ? prev.material : '',
-        shortDescription: stepIndex >= STEPS_ORDER.indexOf('description') ? prev.shortDescription : '',
-        memos: stepIndex >= STEPS_ORDER.indexOf('memos') ? prev.memos : [],
-        service: stepIndex >= STEPS_ORDER.indexOf('service') ? prev.service : '',
-        variation: stepIndex >= STEPS_ORDER.indexOf('variation') ? prev.variation : '',
-        price: stepIndex >= STEPS_ORDER.indexOf('price') ? prev.price : '',
-      };
-    });
     setActiveStep(step);
   };
 
