@@ -707,42 +707,41 @@ export default function DropPage() {
             >
               {renderStepForm()}
             </StepSection>
-
-            {/* Service shortcuts */}
-            {activeStep !== 'customer' && (
-              <div className="mt-4 space-y-2">
-                <div className="text-xs text-gray-500 uppercase tracking-wider">Quick Services</div>
-                <div className="grid grid-cols-4 gap-2">
-                  {['Clean', 'Dye', 'Waterproof', 'Shine'].map(service => (
-                    <button
-                      key={service}
-                      onClick={() => {
-                        setForm(prev => ({ ...prev, service }));
-                        setActiveStep('variation');
-                      }}
-                      className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-lg transition-colors"
-                    >
-                      {service}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {['Heels', 'Half Soles', 'Sole Guard', 'Others'].map(service => (
-                    <button
-                      key={service}
-                      onClick={() => {
-                        setForm(prev => ({ ...prev, service }));
-                        setActiveStep('variation');
-                      }}
-                      className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-lg transition-colors"
-                    >
-                      {service}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Service shortcuts - fixed at bottom */}
+          {activeStep !== 'customer' && (
+            <div className="flex-shrink-0 py-3 space-y-2 border-t border-gray-700">
+              <div className="grid grid-cols-4 gap-2">
+                {['Clean', 'Dye', 'Waterproof', 'Shine'].map(service => (
+                  <button
+                    key={service}
+                    onClick={() => {
+                      setForm(prev => ({ ...prev, service }));
+                      setActiveStep('variation');
+                    }}
+                    className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    {service}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {['Heels', 'Half Soles', 'Sole Guard', 'Others'].map(service => (
+                  <button
+                    key={service}
+                    onClick={() => {
+                      setForm(prev => ({ ...prev, service }));
+                      setActiveStep('variation');
+                    }}
+                    className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    {service}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right sidebar - Cart Summary */}
