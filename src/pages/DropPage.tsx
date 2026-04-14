@@ -753,10 +753,10 @@ export default function DropPage() {
           <div className="flex-shrink-0">
             <button
               onClick={() => setShowProducts(!showProducts)}
-              className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-2 transition-colors"
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/25 transition-all active:scale-95"
             >
               <ShoppingBag className="w-4 h-4" />
-              {showProducts ? 'Hide Products' : 'Show Products'}
+              {showProducts ? 'HIDE PRODUCTS' : 'QUICK SALE'}
             </button>
 
             {showProducts && (
