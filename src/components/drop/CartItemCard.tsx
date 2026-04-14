@@ -21,7 +21,7 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({ item, onEdit, onRemo
           <div className="font-bold text-gray-800 text-sm truncate">{item.category}</div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-emerald-600 font-bold text-sm">{formatCurrency(item.price)}</span>
+          <span className="text-black font-extrabold text-lg">{formatCurrency(item.price)}</span>
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
             className="p-1 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"

@@ -115,10 +115,10 @@ const CartSummary: React.FC<CartSummaryProps> = ({
       </div>
 
       {/* Footer - totals and action */}
-      <div className="border-t border-gray-100 p-3 bg-gray-50 flex-shrink-0">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-gray-500 text-sm">Total</span>
-          <span className="text-emerald-600 font-bold text-xl">{formatCurrency(total)}</span>
+      <div className="border-t-2 border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-gray-100 flex-shrink-0">
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-gray-600 font-bold text-lg">TOTAL</span>
+          <span className="text-black font-black text-3xl tracking-tight">{formatCurrency(total)}</span>
         </div>
         <button
           onClick={onComplete}
