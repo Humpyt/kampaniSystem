@@ -5,7 +5,6 @@ import { useCustomer } from '../contexts/CustomerContext';
 import type { Customer, CartItem, DropFormState } from '../types';
 import PillChip from '../components/drop/PillChip';
 import StepSection from '../components/drop/StepSection';
-import CartItemCard from '../components/drop/CartItemCard';
 import EditItemModal from '../components/drop/EditItemModal';
 import CartSummary from '../components/drop/CartSummary';
 import TicketBadge from '../components/drop/TicketBadge';
@@ -660,23 +659,6 @@ export default function DropPage() {
       <div className="flex gap-4 flex-1 overflow-hidden">
         {/* Left side */}
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          {/* Cart items grid */}
-          {cartItems.length > 0 && (
-            <div className="flex-shrink-0">
-              <h3 className="text-white font-semibold mb-2 text-sm">Items ({cartItems.length})</h3>
-              <div className="grid grid-cols-3 gap-3">
-                {cartItems.map(item => (
-                  <CartItemCard
-                    key={item.id}
-                    item={item}
-                    onEdit={handleEditCartItem}
-                    onRemove={removeFromCart}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Stepper pills for completed steps */}
           {STEPS_ORDER.filter(step => isStepCompleted(step) && step !== activeStep).length > 0 && (
             <div className="flex flex-wrap gap-2 pb-1">
