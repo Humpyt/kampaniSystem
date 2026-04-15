@@ -214,12 +214,17 @@ export default function DropPage() {
     handleDone(finalItem);
   };
 
-  // Advance to next step
+  // Advance to next step, auto-skipping completed steps
   const advanceStep = (currentStep: StepName) => {
     const currentIndex = STEPS_ORDER.indexOf(currentStep);
-    if (currentIndex < STEPS_ORDER.length - 1) {
-      setActiveStep(STEPS_ORDER[currentIndex + 1]);
+    for (let i = currentIndex + 1; i < STEPS_ORDER.length; i++) {
+      const nextStep = STEPS_ORDER[i];
+      if (!isStepCompleted(nextStep)) {
+        setActiveStep(nextStep);
+        return;
+      }
     }
+    // All remaining steps completed - stay on current
   };
 
   // Edit a collapsed step - just navigate, keep form values intact
@@ -894,8 +899,21 @@ export default function DropPage() {
                   <button
                     key={service}
                     onClick={() => {
-                      setForm(prev => ({ ...prev, service }));
-                      setActiveStep('variation');
+                      setForm(prev => ({
+                        ...prev,
+                        service,
+                        variation: 'New Pair'
+                      }));
+                      // Navigate to first incomplete required step
+                      if (!form.category) {
+                        setActiveStep('category');
+                      } else if (!form.color) {
+                        setActiveStep('color');
+                      } else if (!form.brand) {
+                        setActiveStep('brand');
+                      } else {
+                        advanceStep('category');
+                      }
                     }}
                     className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
                   >
@@ -908,8 +926,21 @@ export default function DropPage() {
                   <button
                     key={service}
                     onClick={() => {
-                      setForm(prev => ({ ...prev, service }));
-                      setActiveStep('variation');
+                      setForm(prev => ({
+                        ...prev,
+                        service,
+                        variation: 'New Pair'
+                      }));
+                      // Navigate to first incomplete required step
+                      if (!form.category) {
+                        setActiveStep('category');
+                      } else if (!form.color) {
+                        setActiveStep('color');
+                      } else if (!form.brand) {
+                        setActiveStep('brand');
+                      } else {
+                        advanceStep('category');
+                      }
                     }}
                     className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
                   >
