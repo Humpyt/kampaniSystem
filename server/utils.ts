@@ -25,6 +25,7 @@ export const transformCustomer = (customer: any) => ({
 export const transformOperation = (operation: any) => ({
     id: operation.id,
     customerId: operation.customer_id,
+    ticketNumber: operation.ticket_number || null,
     status: operation.status || 'pending',
     totalAmount: operation.total_amount || 0,
     paidAmount: operation.paid_amount || 0,

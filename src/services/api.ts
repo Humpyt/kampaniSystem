@@ -133,4 +133,40 @@ export const api = {
       return response.json();
     },
   },
+
+  // Ticket endpoints
+  ticket: {
+    getNext: async (): Promise<string> => {
+      const response = await fetch(`${API_URL}/ticket/next`);
+      if (!response.ok) throw new Error('Failed to fetch next ticket number');
+      const data = await response.json();
+      return data.ticket_number;
+    },
+  },
+
+  // Operation endpoints
+  operations: {
+    create: async (data: {
+      ticket_number: string;
+      customer_id?: string;
+      items: Array<{
+        category: string;
+        color: string;
+        brand: string;
+        material: string;
+        shortDescription: string;
+        memos: string[];
+        services: Array<{ service: string; variation: string }>;
+        price: number;
+      }>;
+    }): Promise<{ id: string }> => {
+      const response = await fetch(`${API_URL}/operations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to create operation');
+      return response.json();
+    },
+  },
 };

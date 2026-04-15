@@ -98,3 +98,33 @@ export type PageType = 'store' | 'customer' | 'pickup' | 'delivery';
 
 // Re-export expense types
 export * from './expense';
+
+export interface ServiceSelection {
+  service: string;
+  variation: string;
+}
+
+export interface CartItem {
+  id: string;           // temp uuid
+  category: string;
+  color: string;
+  brand: string;
+  material: string;
+  shortDescription: string;  // optional free text
+  memos: string[];      // multi-select
+  services: ServiceSelection[];
+  price: number;        // manually entered
+}
+
+export interface DropFormState {
+  customerId: string;
+  category: string;
+  color: string;
+  brand: string;
+  material: string;
+  shortDescription: string;
+  memos: string[];
+  service: string;
+  variation: string;
+  price: string;
+}

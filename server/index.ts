@@ -22,6 +22,7 @@ import invoicesRouter from './routes/invoices';
 import analyticsRouter from './routes/analytics';
 import retailProductsRouter from './routes/retailProducts';
 import expensesRouter from './routes/expenses';
+import ticketRouter from './routes/ticket';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/invoices', invoicesRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/retail-products', retailProductsRouter);
 app.use('/api/expenses', expensesRouter);
+app.use('/api/ticket', ticketRouter);
 
 // Customer endpoints
 app.get('/api/customers', async (req, res) => {

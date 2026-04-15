@@ -220,6 +220,7 @@ router.post('/', async (req, res) => {
     notes,
     promisedDate,
     created_by,
+    ticket_number,
   } = req.body;
   const now = new Date().toISOString();
   const normalizedShoes = Array.isArray(shoes) ? shoes : [];
@@ -248,8 +249,8 @@ router.post('/', async (req, res) => {
         INSERT INTO operations (
           id, customer_id, status, total_amount, discount, notes, promised_date,
           is_no_charge, is_do_over, is_delivery, is_pickup,
-          created_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          created_by, created_at, updated_at, ticket_number
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       `, [
         operationId,
         customer.id,
@@ -264,7 +265,8 @@ router.post('/', async (req, res) => {
         isPickup ? 1 : 0,
         created_by || null,
         now,
-        now
+        now,
+        ticket_number || null
       ]);
 
       // Insert each shoe
