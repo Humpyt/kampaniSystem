@@ -1,47 +1,16 @@
-# Shortcut Service Flow Implementation Plan
+# Shortcut Service Flow Implementation Plan (Option A)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Shortcut service buttons preserve existing form values (Category, Color, Material, Memo) and navigate to the first incomplete step instead of jumping directly to variation.
+**Goal:** Shortcut service buttons set Category="Other", Service, and Memo in one click, showing an immediate preview in the cart sidebar for review/confirmation.
 
-**Architecture:** Add a helper function `getFirstIncompleteStep()` that checks which form fields are empty and returns the first incomplete step. Update shortcut button handlers to use this helper instead of always jumping to 'variation'.
+**Architecture:** Update shortcut button handlers to set smart defaults (Category="Other", add service name to memos) and trigger preview. No step navigation — form stays in current state.
 
 **Tech Stack:** React, TypeScript (no new dependencies)
 
 ---
 
-## Task 1: Add `getFirstIncompleteStep` Helper
-
-**File:** `src/pages/DropPage.tsx` (add near line 138, after state declarations)
-
-- [ ] **Step 1: Add the helper function after the existing state declarations (around line 138)**
-
-```typescript
-// Find the first incomplete step to navigate to after shortcut selection
-const getFirstIncompleteStep = (form: DropFormState): StepName => {
-  if (!form.category) return 'category';
-  if (!form.color) return 'color';
-  if (!form.material) return 'material';
-  if (form.memos.length === 0) return 'memos';
-  return 'service'; // All filled, go to service step
-};
-```
-
-- [ ] **Step 2: Verify file compiles**
-
-Run: `npm run build 2>&1 | tail -5`
-Expected: Build succeeds with no errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/pages/DropPage.tsx
-git commit -m "feat: add getFirstIncompleteStep helper for shortcut flow"
-```
-
----
-
-## Task 2: Update First Row of Shortcut Buttons
+## Task 1: Update First Row of Shortcut Buttons
 
 **File:** `src/pages/DropPage.tsx` (lines 892-904)
 
@@ -74,10 +43,12 @@ Replace with:
       onClick={() => {
         setForm(prev => ({
           ...prev,
+          category: prev.category || 'Other',
           service,
+          color: prev.color || '',
+          material: prev.material || '',
           memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
         }));
-        setActiveStep(getFirstIncompleteStep(form));
       }}
       className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
     >
@@ -96,12 +67,12 @@ Expected: Build succeeds
 
 ```bash
 git add src/pages/DropPage.tsx
-git commit -m "feat: update first row shortcut buttons with smart navigation"
+git commit -m "feat: update first row shortcut buttons with smart defaults"
 ```
 
 ---
 
-## Task 3: Update Second Row of Shortcut Buttons
+## Task 2: Update Second Row of Shortcut Buttons
 
 **File:** `src/pages/DropPage.tsx` (lines 906-918)
 
@@ -134,10 +105,12 @@ Replace with:
       onClick={() => {
         setForm(prev => ({
           ...prev,
+          category: prev.category || 'Other',
           service,
+          color: prev.color || '',
+          material: prev.material || '',
           memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
         }));
-        setActiveStep(getFirstIncompleteStep(form));
       }}
       className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
     >
@@ -156,12 +129,12 @@ Expected: Build succeeds
 
 ```bash
 git add src/pages/DropPage.tsx
-git commit -m "feat: update second row shortcut buttons with smart navigation"
+git commit -m "feat: update second row shortcut buttons with smart defaults"
 ```
 
 ---
 
-## Task 4: Verify Full Integration
+## Task 3: Verify Full Integration
 
 **File:** `src/pages/DropPage.tsx`
 
@@ -170,14 +143,16 @@ git commit -m "feat: update second row shortcut buttons with smart navigation"
 1. Start dev server: `npm run dev`
 2. Navigate to Drop page
 3. Select a customer
-4. Fill in Category, Color, Material
-5. Click "Clean" shortcut
-6. Verify:
-   - Service is set to "Clean"
+4. Click "Clean" shortcut (without filling any other fields)
+5. Verify:
+   - Preview appears in cart sidebar
+   - Category shows "Other"
+   - Service shows "Clean"
    - Memo shows "Clean"
-   - Navigates to variation step (all fields filled)
-7. Clear cart and repeat without filling all fields
-8. Verify it navigates to the first incomplete step
+   - Price is 0
+6. Click "Done" on preview
+7. Verify item added to cart
+8. Repeat with different shortcut and verify memo is added to existing memos (not duplicated)
 
 - [ ] **Step 2: Final build verification**
 
@@ -188,5 +163,5 @@ Expected: Build succeeds
 
 ```bash
 git add -A
-git commit -m "feat: shortcut services capture category, color, material, memo"
+git commit -m "feat: shortcut services use smart defaults with preview"
 ```
