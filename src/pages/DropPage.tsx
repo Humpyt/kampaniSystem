@@ -903,8 +903,12 @@ export default function DropPage() {
                   <button
                     key={service}
                     onClick={() => {
-                      setForm(prev => ({ ...prev, service }));
-                      setActiveStep('variation');
+                      setForm(prev => ({
+                        ...prev,
+                        service,
+                        memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
+                      }));
+                      setActiveStep(getFirstIncompleteStep(form));
                     }}
                     className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
                   >
