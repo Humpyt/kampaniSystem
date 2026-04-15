@@ -4,14 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A full-stack Point of Sale (POS) system for shoe repair businesses. Built with React + TypeScript (Vite) frontend and Express + SQLite backend.
+A full-stack Point of Sale (POS) system for shoe repair businesses. Built with React + TypeScript (Vite) frontend and Express + PostgreSQL backend.
 
 ## Development Commands
+
+**Environment setup:**
+```bash
+cp .env.example .env  # Configure environment variables
+```
 
 **Start development servers (both client and server):**
 ```bash
 npm run dev
 ```
+
+**Git worktrees:** This project uses git worktrees for isolated feature development.
+- `.worktrees/drop-workflow/` - Active worktree for Drop page enhancements (branch: drop-workflow)
+- To create a new worktree: `git worktree add ../new-feature main`
+- Worktrees are listed in `.worktrees/` directory
 
 **Start individual servers:**
 ```bash
@@ -47,11 +57,15 @@ npm run cleanup:services         # Remove duplicate services from database
 
 ## Architecture
 
-### Backend (Express + SQLite)
+### Backend (Express + PostgreSQL)
 
 - **Entry point:** `server/index.ts` - Express server on port 3000
-- **Database:** SQLite (`server/database.db`) initialized in `server/database.ts`
-- **Auto-seeding:** Database automatically seeds default categories, services, and products on first run via `server/seed-data.ts`
+- **Database:** PostgreSQL via `pg` Pool (`server/database.ts`)
+  - Connection: `cavemo-repair` database on localhost:5432
+  - Uses `server/db/postgres-schema.ts` for schema definitions
+  - Uses `server/db/postgres-seeds.ts` for seed data
+  - Auto-seeding: Database seeds default categories, services, and products on first run
+- **Auto-seeding:**
 
 **Router structure:** Modular routers in `server/routes/`:
 - `operations.ts` - Main router mounted at `/api/operations` (also at `server/operations.ts`)
@@ -88,7 +102,7 @@ npm run cleanup:services         # Remove duplicate services from database
 - `AdminContext` - Admin-specific state
 - `ServiceContext` - Service catalog and pricing
 
-**Authentication:** Local mock authentication using Zustand (`src/store/authStore.ts`)
+**Authentication:** Zustand store (`src/store/authStore.ts`) for local mock auth, also used by DropPage for admin mode
 - Mock users with roles: admin, manager, staff
 - Credentials stored in localStorage
 - Login component at `src/pages/LoginPage.tsx`
@@ -118,6 +132,7 @@ npm run cleanup:services         # Remove duplicate services from database
 - `/expenses` - Business expense tracking
 - `/supplies` - Supply inventory management
 - `/sales` - Retail sales
+- `/drop` - Drop workflow page for repair intake (also available as `DropPageLookup.tsx` root file)
 - `/invoices` - Invoice management
 - `/reports` - Analytics and reporting
 - `/marketing` - Customer communications
@@ -165,13 +180,7 @@ npm run cleanup:services         # Remove duplicate services from database
    - Assigns estimated days based on service complexity
    - Safe to re-run (uses INSERT OR REPLACE)
 
-3. **Database location:** SQLite database file at `server/database.db` - created automatically on first server run.
-
-4. **Transaction handling:** Backend uses manual BEGIN TRANSACTION / COMMIT / ROLLBACK for multi-step database operations. The database module also provides a transaction wrapper function.
-
-5. **Column naming convention:** SQLite uses snake_case (e.g., `customer_id`), but TypeScript interfaces use camelCase. A transformer utility (`server/utils.ts`) converts between formats.
-
-6. **Database promisification:** The sqlite3 callback-based API is promisified in `server/database.ts` for async/await usage.
+3. **Transaction handling:** Backend uses PostgreSQL transactions via `withTransaction()` helper for multi-step database operations.
 
 7. **Printer support:** Uses `escpos` and `node-thermal-printer` packages for USB thermal printer integration.
 
