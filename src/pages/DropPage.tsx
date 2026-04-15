@@ -45,13 +45,25 @@ interface ColorOption {
 }
 
 const BRANDS = [
-  "Adidas", "AFS", "Air Jordan", "Albert Ferretti", "Albertino", "Alberto Fermani",
-  "Alberto Ferriti", "Aldo", "Alejandro Ingelmo", "Allen Edmunds", "ANAX",
-  "Andrew Marc", "Anne Klein", "Anyi Lu", "Aquatalia by Marvin K", "Armani",
-  "Armani Exchange", "Ash", "Australia Love Collective", "Bally", "Barney's",
-  "BASEMEN", "Bass", "BCBG Maxazria", "Bench", "Betsey Johnson", "Bettye Muller",
-  "Beverly Hills", "Boss", "Boutique 9", "Brooks", "Bruno Magli", "BRUNO MARC",
-  "BRUSQUE", "Burberry", "Bvlgari", "Byblos", "Calvin Klein", "Carlos Falchi"
+  "Carolina Herrera", "Celine", "Chanel", "Chloé", "Christian Dior", "Christian Louboutin",
+  "Church's", "Clarks", "Cole Haan", "Columbia", "Converse", "Crocs", "Dansko", "DC Shoes",
+  "Diesel", "DKNY", "Dolce & Gabbana", "Dr. Martens", "Dune London", "ECCO",
+  "Eileen Fisher", "Emilio Pucci", "Emporio Armani", "Etnies", "Fendi", "Fila",
+  "Florsheim", "Franco Sarto", "Frye", "GANT", "Geox", "Giorgio Armani", "Giuseppe Zanotti",
+  "Givenchy", "Golden Goose", "Gucci", "Guess", "Hermès", "HOKA", "Hogan", "Hunter",
+  "Hush Puppies", "Isaac Mizrahi", "Isabel Marant", "Jack Rogers", "J.Crew",
+  "Jessica Simpson", "Jimmy Choo", "Johnston & Murphy", "Juicy Couture", "Karl Lagerfeld",
+  "Kate Spade", "Keds", "Kenneth Cole", "K-Swiss", "Lacoste", "Lanvin", "L.L. Bean",
+  "Loewe", "Louis Vuitton", "Madden Girl", "Maison Margiela", "Manolo Blahnik",
+  "Marc Jacobs", "Marni", "Merrell", "Michael Kors", "Minnetonka", "Miu Miu",
+  "Mizuno", "Moschino", "Naturalizer", "New Balance", "Nike", "Nine West", "Oakley",
+  "Off-White", "On Running", "Oscar de la Renta", "Paco Rabanne", "Paul Smith",
+  "Prada", "Puma", "Ralph Lauren", "Reebok", "Rick Owens", "Roberto Cavalli",
+  "Rockport", "Saint Laurent", "Salvatore Ferragamo", "Saucony", "Skechers",
+  "Sperry", "Stella McCartney", "Steve Madden", "Stuart Weitzman", "Superga",
+  "Ted Baker", "Teva", "Timberland", "Tod's", "Tommy Hilfiger", "TOMS", "Tory Burch",
+  "UGG", "Under Armour", "Valentino", "Vans", "Veja", "Versace", "Vince Camuto",
+  "Wolverine", "Y-3", "Zegna"
 ];
 
 const MATERIALS = [
@@ -120,8 +132,20 @@ export default function DropPage() {
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [customCategory, setCustomCategory] = useState('');
   const [showProducts, setShowProducts] = useState(false);
+  const [brandSearchTerm, setBrandSearchTerm] = useState('');
+  const [brandPage, setBrandPage] = useState(0);
+  const [customBrand, setCustomBrand] = useState('');
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+
+  // Find the first incomplete step to navigate to after shortcut selection
+  const getFirstIncompleteStep = (form: DropFormState): StepName => {
+    if (!form.category) return 'category';
+    if (!form.color) return 'color';
+    if (!form.material) return 'material';
+    if (form.memos.length === 0) return 'memos';
+    return 'service'; // All filled, go to service step
+  };
 
   // Product handlers
   const handleProductSelect = (product: RetailProduct, customPrice?: number) => {
@@ -336,6 +360,13 @@ export default function DropPage() {
     setEditingItem(null);
   };
 
+  const handleCartItemPriceChange = (id: string, price: number) => {
+    const item = cartItems.find(i => i.id === id);
+    if (item) {
+      updateCartItem?.(id, { ...item, price });
+    }
+  };
+
   const handleComplete = () => {
     toast.success('Drop completed!');
     clearCart();
@@ -543,24 +574,112 @@ export default function DropPage() {
           </div>
         );
 
-      case 'brand':
+      case 'brand': {
+        const filteredBrands = BRANDS.filter(b =>
+          b.toLowerCase().includes(brandSearchTerm.toLowerCase())
+        );
+        const BRANDS_PER_PAGE = 56; // 8 cols x 7 rows
+        const totalPages = Math.ceil(filteredBrands.length / BRANDS_PER_PAGE);
+        const paginatedBrands = filteredBrands.slice(brandPage * BRANDS_PER_PAGE, (brandPage + 1) * BRANDS_PER_PAGE);
+
+        const handleCustomBrandSubmit = () => {
+          if (customBrand.trim()) {
+            handleBrandSelect(customBrand.trim());
+            setCustomBrand('');
+          }
+        };
+
         return (
-          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
-            {BRANDS.map(brand => (
+          <div className="h-full flex flex-col min-h-0">
+            {/* Search bar */}
+            <div className="relative mb-2 flex-shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={brandSearchTerm}
+                onChange={(e) => { setBrandSearchTerm(e.target.value); setBrandPage(0); }}
+                placeholder="Search or enter custom brand..."
+                className="w-full pl-10 pr-10 py-2 bg-gray-700/50 border border-gray-600 rounded-xl text-gray-200 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+              {brandSearchTerm && (
+                <button
+                  onClick={() => { setBrandSearchTerm(''); setBrandPage(0); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Custom brand input row */}
+            <div className="flex gap-2 mb-2 flex-shrink-0">
+              <input
+                type="text"
+                value={customBrand}
+                onChange={(e) => setCustomBrand(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCustomBrandSubmit()}
+                placeholder="Enter custom brand..."
+                className="flex-1 px-3 py-1.5 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-200 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              />
               <button
-                key={brand}
-                onClick={() => handleBrandSelect(brand)}
-                className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                  form.brand === brand
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                }`}
+                onClick={handleCustomBrandSubmit}
+                disabled={!customBrand.trim()}
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-gray-900 text-xs font-semibold rounded-lg transition-all"
               >
-                {brand}
+                Add
               </button>
-            ))}
+            </div>
+
+            {/* Brand count and pagination */}
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
+              <span className="text-xs text-gray-400">
+                {filteredBrands.length} brand{filteredBrands.length !== 1 ? 's' : ''}
+                {totalPages > 1 && ` (${brandPage + 1}/${totalPages})`}
+              </span>
+              {totalPages > 1 && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setBrandPage(p => Math.max(0, p - 1))}
+                    disabled={brandPage === 0}
+                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-gray-300 text-xs rounded-md transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  <button
+                    onClick={() => setBrandPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={brandPage >= totalPages - 1}
+                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-gray-300 text-xs rounded-md transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Fixed 8-col grid */}
+            <div className="flex-1 min-h-0">
+              <div className="h-full grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5">
+                {paginatedBrands.map(brand => (
+                  <button
+                    key={brand}
+                    onClick={() => handleBrandSelect(brand)}
+                    className={`group relative px-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 flex items-center justify-center ${
+                      form.brand === brand
+                        ? 'bg-gradient-to-br from-amber-500 via-yellow-400 to-amber-500 text-gray-900 shadow-lg shadow-amber-500/30'
+                        : 'bg-gray-800/80 text-gray-300 hover:bg-gray-700 hover:text-gray-100 border border-gray-700/50 hover:border-gray-600'
+                    }`}
+                  >
+                    <span className="relative z-10 truncate px-1">{brand}</span>
+                    {form.brand === brand && (
+                      <span className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent rounded-xl" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         );
+      }
 
       case 'material':
         return (
@@ -641,7 +760,7 @@ export default function DropPage() {
                 }`}
               >
                 <span>{svc.name}</span>
-                <span className="text-xs opacity-70">{formatCurrency(svc.estimatedPrice)}</span>
+                <span className="text-xs opacity-70">USh 0</span>
               </button>
             ))}
           </div>
@@ -822,6 +941,7 @@ export default function DropPage() {
             previewItem={previewItem}
             onPriceChange={handlePreviewPriceChange}
             onDone={handlePreviewDone}
+            onCartItemPriceChange={handleCartItemPriceChange}
           />
         </div>
       </div>
