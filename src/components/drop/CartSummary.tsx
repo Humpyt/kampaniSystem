@@ -13,6 +13,7 @@ interface CartSummaryProps {
   previewItem?: CartItemType | null;
   onPriceChange?: (price: number) => void;
   onDone?: (item: CartItemType) => void;
+  onCartItemPriceChange?: (id: string, price: number) => void;
 }
 
 const CartSummary: React.FC<CartSummaryProps> = ({
@@ -24,6 +25,7 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   previewItem = null,
   onPriceChange,
   onDone,
+  onCartItemPriceChange,
 }) => {
   const total = items.reduce((sum, item) => sum + item.price, 0);
   const itemCount = items.length;
@@ -97,6 +99,7 @@ const CartSummary: React.FC<CartSummaryProps> = ({
                 item={item}
                 onEdit={() => {}}
                 onRemove={onRemoveItem}
+                onPriceChange={onCartItemPriceChange ? (price) => onCartItemPriceChange(item.id, price) : undefined}
               />
             ))}
           </div>
