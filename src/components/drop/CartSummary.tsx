@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { ShoppingCart, Check, Package, Sparkles, DollarSign, Smartphone, CreditCard } from 'lucide-react';
+import { ShoppingCart, Check, Package, Sparkles, DollarSign, Smartphone, CreditCard, Clock } from 'lucide-react';
 import { CartItem as CartItemType } from '../../types';
 import CartItemCard from './CartItemCard';
 import { formatCurrency } from '../../utils/formatCurrency';
 
-type PaymentMethod = 'cash' | 'mobile_money' | 'bank_card' | 'none';
+type PaymentTiming = 'prepay' | 'postpay';
+type PaymentMethod = 'cash' | 'mobile_money' | 'bank_card';
 
 interface CartSummaryProps {
   items: CartItemType[];
   ticketNumber: string;
   onRemoveItem: (id: string) => void;
-  onComplete: (paymentMethod?: PaymentMethod) => void;
+  onComplete: (data: { timing: PaymentTiming; method?: PaymentMethod }) => void;
   disabled?: boolean;
   previewItem?: CartItemType | null;
   onPriceChange?: (price: number) => void;
@@ -41,13 +42,18 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   onDone,
   onCartItemPriceChange,
 }) => {
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('none');
+  const [paymentTiming, setPaymentTiming] = useState<PaymentTiming>('postpay');
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
   const total = items.reduce((sum, item) => sum + item.price, 0);
   const itemCount = items.length;
   const isDisabled = disabled || itemCount === 0;
 
   const handleComplete = () => {
-    onComplete(selectedPayment === 'none' ? undefined : selectedPayment);
+    if (paymentTiming === 'postpay') {
+      onComplete({ timing: 'postpay' });
+    } else {
+      onComplete({ timing: 'prepay', method: selectedPayment || undefined });
+    }
   };
 
   return (
@@ -144,35 +150,73 @@ const CartSummary: React.FC<CartSummaryProps> = ({
           <span className="text-gray-800 font-bold text-2xl">{formatCurrency(total)}</span>
         </div>
 
-        {/* Payment Methods */}
+        {/* Payment Timing Toggle */}
         {items.length > 0 && (
-          <div className="space-y-1.5">
-            <span className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Payment Method</span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(Object.keys(PAYMENT_ICONS) as PaymentMethod[]).map((method) => {
-                const Icon = PAYMENT_ICONS[method];
-                const isSelected = selectedPayment === method;
-                return (
-                  <button
-                    key={method}
-                    onClick={() => setSelectedPayment(method)}
-                    className={`
-                      flex flex-col items-center justify-center py-2 px-1 rounded-lg transition-all text-xs font-medium
-                      ${isSelected
-                        ? method === 'cash' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                          : method === 'mobile_money' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
-                          : 'bg-purple-500 text-white shadow-lg shadow-purple-500/30'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }
-                    `}
-                  >
-                    <Icon className="w-4 h-4 mb-0.5" />
-                    <span>{PAYMENT_LABELS[method]}</span>
-                  </button>
-                );
-              })}
+          <>
+            {/* Prepay / Postpay Toggle */}
+            <div className="flex gap-1.5 p-1 bg-gray-200 rounded-xl">
+              <button
+                onClick={() => { setPaymentTiming('prepay'); setSelectedPayment(null); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                  paymentTiming === 'prepay'
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg'
+                    : 'bg-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                PREPAY
+              </button>
+              <button
+                onClick={() => { setPaymentTiming('postpay'); setSelectedPayment(null); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                  paymentTiming === 'postpay'
+                    ? 'bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-lg'
+                    : 'bg-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                POST-PAY
+              </button>
             </div>
-          </div>
+
+            {/* Payment Methods - Only show for PREPAY */}
+            {paymentTiming === 'prepay' && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Payment Method</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(Object.keys(PAYMENT_ICONS) as PaymentMethod[]).map((method) => {
+                    const Icon = PAYMENT_ICONS[method];
+                    const isSelected = selectedPayment === method;
+                    return (
+                      <button
+                        key={method}
+                        onClick={() => setSelectedPayment(method)}
+                        className={`
+                          flex flex-col items-center justify-center py-2 px-1 rounded-lg transition-all text-xs font-medium
+                          ${isSelected
+                            ? method === 'cash' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                              : method === 'mobile_money' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                              : 'bg-purple-500 text-white shadow-lg shadow-purple-500/30'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }
+                        `}
+                      >
+                        <Icon className="w-4 h-4 mb-0.5" />
+                        <span>{PAYMENT_LABELS[method]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Postpay Notice */}
+            {paymentTiming === 'postpay' && (
+              <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
+                <span className="text-slate-600 text-xs font-medium">Payment collected on pickup</span>
+              </div>
+            )}
+          </>
         )}
 
         {/* Complete Button */}
@@ -183,12 +227,18 @@ const CartSummary: React.FC<CartSummaryProps> = ({
             w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all
             ${isDisabled
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-lg shadow-emerald-500/20'
+              : paymentTiming === 'prepay'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/20'
+                : 'bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800 shadow-lg shadow-slate-500/20'
             }
           `}
         >
           <Check className="w-4 h-4" />
-          {selectedPayment !== 'none' ? 'PAY & COMPLETE' : 'COMPLETE DROP'}
+          {paymentTiming === 'prepay' && selectedPayment
+            ? `PAY ${formatCurrency(total)} & COMPLETE`
+            : paymentTiming === 'prepay'
+              ? 'SELECT PAYMENT METHOD'
+              : 'COMPLETE DROP'}
         </button>
       </div>
     </div>

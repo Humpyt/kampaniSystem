@@ -363,9 +363,11 @@ export default function DropPage() {
     }
   };
 
-  const handleComplete = (paymentMethod?: 'cash' | 'mobile_money' | 'bank_card') => {
-    if (paymentMethod && cartItems.length > 0) {
-      toast.success(`Drop completed! Payment: ${paymentMethod.replace('_', ' ')}`);
+  const handleComplete = (data: { timing: 'prepay' | 'postpay'; method?: 'cash' | 'mobile_money' | 'bank_card' }) => {
+    if (data.timing === 'prepay' && data.method && cartItems.length > 0) {
+      toast.success(`Drop completed! Payment: ${data.method.replace('_', ' ')}`);
+    } else if (data.timing === 'postpay') {
+      toast.success('Drop completed! Post-pay recorded.');
     } else {
       toast.success('Drop completed!');
     }
