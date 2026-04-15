@@ -894,14 +894,8 @@ export default function DropPage() {
                   <button
                     key={service}
                     onClick={() => {
-                      setForm(prev => ({
-                        ...prev,
-                        category: prev.category || 'Other',
-                        service,
-                        color: prev.color || '',
-                        material: prev.material || '',
-                        memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
-                      }));
+                      setForm(prev => ({ ...prev, service }));
+                      setActiveStep('variation');
                     }}
                     className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
                   >
@@ -914,14 +908,8 @@ export default function DropPage() {
                   <button
                     key={service}
                     onClick={() => {
-                      setForm(prev => ({
-                        ...prev,
-                        category: prev.category || 'Other',
-                        service,
-                        color: prev.color || '',
-                        material: prev.material || '',
-                        memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
-                      }));
+                      setForm(prev => ({ ...prev, service }));
+                      setActiveStep('variation');
                     }}
                     className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
                   >

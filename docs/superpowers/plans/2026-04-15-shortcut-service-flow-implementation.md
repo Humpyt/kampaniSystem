@@ -1,40 +1,60 @@
-# Shortcut Service Flow Implementation Plan (Option A)
+# Shortcut Service Flow Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Shortcut service buttons set Category="Other", Service, and Memo in one click, showing an immediate preview in the cart sidebar for review/confirmation.
+**Goal:** Shortcut buttons pre-fill service and variation, force user through Category/Color/Brand, and auto-skip completed steps.
 
-**Architecture:** Update shortcut button handlers to set smart defaults (Category="Other", add service name to memos) and trigger preview. No step navigation — form stays in current state.
+**Architecture:** Modify `advanceStep()` to auto-skip steps where `isStepCompleted` returns true. Update shortcut handlers to pre-fill service and variation.
 
 **Tech Stack:** React, TypeScript (no new dependencies)
 
 ---
 
-## Task 1: Update First Row of Shortcut Buttons
+## Task 1: Modify `advanceStep()` to Auto-Skip Completed Steps
 
-**File:** `src/pages/DropPage.tsx` (lines 892-904)
+**File:** `src/pages/DropPage.tsx` (around line 218)
 
-- [ ] **Step 1: Update the first shortcut button row (Clean, Dye, Waterproof, Shine)**
+- [ ] **Step 1: Update `advanceStep()` function**
 
-Locate this code:
+Find and replace the current `advanceStep` function:
+
 ```typescript
-<div className="grid grid-cols-4 gap-2">
-  {['Clean', 'Dye', 'Waterproof', 'Shine'].map(service => (
-    <button
-      key={service}
-      onClick={() => {
-        setForm(prev => ({ ...prev, service }));
-        setActiveStep('variation');
-      }}
-      className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
-    >
-      {service}
-    </button>
-  ))}
-</div>
+// Advance to next step, auto-skipping completed steps
+const advanceStep = (currentStep: StepName) => {
+  const currentIndex = STEPS_ORDER.indexOf(currentStep);
+  for (let i = currentIndex + 1; i < STEPS_ORDER.length; i++) {
+    const nextStep = STEPS_ORDER[i];
+    if (!isStepCompleted(nextStep)) {
+      setActiveStep(nextStep);
+      return;
+    }
+  }
+  // All remaining steps completed - stay on current
+};
 ```
 
-Replace with:
+- [ ] **Step 2: Verify file compiles**
+
+Run: `npm run build 2>&1 | tail -5`
+Expected: Build succeeds
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/pages/DropPage.tsx
+git commit -m "feat: auto-skip completed steps in advanceStep"
+```
+
+---
+
+## Task 2: Update First Row Shortcut Buttons
+
+**File:** `src/pages/DropPage.tsx` (around line 893)
+
+- [ ] **Step 1: Update first shortcut row (Clean, Dye, Waterproof, Shine)**
+
+Find the first `<div className="grid grid-cols-4 gap-2">` after the service shortcuts comment and replace its button handlers:
+
 ```typescript
 <div className="grid grid-cols-4 gap-2">
   {['Clean', 'Dye', 'Waterproof', 'Shine'].map(service => (
@@ -43,12 +63,19 @@ Replace with:
       onClick={() => {
         setForm(prev => ({
           ...prev,
-          category: prev.category || 'Other',
           service,
-          color: prev.color || '',
-          material: prev.material || '',
-          memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
+          variation: 'New Pair'
         }));
+        // Navigate to first incomplete required step
+        if (!form.category) {
+          setActiveStep('category');
+        } else if (!form.color) {
+          setActiveStep('color');
+        } else if (!form.brand) {
+          setActiveStep('brand');
+        } else {
+          advanceStep('category');
+        }
       }}
       className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
     >
@@ -67,36 +94,19 @@ Expected: Build succeeds
 
 ```bash
 git add src/pages/DropPage.tsx
-git commit -m "feat: update first row shortcut buttons with smart defaults"
+git commit -m "feat: update first shortcut row to pre-fill service/variation"
 ```
 
 ---
 
-## Task 2: Update Second Row of Shortcut Buttons
+## Task 3: Update Second Row Shortcut Buttons
 
-**File:** `src/pages/DropPage.tsx` (lines 906-918)
+**File:** `src/pages/DropPage.tsx` (around line 906)
 
-- [ ] **Step 1: Update the second shortcut button row (Heels, Half Soles, Sole Guard, Others)**
+- [ ] **Step 1: Update second shortcut row (Heels, Half Soles, Sole Guard, Others)**
 
-Locate this code:
-```typescript
-<div className="grid grid-cols-4 gap-2">
-  {['Heels', 'Half Soles', 'Sole Guard', 'Others'].map(service => (
-    <button
-      key={service}
-      onClick={() => {
-        setForm(prev => ({ ...prev, service }));
-        setActiveStep('variation');
-      }}
-      className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-    >
-      {service}
-    </button>
-  ))}
-</div>
-```
+Find the second `<div className="grid grid-cols-4 gap-2">` and update similarly:
 
-Replace with:
 ```typescript
 <div className="grid grid-cols-4 gap-2">
   {['Heels', 'Half Soles', 'Sole Guard', 'Others'].map(service => (
@@ -105,12 +115,19 @@ Replace with:
       onClick={() => {
         setForm(prev => ({
           ...prev,
-          category: prev.category || 'Other',
           service,
-          color: prev.color || '',
-          material: prev.material || '',
-          memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
+          variation: 'New Pair'
         }));
+        // Navigate to first incomplete required step
+        if (!form.category) {
+          setActiveStep('category');
+        } else if (!form.color) {
+          setActiveStep('color');
+        } else if (!form.brand) {
+          setActiveStep('brand');
+        } else {
+          advanceStep('category');
+        }
       }}
       className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
     >
@@ -129,32 +146,30 @@ Expected: Build succeeds
 
 ```bash
 git add src/pages/DropPage.tsx
-git commit -m "feat: update second row shortcut buttons with smart defaults"
+git commit -m "feat: update second shortcut row to pre-fill service/variation"
 ```
 
 ---
 
-## Task 3: Verify Full Integration
+## Task 4: Verify Full Integration
 
-**File:** `src/pages/DropPage.tsx`
+- [ ] **Step 1: Start dev server and test**
 
-- [ ] **Step 1: Test the flow manually**
+1. Run: `npm run dev`
+2. Navigate to Drop page, select a customer
+3. Click "Clean" shortcut
+4. Verify:
+   - Service shows "Clean" in stepper bar
+   - Variation shows "New Pair" in stepper bar
+   - Navigates to Category step
+5. Select Category, verify advance to Color
+6. Select Color, verify advance to Brand
+7. Select Brand, verify auto-skips Service and Variation, shows Material
+8. Skip Material, verify shows Description
+9. Skip Description, verify shows Done button in preview
+10. Click Done, verify item added to cart with all fields
 
-1. Start dev server: `npm run dev`
-2. Navigate to Drop page
-3. Select a customer
-4. Click "Clean" shortcut (without filling any other fields)
-5. Verify:
-   - Preview appears in cart sidebar
-   - Category shows "Other"
-   - Service shows "Clean"
-   - Memo shows "Clean"
-   - Price is 0
-6. Click "Done" on preview
-7. Verify item added to cart
-8. Repeat with different shortcut and verify memo is added to existing memos (not duplicated)
-
-- [ ] **Step 2: Final build verification**
+- [ ] **Step 2: Final build**
 
 Run: `npm run build 2>&1 | tail -5`
 Expected: Build succeeds
@@ -163,5 +178,5 @@ Expected: Build succeeds
 
 ```bash
 git add -A
-git commit -m "feat: shortcut services use smart defaults with preview"
+git commit -m "feat: shortcut services capture category, color, brand, material, description"
 ```
