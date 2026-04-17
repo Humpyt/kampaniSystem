@@ -14,14 +14,6 @@ export const CustomIcons = {
     </div>
   ),
   
-  Marketing: () => (
-    <div className="w-12 h-12 bg-gray-500 rounded-lg p-2">
-      <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#4B5563"/>
-        <path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2"/>
-      </svg>
-    </div>
-  ),
 
   Help: () => (
     <div className="w-12 h-12 bg-gray-500 rounded-lg p-2">

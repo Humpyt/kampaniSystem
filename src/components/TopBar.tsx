@@ -16,10 +16,6 @@ export default function TopBar() {
             <span>Management</span>
           </button>
           <button className="flex items-center space-x-2 bg-gray-600 p-2 rounded hover:bg-gray-500">
-            <CustomIcons.Marketing />
-            <span>Marketing</span>
-          </button>
-          <button className="flex items-center space-x-2 bg-gray-600 p-2 rounded hover:bg-gray-500">
             <CustomIcons.Help />
             <span>Help</span>
           </button>

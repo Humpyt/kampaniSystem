@@ -11,7 +11,6 @@ import {
   Settings,
   Package,
   ShoppingBag,
-  Megaphone,
   BarChart3,
   Target,
   UserCog,
@@ -104,7 +103,6 @@ const menuGroups = [
   {
     title: "Business",
     items: [
-      { icon: Megaphone, label: "Marketing", to: "/marketing", permission: "view_marketing" },
       { icon: BarChart3, label: "Reports", to: "/reports", permission: "view_reports", roles: ["admin", "manager"] },
       { icon: Target, label: "Business Targets", to: "/business-targets", permission: "view_business_targets" },
       { icon: Receipt, label: "Invoices", to: "/invoices", roles: ["admin", "manager"] },

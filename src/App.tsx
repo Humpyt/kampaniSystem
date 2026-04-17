@@ -11,7 +11,6 @@ import OperationPage from './pages/OperationPage';
 import OperationDetailsPage from './pages/OperationDetailsPage';
 import SalesItems from './pages/SalesItems';
 import TicketsPage from './pages/TicketsPage';
-import MarketingPage from './pages/MarketingPage';
 import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/LoginPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -241,11 +240,6 @@ function App() {
                       } />
                       <Route path="manage-categories" element={<ProductCategoryManager />} />
                       <Route path="tickets" element={<TicketsPage />} />
-                      <Route path="marketing" element={
-                        <ProtectedRoute permission="view_marketing">
-                          <MarketingPage />
-                        </ProtectedRoute>
-                      } />
                       <Route path="reports" element={
                         <ProtectedRoute permission="view_reports" requiredRoles={['admin', 'manager']}>
                           <Suspense fallback={<PageLoader />}>

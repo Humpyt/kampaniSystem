@@ -207,7 +207,6 @@ const UserManagement: React.FC = () => {
     { id: 'send_messages', name: 'Send Messages', description: 'Send messages to customers' },
     { id: 'view_operations', name: 'View Operations', description: 'View repair operations' },
     { id: 'view_sales', name: 'View Sales', description: 'Access sales records' },
-    { id: 'view_marketing', name: 'View Marketing', description: 'Access marketing features' },
     { id: 'view_qrcodes', name: 'View QR Codes', description: 'Generate and view QR codes' },
     { id: 'view_business_targets', name: 'View Business Targets', description: 'View own performance targets' },
     // Manager permissions
@@ -224,17 +223,17 @@ const UserManagement: React.FC = () => {
   const PERMISSION_GROUPS = {
     staff: [
       'view_customers', 'create_drop', 'create_pickup', 'send_messages',
-      'view_operations', 'view_sales', 'view_marketing', 'view_qrcodes',
+      'view_operations', 'view_sales', 'view_qrcodes',
       'view_business_targets'
     ],
     manager: [
       'view_customers', 'create_drop', 'create_pickup', 'send_messages',
-      'view_operations', 'view_sales', 'view_marketing', 'view_qrcodes',
+      'view_operations', 'view_sales', 'view_qrcodes',
       'view_business_targets', 'view_all_targets', 'manage_staff', 'view_reports'
     ],
     admin: [
       'view_customers', 'create_drop', 'create_pickup', 'send_messages',
-      'view_operations', 'view_sales', 'view_marketing', 'view_qrcodes',
+      'view_operations', 'view_sales', 'view_qrcodes',
       'view_business_targets', 'view_all_targets', 'manage_staff', 'view_reports',
       'manage_users', 'manage_settings', 'manage_inventory', 'manage_supplies'
     ]
