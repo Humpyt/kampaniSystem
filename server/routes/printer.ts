@@ -199,8 +199,118 @@ router.post('/print/order/:id', async (req, res) => {
   }
 });
 
+// Print store policy on 8x27cm thermal paper
+router.post('/print/policy', async (req: Request, res: Response) => {
+  const { ticketNumber, date, customerNumber, customerName } = req.body;
+
+  try {
+    const { printerModule, escposModule } = await loadPrinterModules();
+
+    if (!printerModule || !printerModule.ThermalPrinter) {
+      return res.status(500).json({ error: 'Printer module not available' });
+    }
+
+    const { ThermalPrinter } = printerModule;
+    const { USB } = escposModule || {};
+
+    const printer = new ThermalPrinter(printerConfig);
+    printer.clear();
+
+    // === HEADER (centered, bold) ===
+    printer.alignCenter();
+    printer.bold(true);
+    printer.setTextSize(1, 1);
+    printer.println('STORE POLICIES');
+    printer.bold(false);
+    printer.setTextSize(0, 0);
+    printer.newLine();
+
+    // === TICKET INFO (left-aligned) ===
+    printer.alignLeft();
+    printer.println(`Ticket No: ${ticketNumber || 'N/A'}`);
+    printer.println(`Date: ${date || new Date().toLocaleDateString()}`);
+    printer.println(`Customer No: ${customerNumber || 'N/A'}`);
+    printer.println(`Name: ${customerName || 'N/A'}`);
+    printer.newLine();
+
+    // === CLEANING SECTION ===
+    printer.bold(true);
+    printer.println('Cleaning:');
+    printer.bold(false);
+    printer.println('(1) May cause all material types to become tender, stiff, brittle and may cause some buckling and peeling.');
+    printer.println('(2) Shrinkage of all material types is unpredictable and may occur.');
+    printer.println('(3) Slight changes in shades or top finish may occur on all material types.');
+    printer.println('(4) Insect bites and scars on leather skins, which were covered over by the manufacture, could show afterward.');
+    printer.println('(5) Breaks and skin lines may show to be more apparent.');
+    printer.println('(6) Unevenly matched skins are common and may show more uneven.');
+    printer.println('(7) May cause bleeding on all material types, which in turn, causes change of color.');
+    printer.println('(8) May cause hardware pieces to bleed onto all material types and may stain material.');
+    printer.newLine();
+    printer.println('We cannot guarantee that all cleaning request will meet products original condition but we will do our best.');
+    printer.newLine();
+
+    // === DYEING SECTION ===
+    printer.bold(true);
+    printer.println('Dyeing:');
+    printer.bold(false);
+    printer.println('(1) We can not guarantee that the color will match the given swatch 100%.');
+    printer.println('(2) Certain imperfections in the construction of the item may become visible after the item is dyed.');
+    printer.println('(3) The dyed color will look different when viewed in different types of lighting.');
+    printer.println('(4) If shoes are worn in the rain or come in contact with water the color may come off and/or bleed onto a material.');
+    printer.newLine();
+
+    // === SHOE REPAIR/HANDBAG REPAIR/ALTERATIONS SECTION ===
+    printer.bold(true);
+    printer.println('Shoe Repair/Handbag Repair/Alterations:');
+    printer.bold(false);
+    printer.println('(1) We cannot guarantee that all shoe repair/handbag repair/alterations request will meet products original condition but we will do our best.');
+    printer.newLine();
+
+    // === SHOE STRETCHING SECTION ===
+    printer.bold(true);
+    printer.println('Shoe Stretching:');
+    printer.bold(false);
+    printer.println('(1) May cause some wrinkling, buckling and peeling.');
+    printer.println('(2) Slight changes in shades or top finish may occur on all material types.');
+    printer.println('(3) Stretching the width may or may not give you more room in the length.');
+    printer.println('(4) Stretching may cause some finished imperfections on the innersole and/or lining.');
+    printer.newLine();
+
+    // === STORAGE SECTION ===
+    printer.bold(true);
+    printer.println('Storage:');
+    printer.bold(false);
+    printer.println('(1) After one month from the date received items are sent to storage, fee of $5 per month.');
+    printer.println('(2) After six months from the date received items are disposed of at our own discretion.');
+    printer.newLine();
+
+    // === SIGNATURE LINE ===
+    printer.println('I have read the policies and understand that you will carefully service my item(s) to the best of your ability.');
+    printer.newLine();
+    printer.println('Signature: _________________________________');
+
+    // === CUT PAPER ===
+    printer.cut();
+
+    try {
+      if (!USB) {
+        return res.status(500).json({ error: 'USB printer module not available' });
+      }
+      const device = new USB();
+      await printer.execute(device);
+      res.json({ success: true });
+    } catch (printError: any) {
+      console.error('Printer error:', printError);
+      res.status(500).json({ error: 'Failed to print policy', details: printError.message });
+    }
+  } catch (error) {
+    console.error('Policy print error:', error);
+    res.status(500).json({ error: 'Failed to print policy' });
+  }
+});
+
 // Print quotation
-router.post('/print/quotation/:id', async (req, res) => {
+router.post('/print/quotation/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
