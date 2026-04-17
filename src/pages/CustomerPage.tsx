@@ -637,15 +637,19 @@ export default function CustomerPage() {
 
                 {/* Store Credit */}
                 <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
-                  <div className="text-green-300 text-sm">Store Credit</div>
+                  <div className="text-green-300 text-sm font-semibold">Store Credit</div>
                   <div className="text-2xl font-bold text-green-400">
                     {formatCurrency(selectedCustomer.accountBalance || 0)}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">Available credit balance</div>
-                  <div className="mt-3 pt-3 border-t border-green-800">
-                    <div className="text-green-300 text-sm">Total Earned</div>
-                    <div className="text-xl font-bold text-green-400">
-                      {formatCurrency(totalEarned)}
+                  <div className="text-xs text-gray-400 mt-1">Available to spend now</div>
+                  <div className="mt-3 pt-3 border-t border-green-800 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-green-300 text-xs">Total Earned</span>
+                      <span className="text-green-400 text-sm font-bold">{formatCurrency(totalEarned)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 text-xs">Used / Redeemed</span>
+                      <span className="text-gray-400 text-sm font-bold">{formatCurrency(totalEarned - (selectedCustomer.accountBalance || 0))}</span>
                     </div>
                   </div>
                 </div>
