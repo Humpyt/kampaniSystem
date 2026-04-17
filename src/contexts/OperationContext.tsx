@@ -122,8 +122,18 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
 
       const newOperation = await response.json() as Operation;
 
+      // Ensure the operation has all fields PickupPage expects
+      const operationWithDefaults = {
+        ...newOperation,
+        shoes: newOperation.shoes || [],
+        retailItems: newOperation.retailItems || [],
+        workflowStatus: newOperation.workflowStatus || 'pending',
+        paymentStatus: newOperation.paymentStatus || 'unpaid',
+        paidAmount: newOperation.paidAmount || 0,
+      };
+
       // Update the operations state immediately with type safety
-      setOperations(prevOperations => [...prevOperations, newOperation]);
+      setOperations(prevOperations => [...prevOperations, operationWithDefaults]);
 
       return newOperation;
     } catch (error) {
