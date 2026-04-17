@@ -14,6 +14,7 @@ import TicketBadge from '../components/drop/TicketBadge';
 import ProductSalesSection from '../components/drop/ProductSalesSection';
 import { formatCurrency } from '../utils/formatCurrency';
 import toast from 'react-hot-toast';
+import { printerService } from '../services/printer';
 
 // Item categories with icons
 interface ItemCategory {
@@ -120,7 +121,7 @@ const getInitialFormState = (): DropFormState => ({
 });
 
 export default function DropPage() {
-  const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation } = useOperation();
+  const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation, updateOperation } = useOperation();
   const { customers, addCustomer } = useCustomer();
   const { services } = useServices();
 
@@ -382,7 +383,7 @@ export default function DropPage() {
     }
   };
 
-  const handleComplete = async (data: { timing: 'prepay' | 'postpay'; method?: 'cash' | 'mobile_money' | 'bank_card' }) => {
+  const handleComplete = async (data: { payments: Array<{ method: 'cash' | 'mobile_money' | 'bank_card'; amount: number }> }) => {
     if (cartItems.length === 0) {
       toast.error('No items in cart');
       return;
@@ -418,6 +419,8 @@ export default function DropPage() {
         });
 
       const totalAmount = cartItems.reduce((sum, item) => sum + item.price, 0);
+      const hasPayments = data.payments && data.payments.length > 0;
+      const totalPaid = hasPayments ? data.payments.reduce((sum, p) => sum + p.amount, 0) : 0;
 
       const operationData = {
         customer: {
@@ -446,9 +449,110 @@ export default function DropPage() {
         ticket_number: ticketNumber,
       };
 
-      await addOperation(operationData);
+      const newOperation = await addOperation(operationData);
+
+      // If payments were made, record them via the payments endpoint
+      // This populates operation_payments (for receipts/analytics),
+      // updates operations.paid_amount, and updates customer total_spent
+      if (hasPayments) {
+        try {
+          const token = localStorage.getItem('auth_token');
+
+          // Payments are already in correct format (lowercase method names)
+          const formattedPayments = data.payments.map(p => ({
+            method: p.method,
+            amount: p.amount,
+          }));
+
+          console.log('[DropPage] Recording payment for operation:', newOperation.id, 'payments:', formattedPayments);
+
+          // Record payments in operation_payments and update paid_amount/total_spent
+          // IMPORTANT: Use the response to update context with the CORRECT paidAmount and status
+          const paymentResponse = await fetch(`/api/operations/${newOperation.id}/payments`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ payments: formattedPayments }),
+          });
+
+          console.log('[DropPage] Payment response status:', paymentResponse.status);
+
+          if (paymentResponse.ok) {
+            const paymentResult = await paymentResponse.json();
+            console.log('[DropPage] Payment result:', paymentResult);
+
+            // Record sale for analytics - repair sale linked to operation
+            try {
+              const primaryPayment = formattedPayments[0];
+              await fetch('/api/sales', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                  customerId: selectedCustomer.id,
+                  saleType: 'repair',
+                  referenceId: newOperation.id,
+                  totalAmount: totalPaid,
+                  paymentMethod: primaryPayment?.method || 'cash',
+                }),
+              });
+              console.log('[DropPage] Sale recorded for operation:', newOperation.id);
+            } catch (saleErr) {
+              console.error('[DropPage] Error recording sale:', saleErr);
+              // Don't fail the drop if sale recording fails
+            }
+
+            // Re-fetch all operations from server to get correct paidAmount and status
+            // The /payments endpoint updates the database; we need to sync context
+            try {
+              await refreshOperations();
+            } catch (refreshError) {
+              console.error('Error refreshing operations after payment:', refreshError);
+              // Continue anyway - the event will trigger refresh in other pages
+            }
+          } else {
+            const errorText = await paymentResponse.text();
+            console.error('[DropPage] Payment failed with status:', paymentResponse.status, 'error:', errorText);
+            toast.error(`Payment failed: ${errorText}`);
+          }
+        } catch (saleError) {
+          console.error('[DropPage] Error recording payment:', saleError);
+          toast.error('Failed to record payment');
+          // Don't fail the operation if payment recording fails
+        }
+      }
+
+      // Dispatch custom event to notify other pages
+      // Pass hasPayments so PickupPage knows whether to expect a balance
+      // timing: 'prepay' signals SalesPage to refresh when payment was collected at drop
+      window.dispatchEvent(new CustomEvent('drop-completed', {
+        detail: {
+          operationId: newOperation.id,
+          customerId: selectedCustomer.id,
+          totalAmount,
+          paidAmount: totalPaid,
+          hasPayments,
+          timing: hasPayments ? 'prepay' : 'postpay'
+        }
+      }));
 
       toast.success('Drop completed!');
+      // Auto-print policy slip after successful drop
+      try {
+        await printerService.printPolicy({
+          ticketNumber: ticketNumber,
+          date: new Date().toLocaleDateString(),
+          customerNumber: selectedCustomer?.id || 'N/A',
+          customerName: selectedCustomer?.name || 'N/A',
+        });
+      } catch (printError) {
+        console.error('Auto-print failed:', printError);
+        // Don't block the flow - print failure is non-critical
+      }
       clearCart();
       setSelectedCustomer(null);
       setForm(getInitialFormState());
@@ -576,7 +680,10 @@ export default function DropPage() {
               </button>
             )}
             <button
-              onClick={() => advanceStep('customer')}
+              onClick={() => {
+                const walkInCustomer = { id: 'walk-in-customer', name: 'Walk-in Customer', phone: 'N/A' } as Customer;
+                handleCustomerSelect(walkInCustomer);
+              }}
               className="text-sm text-gray-400 hover:text-white"
             >
               Skip - No Customer
