@@ -636,7 +636,6 @@ export default function CustomerPage() {
                   </div>
                   <div className="text-xs text-gray-400 mt-1">Available credit balance</div>
                 </div>
-                )}
 
                 {/* Outstanding Debt */}
                 {(() => {
