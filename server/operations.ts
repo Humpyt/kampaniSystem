@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from './database';
 import { transformOperation } from './utils';
 import { applyPaymentsToOperation, PaymentInput, PaymentSource } from './helpers/applyPayments';
+import { authenticateToken } from './routes/auth';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ const getRetailItemsByOperationIds = async (operationIds: string[]) => {
 };
 
 // Get all operations
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req: any, res) => {
   try {
     const { created_by, status, limit = 1000, offset = 0 } = req.query;
     const parsedLimit = Math.min(parseInt(limit as string) || 1000, 5000);
@@ -55,7 +56,12 @@ router.get('/', async (req, res) => {
     const params: any[] = [];
     const conditions: string[] = [];
 
-    if (created_by) {
+    // Role-based filtering: staff can only see their own operations
+    if (req.user.role === 'staff') {
+      conditions.push(`o.created_by = $${params.length + 1}`);
+      params.push(req.user.id);
+    } else if (created_by) {
+      // Admin/manager can filter by created_by via query param
       conditions.push(`o.created_by = $${params.length + 1}`);
       params.push(created_by);
     }
@@ -75,8 +81,12 @@ router.get('/', async (req, res) => {
     const operations = await db.all(query, params);
 
     // Get total count
-    const countQuery = `SELECT COUNT(*) as total FROM operations ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}`;
-    const countParams = conditions.length > 0 ? params.slice(0, -2) : [];
+    let countQuery = `SELECT COUNT(*) as total FROM operations`;
+    let countParams: any[] = [];
+    if (conditions.length > 0) {
+      countQuery += ` WHERE ` + conditions.join(' AND ');
+      countParams = params.slice(0, -2);
+    }
     const { total } = await db.get(countQuery, countParams);
 
     // Optimization: Fetch all shoes in a single query instead of N+1 queries
@@ -138,7 +148,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get operation by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const operation = await db.get(`
@@ -151,6 +161,11 @@ router.get('/:id', async (req, res) => {
 
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    // Role-based access control: staff can only view their own operations
+    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Get shoes and services for this operation
@@ -187,9 +202,18 @@ router.get('/:id', async (req, res) => {
 });
 
 // Get payment history for an operation
-router.get('/:id/payments', async (req, res) => {
+router.get('/:id/payments', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
+
+    // Check operation ownership for staff
+    const operation = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const payments = await db.all(`
       SELECT * FROM operation_payments
@@ -205,7 +229,7 @@ router.get('/:id/payments', async (req, res) => {
 });
 
 // Create new operation
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req: any, res) => {
   console.log('Received operation request:', JSON.stringify(req.body, null, 2));
   const {
     customer,
@@ -220,10 +244,11 @@ router.post('/', async (req, res) => {
     isPickup,
     notes,
     promisedDate,
-    created_by,
     ticket_number,
     payments = [],
   } = req.body;
+  // Use authenticated user's ID as creator; fallback to body-created_by only for admin/manager
+  const created_by = req.user.id;
   const now = new Date().toISOString();
   const normalizedShoes = Array.isArray(shoes) ? shoes : [];
   const normalizedRetailItems = Array.isArray(retailItems) ? retailItems : [];
@@ -448,11 +473,20 @@ router.post('/', async (req, res) => {
 });
 
 // Update operation status
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
     const now = new Date().toISOString();
+
+    // Check operation ownership for staff
+    const existingOp = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
+    if (!existingOp) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    if (req.user.role === 'staff' && existingOp.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const setClauses = Object.keys(updates)
       .map((key, i) => {
@@ -484,7 +518,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // Process payment with multiple methods
-router.post('/:id/payments', async (req, res) => {
+router.post('/:id/payments', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const { payments } = req.body;
@@ -494,6 +528,15 @@ router.post('/:id/payments', async (req, res) => {
 
     if (!Array.isArray(payments) || payments.length === 0) {
       return res.status(400).json({ error: 'Payments array is required' });
+    }
+
+    // Check operation ownership for staff
+    const operation = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Use the shared payment helper
@@ -514,7 +557,7 @@ router.post('/:id/payments', async (req, res) => {
 });
 
 // Update workflow status (for marking as picked up, delivered, etc.)
-router.patch('/:id/workflow-status', async (req, res) => {
+router.patch('/:id/workflow-status', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const { workflow_status, picked_up_at } = req.body;
@@ -528,9 +571,14 @@ router.patch('/:id/workflow-status', async (req, res) => {
     };
 
     // Get current operation
-    const operation = await db.get('SELECT workflow_status FROM operations WHERE id = $1', [id]);
+    const operation = await db.get('SELECT workflow_status, created_by FROM operations WHERE id = $1', [id]);
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    // Role-based access control: staff can only update their own operations
+    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const currentStatus = operation.workflow_status || 'pending';
