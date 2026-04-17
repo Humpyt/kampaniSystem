@@ -586,8 +586,8 @@ export default function CustomerPage() {
 
         {/* Customer Details */}
         {selectedCustomer && showCustomerDetails ? (
-          <div className="bg-gray-900 rounded-xl p-6">
-            <div className="flex justify-between items-start mb-6">
+          <div className="bg-gray-900 rounded-xl p-6 max-h-[calc(100vh-300px)] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6 flex-shrink-0">
               <h2 className="text-xl font-bold">Customer Details</h2>
               <div className="flex space-x-2">
                 <button
@@ -612,7 +612,7 @@ export default function CustomerPage() {
               </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto">
               {/* Customer Stats */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-800 p-4 rounded-lg">
@@ -628,39 +628,32 @@ export default function CustomerPage() {
                   </div>
                 </div>
 
-                {/* Consolidated Account Balance */}
+                {/* Store Credit */}
+                {selectedCustomer.accountBalance > 0 && (
+                  <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
+                    <div className="text-green-300 text-sm">Store Credit</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {formatCurrency(selectedCustomer.accountBalance)}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">Available credit balance</div>
+                  </div>
+                )}
+
+                {/* Outstanding Debt */}
                 {(() => {
-                  const accountBalance = selectedCustomer.accountBalance || 0;
                   const totalDebt = unpaidOperations.reduce(
                     (sum, op) => sum + (op.totalAmount - (op.paidAmount || 0)),
                     0
                   );
-                  const netBalance = accountBalance - totalDebt;
-
-                  if (netBalance === 0) return null;
-
-                  const isPositive = netBalance > 0;
-                  const balanceColor = isPositive ? 'green' : 'red';
+                  if (totalDebt === 0) return null;
 
                   return (
-                    <div className={`${isPositive ? 'bg-green-900/30 border-green-700' : 'bg-red-900/30 border-red-700'} border rounded-lg p-4 col-span-2`}>
-                      <div className={`${isPositive ? 'text-green-300' : 'text-red-300'} text-sm`}>Account Balance</div>
-                      <div className={`text-2xl font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatCurrency(netBalance)}
+                    <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
+                      <div className="text-red-300 text-sm">Outstanding Debt</div>
+                      <div className="text-2xl font-bold text-red-400">
+                        {formatCurrency(totalDebt)}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {isPositive ? 'Credit available' : 'Amount owed'}
-                        {accountBalance > 0 && (
-                          <span className={`ml-2 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            (Credit: {formatCurrency(accountBalance)})
-                          </span>
-                        )}
-                        {totalDebt > 0 && (
-                          <span className="ml-2 text-red-400">
-                            (Debt: {formatCurrency(totalDebt)})
-                          </span>
-                        )}
-                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Total unpaid balance</div>
                     </div>
                   );
                 })()}
