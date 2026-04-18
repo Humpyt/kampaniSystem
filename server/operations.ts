@@ -81,7 +81,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
     const operations = await db.all(query, params);
 
     // Get total count
-    let countQuery = `SELECT COUNT(*) as total FROM operations`;
+    let countQuery = `SELECT COUNT(*) as total FROM operations o`;
     let countParams: any[] = [];
     if (conditions.length > 0) {
       countQuery += ` WHERE ` + conditions.join(' AND ');
@@ -119,6 +119,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
       shoes: (shoesMap.get(operation.id) || []).map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
+        size: shoe.shoe_size || null,
         color: shoe.color,
         colorDescription: shoe.color_description || '',
         notes: shoe.notes,
@@ -182,6 +183,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
       shoes: shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
+        size: shoe.shoe_size || null,
         color: shoe.color,
         colorDescription: shoe.color_description || '',
         notes: shoe.notes,
@@ -443,6 +445,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
 
       shoesWithServices.push({
         ...shoe,
+        size: shoe.shoe_size || null,
         services: services.map((s: any) => ({
           id: s.service_id,
           name: s.service_name,
@@ -560,7 +563,7 @@ router.post('/:id/payments', authenticateToken, async (req: any, res) => {
 router.patch('/:id/workflow-status', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const { workflow_status, picked_up_at } = req.body;
+    const { workflow_status, picked_up_at, picked_up_by_name, picked_up_by_phone } = req.body;
 
     const validTransitions: Record<string, string[]> = {
       'pending': ['in_progress', 'cancelled'],
@@ -597,6 +600,16 @@ router.patch('/:id/workflow-status', authenticateToken, async (req: any, res) =>
     if (picked_up_at) {
       values.push(picked_up_at);
       updates.push(`picked_up_at = $${values.length}`);
+    }
+
+    if (picked_up_by_name) {
+      values.push(picked_up_by_name);
+      updates.push(`picked_up_by_name = $${values.length}`);
+    }
+
+    if (picked_up_by_phone) {
+      values.push(picked_up_by_phone);
+      updates.push(`picked_up_by_phone = $${values.length}`);
     }
 
     values.push(id);

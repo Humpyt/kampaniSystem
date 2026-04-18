@@ -35,6 +35,8 @@ export const transformOperation = (operation: any) => ({
     notes: operation.notes || '',
     promisedDate: operation.promised_date || null,
     pickedUpAt: operation.picked_up_at || null,
+    pickedUpByName: operation.picked_up_by_name || null,
+    pickedUpByPhone: operation.picked_up_by_phone || null,
     createdAt: operation.created_at,
     updatedAt: operation.updated_at,
     isNoCharge: toBool(operation.is_no_charge),
