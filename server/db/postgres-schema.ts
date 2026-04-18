@@ -133,6 +133,8 @@ export async function createSchema(pool: Pool): Promise<void> {
         workflow_status TEXT DEFAULT 'pending',
         payment_status TEXT DEFAULT 'unpaid',
         picked_up_at TIMESTAMPTZ,
+        picked_up_by_name VARCHAR(255),
+        picked_up_by_phone VARCHAR(50),
         FOREIGN KEY (customer_id) REFERENCES customers(id)
       )
     `);
@@ -149,6 +151,12 @@ export async function createSchema(pool: Pool): Promise<void> {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operations' AND column_name = 'picked_up_at') THEN
           ALTER TABLE operations ADD COLUMN picked_up_at TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operations' AND column_name = 'picked_up_by_name') THEN
+          ALTER TABLE operations ADD COLUMN picked_up_by_name VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operations' AND column_name = 'picked_up_by_phone') THEN
+          ALTER TABLE operations ADD COLUMN picked_up_by_phone VARCHAR(50);
         END IF;
       END $$
     `);
