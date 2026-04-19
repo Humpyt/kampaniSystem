@@ -277,7 +277,7 @@ export default function CustomerRankingsPage() {
 
       {/* Full Rankings Table */}
       <div className="bg-gradient-to-br from-gray-800 to-gray-900 card-bevel rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[calc(100vh-400px)] overflow-y-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-gray-900/50">

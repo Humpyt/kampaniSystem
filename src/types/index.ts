@@ -107,6 +107,7 @@ export interface ServiceSelection {
 export interface CartItem {
   id: string;           // temp uuid
   category: string;
+  size?: string;
   color: string;
   brand: string;
   material: string;
@@ -119,6 +120,7 @@ export interface CartItem {
 export interface DropFormState {
   customerId: string;
   category: string;
+  size: string;
   color: string;
   brand: string;
   material: string;

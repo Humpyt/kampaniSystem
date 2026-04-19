@@ -34,10 +34,9 @@ const methodDisplayNames: Record<PaymentMethod, string> = {
 function validatePayments(
   payments: PaymentInput[],
   operationTotal: number,
-  operationDiscount: number,
   existingPaidAmount: number
 ): { valid: boolean; error?: string } {
-  const maxDue = operationTotal - operationDiscount - existingPaidAmount;
+  const maxDue = operationTotal - existingPaidAmount;
 
   for (const payment of payments) {
     // Check amount is valid
@@ -65,10 +64,9 @@ function validatePayments(
  */
 function computePaymentStatus(
   totalAmount: number,
-  discount: number,
   paidAmount: number
 ): PaymentStatus {
-  const amountDue = totalAmount - discount;
+  const amountDue = totalAmount;
   if (paidAmount <= 0) return 'unpaid';
   if (paidAmount >= amountDue) return 'paid';
   return 'partial';
@@ -106,9 +104,7 @@ export async function applyPaymentsToOperation(
       // Validate all payments before applying
       const existingPaidAmount = Number(operation.paid_amount || 0);
       const totalAmount = Number(operation.total_amount || 0);
-      const discount = Number(operation.discount || 0);
-
-      const validation = validatePayments(payments, totalAmount, discount, existingPaidAmount);
+      const validation = validatePayments(payments, totalAmount, existingPaidAmount);
       if (!validation.valid) {
         return { success: false, error: validation.error };
       }
@@ -140,7 +136,7 @@ export async function applyPaymentsToOperation(
       const newPaidAmount = existingPaidAmount + totalPaymentAmount;
 
       // Compute new payment status
-      const newPaymentStatus = computePaymentStatus(totalAmount, discount, newPaidAmount);
+      const newPaymentStatus = computePaymentStatus(totalAmount, newPaidAmount);
 
       // Update operation with atomic paid_amount increment and set payment_status
       await client.run(
@@ -263,7 +259,7 @@ export async function updateOperationPaymentStatus(operationId: string): Promise
   await db.run(
     `UPDATE operations
      SET payment_status = CASE
-       WHEN paid_amount >= (total_amount - COALESCE(discount, 0)) THEN 'paid'
+       WHEN paid_amount >= total_amount THEN 'paid'
        WHEN paid_amount > 0 THEN 'partial'
        ELSE 'unpaid'
      END,

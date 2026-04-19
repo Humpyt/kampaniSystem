@@ -147,30 +147,26 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
     const isStaff = req.user.role === 'staff';
     const userId = req.user.id;
 
-    // Build WHERE clause for staff filtering
-    const staffWhere = isStaff ? ` AND created_by = $${isStaff ? 3 : 0}` : '';
-    const staffParams = isStaff ? [userId] : [];
-
     // Total expenses this month
     const monthlyTotalResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE date >= $1 AND date <= $2${staffWhere}
-    `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0], ...staffParams]) as any;
+      WHERE date >= $1 AND date <= $2${isStaff ? ' AND created_by = $3' : ''}
+    `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any;
 
     // Total expenses this week
     const weeklyTotalResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE date >= $1${staffWhere}
-    `, [startOfWeek.toISOString().split('T')[0], ...staffParams]) as any;
+      WHERE date >= $1${isStaff ? ' AND created_by = $2' : ''}
+    `, [startOfWeek.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any;
 
     // Total expenses today
     const todayTotalResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE date = $1${staffWhere}
-    `, [startOfToday.toISOString().split('T')[0], ...staffParams]) as any;
+      WHERE date = $1${isStaff ? ' AND created_by = $2' : ''}
+    `, [startOfToday.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any;
 
     // Category breakdown
     const categoryBreakdownResult = await db.all(`
@@ -178,10 +174,10 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
         category,
         SUM(amount) as amount
       FROM expenses
-      WHERE date >= $1 AND date <= $2${staffWhere}
+      WHERE date >= $1 AND date <= $2${isStaff ? ' AND created_by = $3' : ''}
       GROUP BY category
       ORDER BY amount DESC
-    `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0], ...staffParams]) as any[];
+    `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any[];
 
     const totalByCategory = categoryBreakdownResult.reduce((sum, cat) => sum + cat.amount, 0);
 
@@ -207,10 +203,10 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
         END as day,
         SUM(amount) as amount
       FROM expenses
-      WHERE date >= CURRENT_DATE - INTERVAL '7 days'${staffWhere}
-      GROUP BY day
+      WHERE date >= CURRENT_DATE - INTERVAL '7 days'${isStaff ? ' AND created_by = $1' : ''}
+      GROUP BY EXTRACT(DOW FROM date), day
       ORDER BY dayNum ASC
-    `, staffParams) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     // Fill in missing days with 0
     const dayOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -225,20 +221,20 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
         TO_CHAR(date, 'YYYY-MM') as month,
         SUM(amount) as amount
       FROM expenses
-      WHERE date >= CURRENT_DATE - INTERVAL '6 months'${staffWhere}
+      WHERE date >= CURRENT_DATE - INTERVAL '6 months'${isStaff ? ' AND created_by = $1' : ''}
       GROUP BY month
       ORDER BY month ASC
-    `, staffParams) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     // Recent expenses
     const recentExpenses = await db.all(`
       SELECT e.*, u.name as creator_name
       FROM expenses e
       LEFT JOIN users u ON e.created_by = u.id
-      WHERE 1=1${staffWhere}
+      WHERE 1=1${isStaff ? ' AND e.created_by = $1' : ''}
       ORDER BY e.date DESC, e.created_at DESC
       LIMIT 5
-    `, staffParams);
+    `, isStaff ? [userId] : []);
 
     // Status breakdown
     const statusBreakdownResult = await db.all(`
@@ -247,9 +243,9 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
         COUNT(*) as count,
         SUM(amount) as amount
       FROM expenses
-      WHERE 1=1${staffWhere}
+      WHERE 1=1${isStaff ? ' AND created_by = $1' : ''}
       GROUP BY status
-    `, staffParams) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     const statusBreakdown = statusBreakdownResult.map(s => ({
       status: s.status,
@@ -264,9 +260,9 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
         SUM(amount) as amount,
         COUNT(*) as count
       FROM expenses
-      WHERE payment_method IS NOT NULL${staffWhere}
+      WHERE payment_method IS NOT NULL${isStaff ? ' AND created_by = $1' : ''}
       GROUP BY payment_method
-    `, staffParams) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     const paymentMethodBreakdown = paymentMethodResult.map(p => ({
       method: p.payment_method,

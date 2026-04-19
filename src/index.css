@@ -107,3 +107,115 @@
     background-color: rgb(17, 24, 39);
   }
 }
+/* ============================================
+   PRINT STYLES - Global print media queries
+   ============================================ */
+
+/* Print-specific styles for professional layout */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Override Tailwind dark mode classes for print */
+  .bg-gray-900 {
+    background: white !important;
+  }
+
+  .bg-gray-800 {
+    background: white !important;
+  }
+
+  .text-gray-100 {
+    color: black !important;
+  }
+
+  .text-white {
+    color: black !important;
+  }
+
+  .text-gray-400 {
+    color: #374151 !important;
+  }
+
+  /* Print header styling */
+  .print-header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #1e3a8a;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+  }
+
+  .print-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+  }
+
+  .print-header-info {
+    text-align: right;
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  /* Print table styling */
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .print-table th {
+    background: #1e3a8a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color: white !important;
+    padding: 8px 6px;
+    text-align: left;
+    font-weight: 600;
+    border: 1px solid #1e3a8a;
+  }
+
+  .print-table td {
+    padding: 7px 6px;
+    border: 1px solid #d1d5db;
+    color: #111827;
+  }
+
+  .print-table tr:nth-child(even) td {
+    background: #f9fafb !important;
+  }
+
+  .print-table tfoot td {
+    background: #e5e7eb !important;
+    font-weight: 700;
+    border: 1px solid #d1d5db;
+  }
+
+  /* Print summary */
+  .print-summary {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #d1d5db;
+    font-size: 12px;
+    color: #374151;
+  }
+
+  .print-summary-row {
+    display: flex;
+    justify-content: space-between;
+    max-width: 300px;
+    margin-left: auto;
+  }
+}

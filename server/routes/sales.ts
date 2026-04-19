@@ -55,13 +55,32 @@ router.get('/', async (req, res) => {
       } else if (sale.sale_type === 'retail') {
         details = await db.all(`
           SELECT
-            si.name,
-            si.price,
-            oi.quantity
-          FROM order_items oi
-          JOIN sales_items si ON si.id = oi.item_id
-          WHERE oi.order_id = $1
+            ori.product_name as name,
+            ori.unit_price as price,
+            ori.quantity
+          FROM operation_retail_items ori
+          WHERE ori.operation_id = $1
         `, [sale.reference_id]);
+
+        // Legacy retail orders may still use order_items/sales_items tables.
+        // Some deployments do not have those tables, so only try the legacy lookup
+        // when the operation-linked retail lookup returned nothing.
+        if (details.length === 0) {
+          try {
+            details = await db.all(`
+              SELECT
+                si.name,
+                si.price,
+                oi.quantity
+              FROM order_items oi
+              JOIN sales_items si ON si.id = oi.item_id
+              WHERE oi.order_id = $1
+            `, [sale.reference_id]);
+          } catch (legacyError) {
+            console.warn('Skipping legacy retail sale detail lookup:', legacyError);
+            details = [];
+          }
+        }
       }
 
       salesWithDetails.push({
@@ -80,21 +99,33 @@ router.get('/', async (req, res) => {
 // Record a new sale
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { customerId, saleType, referenceId, totalAmount, paymentMethod } = req.body;
+    const { customerId, saleType, referenceId, totalAmount, discount, paymentMethod } = req.body;
     const now = new Date().toISOString();
     const userId = req.user?.id || null;
+
+    // If discount not provided explicitly, try to get it from the operation (for repair/retail sales)
+    let finalDiscount = discount || 0;
+    if (!discount && (saleType === 'repair' || saleType === 'retail') && referenceId) {
+      const operation = await db.get(`
+        SELECT discount FROM operations WHERE id = $1
+      `, [referenceId]);
+      if (operation) {
+        finalDiscount = Number(operation.discount) || 0;
+      }
+    }
 
     const result = await db.run(`
       INSERT INTO sales (
         id, customer_id, sale_type, reference_id,
-        total_amount, payment_method, created_by, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        total_amount, discount, payment_method, created_by, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `, [
       uuidv4(),
       customerId,
       saleType,
       referenceId,
       totalAmount,
+      finalDiscount,
       paymentMethod,
       userId,
       now,

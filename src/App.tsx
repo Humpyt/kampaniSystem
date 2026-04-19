@@ -1,15 +1,12 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Routes, Route, Outlet } from 'react-router-dom';
+import { Routes, Route, Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import StorePage from './pages/StorePage';
 import DropPage from './pages/DropPage';
 import PickupPage from './pages/PickupPage';
-import PickedItemsPage from './pages/PickedItemsPage';
-import BalancesPage from './pages/BalancesPage';
 import OperationPage from './pages/OperationPage';
 import OperationDetailsPage from './pages/OperationDetailsPage';
-import SalesItems from './pages/SalesItems';
 import TicketsPage from './pages/TicketsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/LoginPage';
@@ -28,31 +25,33 @@ import { RetailProductProvider } from './contexts/RetailProductContext';
 import { ExpenseProvider } from './contexts/ExpenseContext';
 import { useAuthStore } from './store/authStore';
 import { Navigate } from 'react-router-dom';
-import NoChargeDoOverPage from './pages/NoChargeDoOverPage';
-import TicketSearchPage from './pages/TicketSearchPage';
-import AssemblyPage from './pages/AssemblyPage';
-import RackingPage from './pages/RackingPage';
-import PickupOrderPage from './pages/PickupOrderPage';
-import DeliveriesPage from './pages/DeliveriesPage';
-import CodPaymentPage from './pages/CodPaymentPage';
-import ProductCategoryManager from './pages/ProductCategoryManager';
-import ReadyToPickPage from './pages/ReadyToPickPage';
-import UnpaidBalancesPage from './pages/UnpaidBalancesPage';
-import DiscountsPage from './pages/DiscountsPage';
-import NewCustomersPage from './pages/NewCustomersPage';
-import StockLevelsPage from './pages/StockLevelsPage';
-import CustomerRankingsPage from './pages/CustomerRankingsPage';
-import MostPerformingPage from './pages/MostPerformingPage';
-import CreditListPage from './pages/CreditListPage';
-import InvoicesPage from './pages/InvoicesPage';
 
-// Lazy load heavy pages for better performance
+// Lazy load pages for better performance
 const CustomerPage = lazy(() => import('./pages/CustomerPage'));
 const SalesPage = lazy(() => import('./pages/SalesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const BusinessTargetsPage = lazy(() => import('./pages/BusinessTargetsPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
+const PickedItemsPage = lazy(() => import('./pages/PickedItemsPage'));
+const BalancesPage = lazy(() => import('./pages/BalancesPage'));
+const SalesItems = lazy(() => import('./pages/SalesItems'));
+const NoChargeDoOverPage = lazy(() => import('./pages/NoChargeDoOverPage'));
+const TicketSearchPage = lazy(() => import('./pages/TicketSearchPage'));
+const AssemblyPage = lazy(() => import('./pages/AssemblyPage'));
+const RackingPage = lazy(() => import('./pages/RackingPage'));
+const PickupOrderPage = lazy(() => import('./pages/PickupOrderPage'));
+const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage'));
+const CodPaymentPage = lazy(() => import('./pages/CodPaymentPage'));
+const ProductCategoryManager = lazy(() => import('./pages/ProductCategoryManager'));
+const ReadyToPickPage = lazy(() => import('./pages/ReadyToPickPage'));
+const DiscountsPage = lazy(() => import('./pages/DiscountsPage'));
+const NewCustomersPage = lazy(() => import('./pages/NewCustomersPage'));
+const StockLevelsPage = lazy(() => import('./pages/StockLevelsPage'));
+const CustomerRankingsPage = lazy(() => import('./pages/CustomerRankingsPage'));
+const MostPerformingPage = lazy(() => import('./pages/MostPerformingPage'));
+const CreditListPage = lazy(() => import('./pages/CreditListPage'));
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -76,7 +75,7 @@ const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boo
       {/* Toggle button */}
       <button
         onClick={toggleSidebar}
-        className="fixed left-0 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white p-2 rounded-r-md hover:bg-gray-700 focus:outline-none"
+        className="fixed left-0 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white p-2 rounded-r-md hover:bg-gray-700 focus:outline-none z-50"
       >
         {isSidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
       </button>
@@ -92,12 +91,33 @@ const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boo
   );
 };
 
+// Creative fix: Instantly check localStorage for token (synchronous)
+const getInitialAuth = () => {
+  const token = localStorage.getItem('auth_token');
+  const userStr = localStorage.getItem('auth_user');
+  if (token && userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      if (user?.id && user?.role) {
+        return { token, user, isAuthenticated: true };
+      }
+    } catch {
+      // Invalid user data
+    }
+  }
+  return { token: null, user: null, isAuthenticated: false };
+};
+
 function App() {
+  const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [initialAuth] = useState(getInitialAuth);
   const checkAuth = useAuthStore(state => state.checkAuth);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const initializing = useAuthStore(state => state.initializing);
+  // Use initialAuth only while auth is being verified; after checkAuth completes, use live state
+  const isStoreAuthenticated = initializing ? initialAuth.isAuthenticated : isAuthenticated;
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -112,18 +132,15 @@ function App() {
     };
   }, []);
 
-  // Initialize authentication on app mount
+  // Initialize authentication in background (non-blocking)
   useEffect(() => {
-    const initializeAuth = async () => {
-      await checkAuth();
-    };
-    initializeAuth();
+    checkAuth();
   }, [checkAuth]);
 
   // Show offline indicator
   if (!isOnline) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-red-900 text-white">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">You're Offline</h2>
           <p className="text-gray-400">Please check your internet connection</p>
@@ -132,13 +149,21 @@ function App() {
     );
   }
 
-  // Show loading while checking authentication
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
-      </div>
-    );
+  // Show login page IMMEDIATELY if no token or on login route
+  const isLoginPage = location.pathname === '/login';
+
+  if (!initialAuth.isAuthenticated && !isAuthenticated) {
+    // If we're still on login page route, show it immediately
+    if (isLoginPage) {
+      return <LoginPage />;
+    }
+    // For other routes without auth, redirect to login
+    return <Navigate to="/login" replace />;
+  }
+
+  // Show login page if explicitly logged out
+  if (!isStoreAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
 
   const toggleSidebar = () => {
@@ -162,7 +187,7 @@ function App() {
                     <Route
                       path="/"
                       element={
-                        isAuthenticated ? (
+                        isStoreAuthenticated ? (
                           <Navigate to="/store" replace />
                         ) : (
                           <Navigate to="/login" replace />
@@ -170,11 +195,11 @@ function App() {
                       }
                     />
 
-                    {/* Login route - redirect if already authenticated */}
+                    {/* Login route */}
                     <Route
                       path="/login"
                       element={
-                        isAuthenticated ? (
+                        isStoreAuthenticated ? (
                           <Navigate to="/store" replace />
                         ) : (
                           <LoginPage />
@@ -209,10 +234,16 @@ function App() {
                       } />
                       <Route path="picked-items" element={
                         <ProtectedRoute permission="create_pickup">
-                          <PickedItemsPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <PickedItemsPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
-                      <Route path="balances" element={<BalancesPage />} />
+                      <Route path="balances" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <BalancesPage />
+                        </Suspense>
+                      } />
                       <Route path="operations/details/:id" element={<OperationDetailsPage />} />
                       <Route path="operation" element={
                         <ProtectedRoute permission="view_operations">
@@ -235,10 +266,16 @@ function App() {
                       } />
                       <Route path="sales-items" element={
                         <ProtectedRoute permission="view_sales">
-                          <SalesItems />
+                          <Suspense fallback={<PageLoader />}>
+                            <SalesItems />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
-                      <Route path="manage-categories" element={<ProductCategoryManager />} />
+                      <Route path="manage-categories" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <ProductCategoryManager />
+                        </Suspense>
+                      } />
                       <Route path="tickets" element={<TicketsPage />} />
                       <Route path="reports" element={
                         <ProtectedRoute permission="view_reports" requiredRoles={['admin', 'manager']}>
@@ -262,24 +299,81 @@ function App() {
                           </Suspense>
                         </ProtectedRoute>
                       } />
-                      <Route path="no-charge-do-over" element={<NoChargeDoOverPage />} />
-                      <Route path="ticket-search" element={<TicketSearchPage />} />
-                      <Route path="assembly" element={<AssemblyPage />} />
-                      <Route path="racking" element={<RackingPage />} />
-                      <Route path="pickup-order" element={<PickupOrderPage />} />
-                      <Route path="deliveries" element={<DeliveriesPage />} />
-                      <Route path="cod-payment" element={<CodPaymentPage />} />
-                      <Route path="ready-to-pick" element={<ReadyToPickPage />} />
-                      <Route path="unpaid-balances" element={<UnpaidBalancesPage />} />
-                      <Route path="discounts" element={<DiscountsPage />} />
-                      <Route path="new-customers" element={<NewCustomersPage />} />
-                      <Route path="stock-levels" element={<StockLevelsPage />} />
-                      <Route path="customer-rankings" element={<CustomerRankingsPage />} />
-                      <Route path="most-performing" element={<MostPerformingPage />} />
-                      <Route path="credit-list" element={<CreditListPage />} />
+                      <Route path="no-charge-do-over" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <NoChargeDoOverPage />
+                        </Suspense>
+                      } />
+                      <Route path="ticket-search" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <TicketSearchPage />
+                        </Suspense>
+                      } />
+                      <Route path="assembly" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <AssemblyPage />
+                        </Suspense>
+                      } />
+                      <Route path="racking" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <RackingPage />
+                        </Suspense>
+                      } />
+                      <Route path="pickup-order" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <PickupOrderPage />
+                        </Suspense>
+                      } />
+                      <Route path="deliveries" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <DeliveriesPage />
+                        </Suspense>
+                      } />
+                      <Route path="cod-payment" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <CodPaymentPage />
+                        </Suspense>
+                      } />
+                      <Route path="ready-to-pick" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <ReadyToPickPage />
+                        </Suspense>
+                      } />
+                      <Route path="discounts" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <DiscountsPage />
+                        </Suspense>
+                      } />
+                      <Route path="new-customers" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <NewCustomersPage />
+                        </Suspense>
+                      } />
+                      <Route path="stock-levels" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <StockLevelsPage />
+                        </Suspense>
+                      } />
+                      <Route path="customer-rankings" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <CustomerRankingsPage />
+                        </Suspense>
+                      } />
+                      <Route path="most-performing" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <MostPerformingPage />
+                        </Suspense>
+                      } />
+                      <Route path="credit-list" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <CreditListPage />
+                        </Suspense>
+                      } />
                       <Route path="invoices" element={
                         <ProtectedRoute requiredRoles={['admin', 'manager']}>
-                          <InvoicesPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <InvoicesPage />
+                          </Suspense>
                         </ProtectedRoute>
                       } />
                     </Route>
@@ -305,9 +399,7 @@ function App() {
 }
 
 function AppWithProviders() {
-  return (
-    <App />
-  );
+  return <App />;
 }
 
 export default AppWithProviders;

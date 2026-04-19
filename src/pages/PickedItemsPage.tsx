@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_ENDPOINTS } from '../config/api';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
-import { Search, Package, CheckCircle, Calendar, Filter, X } from 'lucide-react';
+import { Search, Package, CheckCircle, Calendar, Filter, X, User, Phone } from 'lucide-react';
 
 interface PickupTicket {
   id: string;
@@ -20,6 +20,9 @@ interface PickupTicket {
   status: 'pending' | 'ready' | 'completed';
   workflowStatus: 'pending' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overpaid';
+  pickedUpByName?: string | null;
+  pickedUpByPhone?: string | null;
+  pickedUpAt?: string | null;
   items: {
     id: string;
     category: string;
@@ -33,6 +36,24 @@ interface PickupTicket {
 }
 
 type DateFilter = 'all' | 'today' | 'week' | 'month';
+
+// Helper function to safely format dates
+const safeFormatDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return 'N/A';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return 'N/A';
+  }
+};
 
 export default function PickedItemsPage() {
   const { operations, refreshOperations } = useOperation();
@@ -62,6 +83,9 @@ export default function PickedItemsPage() {
       status: op.workflowStatus === 'delivered' ? 'completed' : op.workflowStatus || 'pending',
       workflowStatus: op.workflowStatus || 'pending',
       paymentStatus: op.paymentStatus || 'unpaid',
+      pickedUpByName: op.pickedUpByName || null,
+      pickedUpByPhone: op.pickedUpByPhone || null,
+      pickedUpAt: op.pickedUpAt || null,
       items: op.shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
@@ -318,11 +342,11 @@ export default function PickedItemsPage() {
 
               {/* Totals Card */}
               <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-400">Subtotal</span>
-                    <span className="text-gray-200">{formatCurrency(selectedTicket.total)}</span>
-                  </div>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-400">Subtotal</span>
+                      <span className="text-gray-200">{formatCurrency(selectedTicket.originalTotal)}</span>
+                    </div>
                   {selectedTicket.discount > 0 && (
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-400">Discount</span>
@@ -345,6 +369,38 @@ export default function PickedItemsPage() {
                   <CheckCircle size={20} />
                   <span className="font-medium">Picked Up</span>
                 </div>
+
+                {/* Collector Info */}
+                {(selectedTicket.pickedUpByName || selectedTicket.pickedUpByPhone || selectedTicket.pickedUpAt) && (
+                  <div className="card-bevel p-4 bg-gray-800/50 border border-gray-700">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Collector Information</h4>
+                    <div className="space-y-2">
+                      {selectedTicket.pickedUpByName && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User size={14} className="text-gray-400" />
+                          <span className="text-gray-400">Collected by:</span>
+                          <span className="text-gray-200 font-medium">{selectedTicket.pickedUpByName}</span>
+                        </div>
+                      )}
+                      {selectedTicket.pickedUpByPhone && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone size={14} className="text-gray-400" />
+                          <span className="text-gray-400">Phone:</span>
+                          <span className="text-gray-200">{selectedTicket.pickedUpByPhone}</span>
+                        </div>
+                      )}
+                      {selectedTicket.pickedUpAt && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar size={14} className="text-gray-400" />
+                          <span className="text-gray-400">Picked up:</span>
+                          <span className="text-gray-200">
+                            {safeFormatDate(selectedTicket.pickedUpAt)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (

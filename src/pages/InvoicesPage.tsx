@@ -117,188 +117,180 @@ export default function InvoicesPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl shadow-lg">
-              <Receipt className="text-white w-8 h-8" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">Invoices & Receipts</h1>
-              <p className="text-gray-400 text-sm mt-1">Manage your sales documents</p>
-            </div>
-          </div>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Invoices & Receipts</h1>
+          <p className="text-gray-400 text-sm">Manage your sales documents</p>
         </div>
+      </div>
 
-        {/* Filters Card */}
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg mb-6">
-          {/* Tabs */}
-          <div className="flex items-center space-x-2 mb-4">
+      {/* Filters Card */}
+      <div className="card-bevel p-4 mb-6">
+        {/* Tabs and Search Row */}
+        <div className="flex items-center space-x-4 mb-4">
+          <div className="flex bg-gray-800 rounded-lg p-1">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'all'
-                  ? 'bg-violet-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white'
               }`}
             >
               All
             </button>
             <button
               onClick={() => setActiveTab('invoice')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${
                 activeTab === 'invoice'
                   ? 'bg-orange-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'text-gray-400 hover:text-white'
               }`}
             >
-              <FileText size={16} />
+              <FileText size={14} />
               <span>Invoices</span>
             </button>
             <button
               onClick={() => setActiveTab('receipt')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${
                 activeTab === 'receipt'
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'text-gray-400 hover:text-white'
               }`}
             >
-              <Receipt size={16} />
+              <Receipt size={14} />
               <span>Receipts</span>
             </button>
           </div>
-
-          {/* Search and Date Filters */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="col-span-2 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search by customer or invoice number..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-full pl-10 pr-4 py-3 bg-gray-700 rounded-xl border border-gray-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-              />
-            </div>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-700 rounded-xl border border-gray-600 text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-              />
-            </div>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-700 rounded-xl border border-gray-600 text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={handleSearch}
-              className="px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium transition-colors"
-            >
-              Apply Filters
-            </button>
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by customer or invoice number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg border border-gray-600 text-white placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
         </div>
 
-        {/* Invoices Table */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-900/50">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Invoice #</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Customer</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Paid</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
-                      Loading...
-                    </td>
-                  </tr>
-                ) : filteredInvoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
-                      No invoices found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-gray-700/30 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-mono text-violet-400">{invoice.invoiceNumber}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                          invoice.type === 'receipt'
-                            ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700'
-                            : 'bg-orange-900/50 text-orange-400 border border-orange-700'
-                        }`}>
-                          {invoice.type === 'receipt' ? 'Receipt' : 'Invoice'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-white">{invoice.customerName}</div>
-                        <div className="text-xs text-gray-400">{invoice.customerPhone}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-white">{formatCurrency(invoice.total)}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${
-                          invoice.amountPaid >= invoice.total ? 'text-emerald-400' : 'text-orange-400'
-                        }`}>
-                          {formatCurrency(invoice.amountPaid)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-400">
-                          {new Date(invoice.createdAt).toLocaleDateString()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleViewInvoice(invoice.id)}
-                            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="View"
-                          >
-                            <Eye size={16} className="text-gray-300" />
-                          </button>
-                          <button
-                            onClick={() => handlePrintInvoice(invoice.id)}
-                            disabled={printing}
-                            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Print"
-                          >
-                            <Printer size={16} className="text-gray-300" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {/* Date Filters Row */}
+        <div className="flex items-center space-x-4">
+          <div className="relative flex-1">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg border border-gray-600 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
+          <div className="relative flex-1">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg border border-gray-600 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            Apply Filters
+          </button>
+        </div>
+      </div>
+
+      {/* Invoices Table */}
+      <div className="card-bevel overflow-hidden">
+        <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+          <table className="w-full">
+            <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Invoice #</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Type</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Total</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Paid</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Date</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                    Loading...
+                  </td>
+                </tr>
+              ) : filteredInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                    No invoices found
+                  </td>
+                </tr>
+              ) : (
+                filteredInvoices.map((invoice, index) => (
+                  <tr key={invoice.id} className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-mono text-indigo-400">{invoice.invoiceNumber}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        invoice.type === 'receipt'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {invoice.type === 'receipt' ? 'Receipt' : 'Invoice'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm text-white">{invoice.customerName}</div>
+                      <div className="text-xs text-gray-500">{invoice.customerPhone}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-medium text-white">{formatCurrency(invoice.total)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`text-sm font-medium ${
+                        invoice.amountPaid >= invoice.total ? 'text-emerald-400' : 'text-orange-400'
+                      }`}>
+                        {formatCurrency(invoice.amountPaid)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-400">
+                        {new Date(invoice.createdAt).toLocaleDateString()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center space-x-2">
+                        <button
+                          onClick={() => handleViewInvoice(invoice.id)}
+                          className="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-colors"
+                          title="View"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
+                          onClick={() => handlePrintInvoice(invoice.id)}
+                          disabled={printing}
+                          className="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-colors"
+                          title="Print"
+                        >
+                          <Printer size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

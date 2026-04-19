@@ -1,5 +1,6 @@
 import express from 'express';
 import db from '../database';
+import { authenticateToken } from './auth';
 
 const router = express.Router();
 
@@ -14,27 +15,37 @@ const getDateBoundaries = () => {
   return { now, startOfToday, endOfToday, startOfWeek, startOfMonth, endOfMonth };
 };
 
-// GET /api/analytics/discounts - Returns discount analytics
+// GET /api/analytics/discounts - Returns discount analytics (from both operations and sales)
 router.get('/discounts', async (req, res) => {
   try {
     const { startOfMonth, endOfMonth } = getDateBoundaries();
 
-    // Get summary statistics
+    // Get summary statistics from operations (source of truth for discounts)
     const summaryResult = await db.get(`
       SELECT
         COUNT(*) as totalOperations,
         COALESCE(SUM(discount), 0) as totalDiscounts,
-        COALESCE(AVG(CASE WHEN discount > 0 THEN (discount / NULLIF(total_amount, 0)) * 100 ELSE 0 END), 0) as averageDiscountPercent,
+        COALESCE(AVG(CASE WHEN discount > 0 THEN (discount / NULLIF(total_amount + discount, 0)) * 100 ELSE 0 END), 0) as averageDiscountPercent,
         COUNT(CASE WHEN discount > 0 THEN 1 END) as operationsWithDiscount
       FROM operations
       WHERE discount > 0
     `) as any;
 
-    const totalOperationsWithDiscount = summaryResult.operationsWithDiscount || 0;
-    const totalDiscounts = summaryResult.totalDiscounts || 0;
-    const averageDiscountPercent = summaryResult.averageDiscountPercent || 0;
+    // Also get discount counts from sales table (for product sales)
+    const salesDiscountResult = await db.get(`
+      SELECT
+        COUNT(*) as totalSalesWithDiscount,
+        COALESCE(SUM(discount), 0) as totalSalesDiscounts
+      FROM sales
+      WHERE discount > 0
+    `) as any;
 
-    // Get discounts by period (last 30 days)
+    const totalOperationsWithDiscount = Number(summaryResult?.operationswithdiscount) || 0;
+    const totalSalesWithDiscount = Number(salesDiscountResult?.totalsaleswithdiscount) || 0;
+    const totalDiscounts = Number(summaryResult?.totaldiscounts || 0) + Number(salesDiscountResult?.totalsalesdiscounts || 0);
+    const averageDiscountPercent = Number(summaryResult?.averagediscountpercent) || 0;
+
+    // Get discounts by period (last 30 days) from operations
     const byPeriodResult = await db.all(`
       SELECT
         DATE(created_at) as date,
@@ -47,20 +58,50 @@ router.get('/discounts', async (req, res) => {
       ORDER BY date ASC
     `) as any[];
 
-    const byPeriod = byPeriodResult.map(row => ({
-      date: row.date,
-      total: row.total,
-      count: row.count
-    }));
+    // Also get sales discounts by period (for sales that may have discounts not tied to operations)
+    const salesPeriodResult = await db.all(`
+      SELECT
+        DATE(created_at) as date,
+        SUM(discount) as total,
+        COUNT(*) as count
+      FROM sales
+      WHERE discount > 0
+        AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `) as any[];
 
-    // Get top discounted operations
+    // Merge period data (union of operations and sales discounts by date)
+    const periodMap = new Map<string, { total: number; count: number }>();
+    for (const row of byPeriodResult) {
+      periodMap.set(row.date.toISOString().split('T')[0], { total: Number(row.total), count: Number(row.count) });
+    }
+    for (const row of salesPeriodResult) {
+      const dateKey = row.date.toISOString().split('T')[0];
+      const existing = periodMap.get(dateKey);
+      if (existing) {
+        existing.total += Number(row.total);
+        existing.count += Number(row.count);
+      } else {
+        periodMap.set(dateKey, { total: Number(row.total), count: Number(row.count) });
+      }
+    }
+    const byPeriod = Array.from(periodMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, values]) => ({ date, total: values.total, count: values.count }));
+
+    // Get top discounted operations with services/products
     const topDiscountedResult = await db.all(`
       SELECT
         o.id,
-        c.name as customerName,
+        COALESCE(c.name, 'Unknown') as customerName,
         o.total_amount,
         o.discount,
-        o.created_at as date
+        o.created_at as date,
+        CASE WHEN o.total_amount + o.discount > 0
+          THEN LEAST((o.discount / (o.total_amount + o.discount)) * 100, 100)
+          ELSE 0
+        END as discount_percent
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       WHERE o.discount > 0
@@ -68,19 +109,97 @@ router.get('/discounts', async (req, res) => {
       LIMIT 10
     `) as any[];
 
-    const topDiscounted = topDiscountedResult.map(row => ({
-      id: row.id,
-      customerName: row.customerName || 'Unknown',
-      totalAmount: row.total_amount,
-      discount: row.discount,
-      date: row.date
+    // Also get top discounted sales (for standalone product sales with discounts)
+    // Join through reference_id (operation) to get the customer name, since sales.customer_id may be NULL
+    const topSalesDiscountedResult = await db.all(`
+      SELECT
+        s.id,
+        s.reference_id as operationId,
+        COALESCE(cust.name, op_cust.name, 'Unknown') as customerName,
+        s.total_amount,
+        s.discount,
+        s.created_at as date,
+        CASE WHEN s.total_amount + s.discount > 0
+          THEN LEAST((s.discount / (s.total_amount + s.discount)) * 100, 100)
+          ELSE 0
+        END as discount_percent
+      FROM sales s
+      LEFT JOIN customers cust ON s.customer_id = cust.id
+      LEFT JOIN operations op ON s.reference_id = op.id
+      LEFT JOIN customers op_cust ON op.customer_id = op_cust.id
+      WHERE s.discount > 0
+      ORDER BY s.discount DESC
+      LIMIT 10
+    `) as any[];
+
+    // Merge top discounted (operations and sales), sort by discount descending, take top 10
+    const allTopDiscounted = [
+      ...topDiscountedResult.map(row => ({
+        id: row.id,
+        sourceType: 'operation' as const,
+        operationId: row.id,
+        customerName: row.customername || 'Unknown',
+        totalAmount: Number(row.total_amount) || 0,
+        discount: Number(row.discount) || 0,
+        discountPercent: Number(row.discount_percent) || 0,
+        date: row.date,
+      })),
+      ...topSalesDiscountedResult.map(row => ({
+        id: row.id,
+        sourceType: 'sale' as const,
+        operationId: row.operationid,
+        customerName: row.customername || 'Unknown',
+        totalAmount: Number(row.total_amount) || 0,
+        discount: Number(row.discount) || 0,
+        discountPercent: Number(row.discount_percent) || 0,
+        date: row.date,
+      }))
+    ]
+      .sort((a, b) => b.discount - a.discount)
+      .slice(0, 10);
+
+    // Get services and products for each discounted operation
+    const topDiscounted = await Promise.all(allTopDiscounted.map(async (row) => {
+      // Get services for this operation
+      const servicesResult = await db.all(`
+        SELECT DISTINCT s.name
+        FROM operation_services os
+        JOIN services s ON os.service_id = s.id
+        WHERE os.operation_shoe_id IN (
+          SELECT id FROM operation_shoes WHERE operation_id = $1
+        )
+        LIMIT 5
+      `, [row.operationId]) as any[];
+
+      // Get retail products for this operation
+      const productsResult = await db.all(`
+        SELECT product_name as name
+        FROM operation_retail_items
+        WHERE operation_id = $1
+        LIMIT 5
+      `, [row.operationId]) as any[];
+
+      const items = [
+        ...servicesResult.map(s => ({ name: s.name, type: 'service' as const, price: 0 })),
+        ...productsResult.map(p => ({ name: p.name, type: 'product' as const, price: 0 }))
+      ];
+
+      return {
+        id: row.id,
+        customerName: row.customerName || 'Unknown',
+        totalAmount: row.totalAmount,
+        discount: row.discount,
+        discountPercent: row.discountPercent || 0,
+        date: row.date,
+        items
+      };
     }));
 
     res.json({
       summary: {
         totalDiscounts,
         averageDiscountPercent: Math.round(averageDiscountPercent * 100) / 100,
-        operationsWithDiscount: totalOperationsWithDiscount
+        operationsWithDiscount: totalOperationsWithDiscount + totalSalesWithDiscount
       },
       byPeriod,
       topDiscounted
@@ -94,7 +213,7 @@ router.get('/discounts', async (req, res) => {
 // GET /api/analytics/new-customers - Returns new customer analytics
 router.get('/new-customers', async (req, res) => {
   try {
-    const { startOfToday, endOfToday, startOfWeek, startOfMonth } = getDateBoundaries();
+    const { startOfToday, endOfToday, startOfWeek, startOfMonth, endOfMonth } = getDateBoundaries();
 
     // Get summary counts
     const totalResult = await db.get(`
@@ -129,7 +248,7 @@ router.get('/new-customers', async (req, res) => {
 
     const trend = trendResult.map(row => ({
       date: row.date,
-      count: row.count
+      count: Number(row.count)
     }));
 
     // Get recent customers
@@ -150,15 +269,15 @@ router.get('/new-customers', async (req, res) => {
       name: row.name,
       phone: row.phone,
       createdAt: row.createdAt,
-      totalOrders: row.total_orders
+      totalOrders: Number(row.total_orders) || 0
     }));
 
     res.json({
       summary: {
-        total: totalResult.total || 0,
-        thisMonth: thisMonthResult?.count || 0,
-        thisWeek: thisWeekResult?.count || 0,
-        today: todayResult?.count || 0
+        total: Number(totalResult.total) || 0,
+        thisMonth: Number(thisMonthResult?.count) || 0,
+        thisWeek: Number(thisWeekResult?.count) || 0,
+        today: Number(todayResult?.count) || 0
       },
       trend,
       recentCustomers
@@ -191,9 +310,9 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      totalSpent: row.totalSpent || 0,
-      orderCount: row.orderCount || 0,
-      lastVisit: row.lastVisit
+      totalSpent: row.totalspent || 0,
+      orderCount: row.ordercount || 0,
+      lastVisit: row.lastvisit
     }));
 
     // Get all customers ordered by order count
@@ -215,9 +334,9 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      totalSpent: row.totalSpent || 0,
-      orderCount: row.orderCount || 0,
-      lastVisit: row.lastVisit
+      totalSpent: row.totalspent || 0,
+      orderCount: row.ordercount || 0,
+      lastVisit: row.lastvisit
     }));
 
     // Get all customers ordered by loyalty points
@@ -238,8 +357,8 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      loyaltyPoints: row.loyaltyPoints || 0,
-      totalSpent: row.totalSpent || 0
+      loyaltyPoints: row.loyaltypoints || 0,
+      totalSpent: row.totalspent || 0
     }));
 
     res.json({
@@ -271,11 +390,11 @@ router.get('/service-performance', async (req, res) => {
     `) as any[];
 
     const byRevenue = byRevenueResult.map(row => ({
-      serviceId: row.serviceId,
-      serviceName: row.serviceName,
+      serviceId: row.serviceid,
+      serviceName: row.servicename,
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: Number(row.totalrevenue) || 0,
+      orderCount: Number(row.ordercount) || 0
     }));
 
     // Get service performance by order count
@@ -293,11 +412,11 @@ router.get('/service-performance', async (req, res) => {
     `) as any[];
 
     const byOrders = byOrdersResult.map(row => ({
-      serviceId: row.serviceId,
-      serviceName: row.serviceName,
+      serviceId: row.serviceid,
+      serviceName: row.servicename,
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: Number(row.totalrevenue) || 0,
+      orderCount: Number(row.ordercount) || 0
     }));
 
     // Get category breakdown
@@ -314,8 +433,8 @@ router.get('/service-performance', async (req, res) => {
 
     const categoryBreakdown = categoryBreakdownResult.map(row => ({
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: Number(row.totalrevenue) || 0,
+      orderCount: Number(row.ordercount) || 0
     }));
 
     res.json({
@@ -439,50 +558,55 @@ router.get('/unpaid-balances', async (req, res) => {
 });
 
 // GET /api/analytics/profit-summary - Returns sales, expenses, and profit summary
-router.get('/profit-summary', async (req, res) => {
+router.get('/profit-summary', authenticateToken, async (req: any, res: any) => {
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
+    const isStaff = req.user.role === 'staff';
+    const userId = req.user.id;
+
     // Total sales (all time)
     const totalSalesResult = await db.get(`
       SELECT COALESCE(SUM(total_amount), 0) as total FROM operations
-    `) as any;
+      ${isStaff ? 'WHERE created_by = $1' : ''}
+    `, isStaff ? [userId] : []) as any;
 
     // Total expenses (all time)
     const totalExpensesResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-    `) as any;
+      ${isStaff ? 'WHERE created_by = $1' : ''}
+    `, isStaff ? [userId] : []) as any;
 
     // Sales this month
     const salesThisMonthResult = await db.get(`
       SELECT COALESCE(SUM(total_amount), 0) as total
       FROM operations
-      WHERE created_at >= $1
-    `, [startOfMonth.toISOString()]) as any;
+      WHERE created_at >= $1${isStaff ? ' AND created_by = $2' : ''}
+    `, [startOfMonth.toISOString(), ...(isStaff ? [userId] : [])]) as any;
 
     // Sales last month
     const salesLastMonthResult = await db.get(`
       SELECT COALESCE(SUM(total_amount), 0) as total
       FROM operations
-      WHERE created_at >= $1 AND created_at <= $2
-    `, [startOfLastMonth.toISOString(), endOfLastMonth.toISOString()]) as any;
+      WHERE created_at >= $1 AND created_at <= $2${isStaff ? ' AND created_by = $3' : ''}
+    `, [startOfLastMonth.toISOString(), endOfLastMonth.toISOString(), ...(isStaff ? [userId] : [])]) as any;
 
     // Expenses this month
     const expensesThisMonthResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE date >= $1
-    `, [startOfMonth.toISOString().split('T')[0]]) as any;
+      WHERE date >= $1${isStaff ? ' AND created_by = $2' : ''}
+    `, [startOfMonth.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any;
 
     // Expenses last month
     const expensesLastMonthResult = await db.get(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM expenses
-      WHERE date >= $1 AND date <= $2
-    `, [startOfLastMonth.toISOString().split('T')[0], endOfLastMonth.toISOString().split('T')[0]]) as any;
+      WHERE date >= $1 AND date <= $2${isStaff ? ' AND created_by = $3' : ''}
+    `, [startOfLastMonth.toISOString().split('T')[0], endOfLastMonth.toISOString().split('T')[0], ...(isStaff ? [userId] : [])]) as any;
 
     // Calculate values
     const totalSales = totalSalesResult?.total || 0;
@@ -513,20 +637,20 @@ router.get('/profit-summary', async (req, res) => {
         TO_CHAR(created_at, 'YYYY-MM') as month,
         SUM(total_amount) as sales
       FROM operations
-      WHERE created_at >= CURRENT_DATE - INTERVAL '6 months'
+      WHERE created_at >= CURRENT_DATE - INTERVAL '6 months'${isStaff ? ' AND created_by = $1' : ''}
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')
       ORDER BY month ASC
-    `) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     const monthlyExpenseResult = await db.all(`
       SELECT
         TO_CHAR(date, 'YYYY-MM') as month,
         SUM(amount) as expenses
       FROM expenses
-      WHERE date >= CURRENT_DATE - INTERVAL '6 months'
+      WHERE date >= CURRENT_DATE - INTERVAL '6 months'${isStaff ? ' AND created_by = $1' : ''}
       GROUP BY TO_CHAR(date, 'YYYY-MM')
       ORDER BY month ASC
-    `) as any[];
+    `, isStaff ? [userId] : []) as any[];
 
     // Combine monthly data
     const monthlyDataMap = new Map<string, { sales: number; expenses: number; profit: number }>();
@@ -706,7 +830,7 @@ router.get('/daily-balance', async (req, res) => {
 
     // Map each result to our normalized keys (case-insensitive matching)
     for (const s of salesResult) {
-      const method = s.paymentMethod;
+      const method = s.paymentmethod;
       const total = Number(s.total) || 0;
 
       // Case-insensitive match
@@ -790,7 +914,7 @@ router.get('/daily-balance', async (req, res) => {
       'Cheque': 0
     };
     for (const e of expensesResult) {
-      const method = e.paymentMethod;
+      const method = e.paymentmethod;
       const total = Number(e.total) || 0;
       if (method.toLowerCase() === 'cash') {
         expensesByMethod['Cash'] += total;
@@ -886,7 +1010,9 @@ router.get('/daily-balance/archives/month/:year/:month', async (req, res) => {
   try {
     const { year, month } = req.params;
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const endDate = `${year}-${month.padStart(2, '0')}-31`;
+    // Use last day of month calculation
+    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+    const endDate = `${year}-${month.padStart(2, '0')}-${lastDay}`;
 
     const archives = await db.all(`
       SELECT id, date, sales_total, expenses_total, cash_at_hand, net_balance

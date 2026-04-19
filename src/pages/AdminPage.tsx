@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { API_ENDPOINTS } from '../config/api';
-import { Users, Shield, Settings, FileText, ChevronRight, Plus, Edit2, Trash2, X, Target } from 'lucide-react';
+import { Users, Shield, Settings, FileText, ChevronRight, Plus, Edit2, Trash2, X, Target, TrendingUp, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 type AdminSection = 'users' | 'staff-targets' | 'settings' | 'audit';
@@ -94,6 +94,8 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [newUser, setNewUser] = useState<{
     name: string;
@@ -107,6 +109,19 @@ const UserManagement: React.FC = () => {
     password: '',
     role: 'staff',
     permissions: []
+  });
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    role: 'admin' | 'manager' | 'staff';
+    status: 'active' | 'inactive';
+  }>({
+    name: '',
+    email: '',
+    password: '',
+    role: 'staff',
+    status: 'active'
   });
 
   // Fetch users from backend
@@ -196,6 +211,60 @@ const UserManagement: React.FC = () => {
     } catch (error) {
       console.error('Error deleting user:', error);
       alert('Failed to delete staff account');
+    }
+  };
+
+  const handleOpenEditModal = (user: StaffUser) => {
+    setEditingUser(user);
+    setEditForm({
+      name: user.name,
+      email: user.email,
+      password: '',
+      role: user.role,
+      status: user.status as 'active' | 'inactive'
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditUser = async () => {
+    if (!editingUser || !editForm.name || !editForm.email) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_ENDPOINTS['auth/users']}/${editingUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: editForm.name,
+          email: editForm.email,
+          role: editForm.role,
+          status: editForm.status,
+          ...(editForm.password ? { password: editForm.password } : {})
+        })
+      });
+
+      if (response.ok) {
+        await fetchUsers();
+        setShowEditModal(false);
+        setEditingUser(null);
+        setEditForm({ name: '', email: '', password: '', role: 'staff', status: 'active' });
+        alert('Staff account updated successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Failed to update staff account: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert('Failed to update staff account');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -365,6 +434,110 @@ const UserManagement: React.FC = () => {
     );
   };
 
+  // Edit User Modal
+  const EditUserModal: React.FC = () => {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+        <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md my-8">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-medium text-white">Edit Staff Account</h3>
+            <button
+              onClick={() => setShowEditModal(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Full Name *</label>
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
+                  focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Email Address *</label>
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
+                  focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                placeholder="user@example.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                New Password <span className="text-gray-500 text-xs">(leave blank to keep current)</span>
+              </label>
+              <input
+                type="password"
+                value={editForm.password}
+                onChange={(e) => setEditForm(prev => ({ ...prev, password: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
+                  focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                placeholder="Enter new password to reset"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Role *</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value as any }))}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
+                    focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="staff">Staff</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Status *</label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value as any }))}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
+                    focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditUser}
+                disabled={loading}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -431,8 +604,15 @@ const UserManagement: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => handleOpenEditModal(user)}
+                    className="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-colors"
+                    title="Edit staff account"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => handleDeleteUser(user.id)}
-                    className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                     title="Delete staff account"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -444,6 +624,7 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
       {showAddModal && <UserModal />}
+      {showEditModal && <EditUserModal />}
     </div>
   );
 };
@@ -500,74 +681,215 @@ const StaffTargetsManagement: React.FC = () => {
     }
   };
 
+  // Calculate aggregate stats
+  const totalMonthlyTarget = staffTargets.reduce((sum, s) => sum + (s.monthly_target || 0), 0);
+  const totalMonthlySales = staffTargets.reduce((sum, s) => sum + (s.monthly_sales || 0), 0);
+  const overallProgress = totalMonthlyTarget > 0 ? (totalMonthlySales / totalMonthlyTarget) * 100 : 0;
+  const activeStaff = staffTargets.filter(s => s.today_sales > 0).length;
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+    return value.toString();
+  };
+
   return (
-    <div>
-      <h2 className="text-xl font-semibold text-white mb-6">Staff Targets Management</h2>
-      <div className="grid gap-4">
-        {staffTargets.map(staff => (
-          <div key={staff.id} className="bg-gray-750 rounded-lg p-4">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-medium text-white">{staff.name}</h3>
-                <p className="text-sm text-gray-400">{staff.email}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-400">
-                  Today: {staff.today_sales?.toLocaleString() || 0} / {staff.daily_target?.toLocaleString()}
-                </div>
-                <div className="text-sm text-gray-400">
-                  Month: {staff.monthly_sales?.toLocaleString() || 0} / {staff.monthly_target?.toLocaleString()}
-                </div>
-              </div>
-            </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-white">Staff Targets</h2>
+          <p className="text-gray-400 text-sm">Performance and quota management</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg text-sm font-medium border border-emerald-500/20">
+            {activeStaff} active today
+          </span>
+        </div>
+      </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Daily Target (UGX)
-                </label>
-                <input
-                  type="number"
-                  defaultValue={staff.daily_target}
-                  onBlur={(e) => updateStaffTarget(staff.id, 'daily', parseFloat(e.target.value))}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
-                    focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Monthly Target (UGX)
-                </label>
-                <input
-                  type="number"
-                  defaultValue={staff.monthly_target}
-                  onBlur={(e) => updateStaffTarget(staff.id, 'monthly', parseFloat(e.target.value))}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white
-                    focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-400">Monthly Progress</span>
-                <span className={staff.monthly_percentage >= 100 ? 'text-green-400' : 'text-yellow-400'}>
-                  {staff.monthly_percentage?.toFixed(1)}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full ${
-                    staff.monthly_percentage >= 100 ? 'bg-green-500' :
-                    staff.monthly_percentage >= 75 ? 'bg-yellow-500' :
-                    'bg-red-500'
-                  }`}
-                  style={{ width: `${Math.min(staff.monthly_percentage || 0, 100)}%` }}
-                />
-              </div>
-            </div>
+      {/* Summary Cards - Matching Operation Page Style */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Overall Monthly */}
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <TrendingUp size={12} />
+              Overall Monthly
+            </span>
+            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+              overallProgress >= 100 ? 'bg-emerald-500/20 text-emerald-400' :
+              overallProgress >= 75 ? 'bg-amber-500/20 text-amber-400' :
+              'bg-gray-500/20 text-gray-400'
+            }`}>
+              {overallProgress.toFixed(0)}%
+            </span>
           </div>
-        ))}
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(totalMonthlySales)}
+          </p>
+          <p className="text-indigo-300/60 text-xs">
+            of {formatCurrency(totalMonthlyTarget)} target
+          </p>
+          <div className="mt-3 h-1.5 bg-indigo-950/50 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500"
+              style={{ width: `${Math.min(overallProgress, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Daily Average */}
+        <div className="bg-gradient-to-br from-violet-900/50 to-violet-800/30 rounded-xl p-4 border border-violet-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-violet-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <Target size={12} />
+              Daily Average
+            </span>
+            <TrendingUp size={16} className="text-violet-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(staffTargets.length > 0 ? totalMonthlySales / 30 : 0)}
+          </p>
+          <p className="text-violet-300/60 text-xs">
+            across {staffTargets.length} staff members
+          </p>
+        </div>
+
+        {/* On Track */}
+        <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-emerald-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <CheckCircle size={12} />
+              On Track
+            </span>
+            <span className="text-emerald-400 text-xs">
+              75%+ target
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {staffTargets.filter(s => (s.monthly_percentage || 0) >= 75).length}
+          </p>
+          <p className="text-emerald-300/60 text-xs">
+            of {staffTargets.length} meeting goal
+          </p>
+        </div>
+      </div>
+
+      {/* Targets Table - Matching Operation Page Style */}
+      <div className="card-bevel overflow-hidden">
+        <div className="max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+          <table className="w-full">
+            <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Staff Member</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Daily Target</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Today</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Daily %</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Monthly Target</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Month Total</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Monthly %</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {staffTargets.map((staff, index) => {
+                const dailyProgress = staff.daily_target > 0 ? (staff.today_sales / staff.daily_target) * 100 : 0;
+                const monthlyProgress = staff.monthly_percentage || 0;
+
+                return (
+                  <tr
+                    key={staff.id}
+                    className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+                          {staff.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-white">{staff.name}</p>
+                          <p className="text-xs text-gray-500">{staff.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="number"
+                        defaultValue={staff.daily_target}
+                        onBlur={(e) => updateStaffTarget(staff.id, 'daily', parseFloat(e.target.value))}
+                        className="w-28 px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-white text-sm text-center
+                          focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-sm font-medium text-white">
+                        {formatCurrency(staff.today_sales || 0)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        dailyProgress >= 100 ? 'bg-emerald-100 text-emerald-800' :
+                        dailyProgress >= 75 ? 'bg-amber-100 text-amber-800' :
+                        dailyProgress >= 50 ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {dailyProgress.toFixed(0)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="number"
+                        defaultValue={staff.monthly_target}
+                        onBlur={(e) => updateStaffTarget(staff.id, 'monthly', parseFloat(e.target.value))}
+                        className="w-28 px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-white text-sm text-center
+                          focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-sm font-medium text-white">
+                        {formatCurrency(staff.monthly_sales || 0)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              monthlyProgress >= 100 ? 'bg-emerald-500' :
+                              monthlyProgress >= 75 ? 'bg-amber-500' :
+                              monthlyProgress >= 50 ? 'bg-blue-500' :
+                              'bg-gray-500'
+                            }`}
+                            style={{ width: `${Math.min(monthlyProgress, 100)}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-medium ${
+                          monthlyProgress >= 100 ? 'text-emerald-400' :
+                          monthlyProgress >= 75 ? 'text-amber-400' :
+                          'text-gray-400'
+                        }`}>
+                          {monthlyProgress.toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        monthlyProgress >= 100 ? 'bg-emerald-500/10 text-emerald-400' :
+                        monthlyProgress >= 75 ? 'bg-amber-500/10 text-amber-400' :
+                        'bg-gray-500/10 text-gray-400'
+                      }`}>
+                        {monthlyProgress >= 100 ? 'Achieved' :
+                         monthlyProgress >= 75 ? 'On Track' :
+                         monthlyProgress >= 50 ? 'Behind' : 'Far Behind'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

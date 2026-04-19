@@ -4,7 +4,7 @@ import { api } from '../services/api';
 
 interface CustomerContextType {
   customers: Customer[];
-  addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<void>;
+  addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
   updateCustomer: (id: string, customerData: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
   loading: boolean;

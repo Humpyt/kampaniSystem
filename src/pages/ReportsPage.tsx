@@ -608,7 +608,7 @@ export default function ReportsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {servicePerformance?.byRevenue?.slice(0, 10).map((service, idx) => (
-                    <tr key={service.serviceId} className="hover:bg-gray-800/50">
+                    <tr key={service.serviceId || idx} className="hover:bg-gray-800/50">
                       <td className="px-4 py-3 text-sm text-white">{service.serviceName}</td>
                       <td className="px-4 py-3 text-sm text-gray-400">{service.category}</td>
                       <td className="px-4 py-3 text-sm text-gray-300 text-right">{service.orderCount}</td>
@@ -637,7 +637,7 @@ export default function ReportsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {customerRankings?.bySpent?.slice(0, 10).map((customer, idx) => (
-                    <tr key={customer.id} className="hover:bg-gray-800/50">
+                    <tr key={customer.id || idx} className="hover:bg-gray-800/50">
                       <td className="px-4 py-3 text-sm text-white">{customer.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-400">{customer.phone}</td>
                       <td className="px-4 py-3 text-sm text-gray-300 text-right">{customer.orderCount}</td>
@@ -666,7 +666,7 @@ export default function ReportsPage() {
               </thead>
               <tbody className="divide-y divide-gray-800">
                 {expenseAnalytics?.categoryBreakdown?.map((category, idx) => (
-                  <tr key={category.category} className="hover:bg-gray-800/50">
+                  <tr key={category.category || idx} className="hover:bg-gray-800/50">
                     <td className="px-4 py-3 text-sm text-white">{category.category}</td>
                     <td className="px-4 py-3 text-sm text-red-400 text-right">{formatCurrency(category.amount)}</td>
                     <td className="px-4 py-3 text-sm text-gray-400 text-right">{category.percentage.toFixed(1)}%</td>

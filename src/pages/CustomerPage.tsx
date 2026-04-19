@@ -10,6 +10,7 @@ import { format, differenceInDays } from 'date-fns';
 import type { Customer, Transaction, Operation } from '../types';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useOperation } from '../contexts/OperationContext';
+import { useAuthStore } from '../store/authStore';
 import { AddCreditModal } from '../components/AddCreditModal';
 import { PaymentModal } from '../components/PaymentModal';
 import CustomerSummaryCards from '../components/customers/CustomerSummaryCards';
@@ -50,6 +51,8 @@ export default function CustomerPage() {
     error
   } = useCustomer();
   const { operations } = useOperation();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerDetails, setShowCustomerDetails] = useState(false);
@@ -488,44 +491,48 @@ export default function CustomerPage() {
           <p className="text-gray-400">Manage customer relationships and track repair history</p>
         </div>
         <div className="flex space-x-4">
-          <button 
+          <button
             onClick={handleAddClick}
             className="flex items-center px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors duration-200"
           >
             <Plus className="h-5 w-5 mr-2" />
             Add Customer
           </button>
-          <input
-            type="file"
-            accept=".csv"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleImportCSV}
-          />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
-          >
-            <Upload className="h-5 w-5 mr-2" />
-            Import CSV
-          </button>
-          <button 
-            className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
-            onClick={() => {
-              const csvContent = customers.map(c => 
-                [c.name, c.phone, c.email, c.address, c.totalSpent, c.lastVisit].join(',')
-              ).join('\n');
-              const blob = new Blob([csvContent], { type: 'text/csv' });
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'customers.csv';
-              a.click();
-            }}
-          >
-            <Download className="h-5 w-5 mr-2" />
-            Export CSV
-          </button>
+          {isAdmin && (
+            <>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleImportCSV}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
+              >
+                <Upload className="h-5 w-5 mr-2" />
+                Import CSV
+              </button>
+              <button
+                className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
+                onClick={() => {
+                  const csvContent = customers.map(c =>
+                    [c.name, c.phone, c.email, c.address, c.totalSpent, c.lastVisit].join(',')
+                  ).join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'customers.csv';
+                  a.click();
+                }}
+              >
+                <Download className="h-5 w-5 mr-2" />
+                Export CSV
+              </button>
+            </>
+          )}
         </div>
       </div>
 

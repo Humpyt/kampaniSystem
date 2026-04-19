@@ -102,14 +102,21 @@ const SERVICE_VARIATIONS = [
   "New Left", "New Pair", "New Right", "Shorten Left", "Shorten Pair", "Shorten Right"
 ];
 
-type StepName = 'customer' | 'category' | 'color' | 'brand' | 'material' | 'description' | 'memos' | 'service' | 'variation';
+const SHOE_CATEGORY_NAMES = new Set(
+  CATEGORIES.filter(category => !['bag', 'other'].includes(category.id)).map(category => category.name)
+);
 
-const STEPS_ORDER: StepName[] = ['customer', 'category', 'color', 'brand', 'material', 'description', 'memos', 'service', 'variation'];
+const SHOE_SIZES = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45'];
+
+type StepName = 'customer' | 'category' | 'size' | 'color' | 'brand' | 'material' | 'description' | 'memos' | 'service' | 'variation';
+
+const STEPS_ORDER: StepName[] = ['customer', 'category', 'size', 'color', 'brand', 'material', 'description', 'memos', 'service', 'variation'];
 
 // Helper to get initial form state
 const getInitialFormState = (): DropFormState => ({
   customerId: '',
   category: '',
+  size: '',
   color: '',
   brand: '',
   material: '',
@@ -121,13 +128,15 @@ const getInitialFormState = (): DropFormState => ({
 });
 
 export default function DropPage() {
-  const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation, updateOperation } = useOperation();
+  const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation, updateOperation, refreshOperations } = useOperation();
   const { customers, addCustomer } = useCustomer();
   const { services } = useServices();
 
   const [form, setForm] = useState<DropFormState>(getInitialFormState());
+  const [discount, setDiscount] = useState(0);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
   const [colors, setColors] = useState<ColorOption[]>([]);
@@ -142,12 +151,14 @@ export default function DropPage() {
   const [serviceIdMap, setServiceIdMap] = useState<Map<string, string>>(new Map());
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  const requiresShoeSize = SHOE_CATEGORY_NAMES.has(form.category);
 
   // Product handlers
   const handleProductSelect = (product: RetailProduct, customPrice?: number) => {
     const item: CartItem = {
       id: crypto.randomUUID(),
       category: 'Product',
+      size: '',
       color: '',
       brand: product.category,
       material: '',
@@ -213,6 +224,7 @@ export default function DropPage() {
   const previewItem: CartItem | null = form.category ? {
     id: 'preview',
     category: form.category,
+    size: form.size,
     color: form.color,
     brand: form.brand,
     material: form.material,
@@ -257,15 +269,25 @@ export default function DropPage() {
     setForm(prev => ({ ...prev, customerId: customer.id }));
     setShowCustomerSearch(false);
     setCustomerSearchTerm('');
+    setNewCustomerPhone('');
     advanceStep('customer');
   };
 
   const handleCategorySelect = (category: string) => {
     setCustomCategory('');
-    setForm(prev => ({ ...prev, category }));
+    setForm(prev => ({
+      ...prev,
+      category,
+      size: SHOE_CATEGORY_NAMES.has(category) ? prev.size : '',
+    }));
     if (category !== 'Other') {
-      advanceStep('category');
+      setActiveStep(SHOE_CATEGORY_NAMES.has(category) ? 'size' : 'color');
     }
+  };
+
+  const handleSizeSelect = (size: string) => {
+    setForm(prev => ({ ...prev, size }));
+    advanceStep('size');
   };
 
   const handleColorSelect = (color: string) => {
@@ -319,6 +341,7 @@ export default function DropPage() {
     const item: CartItem = {
       id: crypto.randomUUID(),
       category: form.category,
+      size: form.size,
       color: form.color,
       brand: form.brand,
       material: form.material,
@@ -331,6 +354,7 @@ export default function DropPage() {
     setForm(prev => ({
       ...prev,
       category: '',
+      size: '',
       color: '',
       brand: '',
       material: '',
@@ -349,6 +373,7 @@ export default function DropPage() {
     setForm(prev => ({
       ...prev,
       category: '',
+      size: '',
       color: '',
       brand: '',
       material: '',
@@ -383,7 +408,7 @@ export default function DropPage() {
     }
   };
 
-  const handleComplete = async (data: { payments: Array<{ method: 'cash' | 'mobile_money' | 'bank_card' | 'store_credit'; amount: number }> }) => {
+  const handleComplete = async (data: { payments: Array<{ method: 'cash' | 'mobile_money' | 'bank_card' | 'store_credit'; amount: number }>; discount: number }) => {
     if (cartItems.length === 0) {
       toast.error('No items in cart');
       return;
@@ -402,6 +427,7 @@ export default function DropPage() {
           const notes = [item.shortDescription, ...item.memos].filter(Boolean).join(' | ');
           return {
             category: item.category,
+            size: item.size || null,
             color: item.color || '',
             notes,
             services: item.services.map(s => {
@@ -418,7 +444,9 @@ export default function DropPage() {
           };
         });
 
-      const totalAmount = cartItems.reduce((sum, item) => sum + item.price, 0);
+      const subtotalAmount = cartItems.reduce((sum, item) => sum + item.price, 0);
+      const discountAmount = Math.min(Math.max(Number(data.discount) || 0, 0), subtotalAmount);
+      const totalAmount = Math.max(0, subtotalAmount - discountAmount);
       const hasPayments = data.payments && data.payments.length > 0;
       const totalPaid = hasPayments ? data.payments.reduce((sum, p) => sum + p.amount, 0) : 0;
 
@@ -440,7 +468,7 @@ export default function DropPage() {
           })),
         status: 'pending' as const,
         totalAmount,
-        discount: 0,
+        discount: discountAmount,
         isNoCharge: false,
         isDoOver: false,
         isDelivery: false,
@@ -483,24 +511,59 @@ export default function DropPage() {
             const paymentResult = await paymentResponse.json();
             console.log('[DropPage] Payment result:', paymentResult);
 
-            // Record sale for analytics - repair sale linked to operation
+            // Record sale entries for analytics by sale type.
             try {
               const primaryPayment = formattedPayments[0];
-              await fetch('/api/sales', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-                },
-                body: JSON.stringify({
-                  customerId: selectedCustomer.id,
-                  saleType: 'repair',
-                  referenceId: newOperation.id,
-                  totalAmount: totalPaid,
-                  paymentMethod: primaryPayment?.method || 'cash',
-                }),
-              });
-              console.log('[DropPage] Sale recorded for operation:', newOperation.id);
+              const repairSubtotal = cartItems
+                .filter(item => item.category !== 'Product')
+                .reduce((sum, item) => sum + item.price, 0);
+              const retailSubtotal = cartItems
+                .filter(item => item.category === 'Product')
+                .reduce((sum, item) => sum + item.price, 0);
+              const subtotal = repairSubtotal + retailSubtotal;
+              const repairShare = subtotal > 0 ? repairSubtotal / subtotal : 0;
+              const repairDiscountShare = Math.round(discountAmount * repairShare);
+              const retailDiscountShare = discountAmount - repairDiscountShare;
+              const repairNet = Math.max(0, repairSubtotal - repairDiscountShare);
+              const retailNet = Math.max(0, retailSubtotal - retailDiscountShare);
+              const payableTotal = repairNet + retailNet;
+              const repairPaid = payableTotal > 0 ? Math.round((totalPaid * repairNet) / payableTotal) : 0;
+              const retailPaid = Math.max(0, totalPaid - repairPaid);
+
+              const salesToRecord = [
+                repairNet > 0 && repairPaid > 0
+                  ? {
+                      customerId: selectedCustomer.id,
+                      saleType: 'repair',
+                      referenceId: newOperation.id,
+                      totalAmount: repairPaid,
+                      paymentMethod: primaryPayment?.method || 'cash',
+                    }
+                  : null,
+                retailNet > 0 && retailPaid > 0
+                  ? {
+                      customerId: selectedCustomer.id,
+                      saleType: 'retail',
+                      referenceId: newOperation.id,
+                      totalAmount: retailPaid,
+                      paymentMethod: primaryPayment?.method || 'cash',
+                    }
+                  : null,
+              ].filter(Boolean);
+
+              await Promise.all(
+                salesToRecord.map((sale) =>
+                  fetch('/api/sales', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify(sale),
+                  })
+                )
+              );
+              console.log('[DropPage] Sale entries recorded for operation:', newOperation.id, salesToRecord);
             } catch (saleErr) {
               console.error('[DropPage] Error recording sale:', saleErr);
               // Don't fail the drop if sale recording fails
@@ -534,6 +597,7 @@ export default function DropPage() {
           operationId: newOperation.id,
           customerId: selectedCustomer.id,
           totalAmount,
+          discount: discountAmount,
           paidAmount: totalPaid,
           hasPayments,
           timing: hasPayments ? 'prepay' : 'postpay'
@@ -541,8 +605,15 @@ export default function DropPage() {
       }));
 
       toast.success('Drop completed!');
-      // Auto-print policy slip after successful drop
+      // Auto-print receipt and policy slip after successful drop
       try {
+        // Print receipt
+        await printerService.printReceipt({
+          orderNumber: ticketNumber,
+          customerName: selectedCustomer?.name || 'N/A',
+          customerPhone: selectedCustomer?.phone || undefined,
+        });
+        // Print policy slip
         await printerService.printPolicy({
           ticketNumber: ticketNumber,
           date: new Date().toLocaleDateString(),
@@ -554,6 +625,8 @@ export default function DropPage() {
         // Don't block the flow - print failure is non-critical
       }
       clearCart();
+      setDiscount(0);
+      setNewCustomerPhone('');
       setSelectedCustomer(null);
       setForm(getInitialFormState());
       setActiveStep('customer');
@@ -567,6 +640,11 @@ export default function DropPage() {
   };
 
   const handleAddNewCustomer = async (name: string, phone: string) => {
+    if (!phone.trim()) {
+      toast.error('Customer phone is required');
+      return;
+    }
+
     try {
       const newCustomer = await addCustomer({
         name,
@@ -580,6 +658,7 @@ export default function DropPage() {
         lastVisit: new Date().toISOString().split('T')[0],
         loyaltyPoints: 0,
       });
+      setNewCustomerPhone('');
       handleCustomerSelect(newCustomer);
     } catch (err) {
       toast.error('Failed to add customer');
@@ -591,6 +670,7 @@ export default function DropPage() {
     switch (step) {
       case 'customer': return Boolean(selectedCustomer);
       case 'category': return Boolean(form.category);
+      case 'size': return requiresShoeSize ? Boolean(form.size) : true;
       case 'color': return Boolean(form.color);
       case 'brand': return Boolean(form.brand);
       case 'material': return Boolean(form.material);
@@ -607,6 +687,7 @@ export default function DropPage() {
     switch (step) {
       case 'customer': return selectedCustomer?.name || '';
       case 'category': return form.category;
+      case 'size': return form.size || '(none)';
       case 'color': return form.color;
       case 'brand': return form.brand;
       case 'material': return form.material;
@@ -620,7 +701,7 @@ export default function DropPage() {
 
   // Get step icon
   const getStepIcon = (step: StepName): string => {
-    const icons: Record<StepName, string> = {
+    const icons: Record<string, string> = {
       customer: '👤',
       category: CATEGORIES.find(c => c.name === form.category)?.icon || '👠',
       color: '🎨',
@@ -631,7 +712,7 @@ export default function DropPage() {
       service: '🔧',
       variation: '⚙️',
     };
-    return icons[step];
+    return icons[step] || 'S';
   };
 
   // Render form for each step
@@ -648,6 +729,7 @@ export default function DropPage() {
                 value={customerSearchTerm}
                 onChange={(e) => {
                   setCustomerSearchTerm(e.target.value);
+                  setNewCustomerPhone('');
                   setShowCustomerSearch(true);
                 }}
                 onFocus={() => setShowCustomerSearch(true)}
@@ -657,7 +739,10 @@ export default function DropPage() {
             {showCustomerSearch && customerSearchTerm && (
               <div className="bg-gray-700 rounded-xl border border-gray-600 overflow-hidden">
                 {customers
-                  .filter(c => c.name.toLowerCase().includes(customerSearchTerm.toLowerCase()))
+                  .filter(c =>
+                    c.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+                    c.phone.includes(customerSearchTerm)
+                  )
                   .slice(0, 5)
                   .map(customer => (
                     <button
@@ -665,19 +750,34 @@ export default function DropPage() {
                       onClick={() => handleCustomerSelect(customer)}
                       className="w-full px-4 py-3 text-left hover:bg-gray-600 transition-colors text-gray-200"
                     >
-                      {customer.name}
+                      <div className="font-medium">{customer.name}</div>
+                      <div className="text-xs text-gray-400">{customer.phone}</div>
                     </button>
                   ))}
               </div>
             )}
             {customerSearchTerm && !customers.some(c => c.name.toLowerCase() === customerSearchTerm.toLowerCase()) && (
-              <button
-                onClick={() => handleAddNewCustomer(customerSearchTerm, '')}
-                className="w-full flex items-center gap-2 px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add &quot;{customerSearchTerm}&quot; as new customer
-              </button>
+              <div className="space-y-3 rounded-xl border border-gray-600 bg-gray-800/60 p-4">
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Plus className="w-4 h-4" />
+                  Add &quot;{customerSearchTerm}&quot; as new customer
+                </div>
+                <input
+                  type="tel"
+                  placeholder="Customer phone number"
+                  value={newCustomerPhone}
+                  onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-700 rounded-xl text-white placeholder-gray-400 border border-gray-600 focus:border-indigo-500 outline-none"
+                />
+                <button
+                  onClick={() => handleAddNewCustomer(customerSearchTerm.trim(), newCustomerPhone.trim())}
+                  disabled={!customerSearchTerm.trim() || !newCustomerPhone.trim()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl text-white text-sm font-medium transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Save Customer
+                </button>
+              </div>
             )}
             <button
               onClick={() => {
@@ -720,8 +820,9 @@ export default function DropPage() {
                 onChange={(e) => setCustomCategory(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && customCategory) {
-                    setForm(prev => ({ ...prev, category: customCategory }));
-                    advanceStep('category');
+                    const nextCategory = customCategory.trim();
+                    setForm(prev => ({ ...prev, category: nextCategory, size: '' }));
+                    setActiveStep('color');
                   }
                 }}
               />
@@ -729,9 +830,52 @@ export default function DropPage() {
             {form.category === 'Other' && customCategory && (
               <button
                 onClick={() => {
-                  setForm(prev => ({ ...prev, category: customCategory }));
-                  advanceStep('category');
+                  const nextCategory = customCategory.trim();
+                  setForm(prev => ({ ...prev, category: nextCategory, size: '' }));
+                  setActiveStep('color');
                 }}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
+              >
+                Continue
+              </button>
+            )}
+          </div>
+        );
+
+      case 'size':
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-4 gap-2">
+              {SHOE_SIZES.map(size => (
+                <button
+                  key={size}
+                  onClick={() => handleSizeSelect(size)}
+                  className={`p-3 rounded-xl text-sm font-medium transition-all ${
+                    form.size === size
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                  }`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Enter custom shoe size"
+              value={form.size}
+              className="w-full px-4 py-3 bg-gray-700 rounded-xl text-white placeholder-gray-400 border border-gray-600 focus:border-indigo-500 outline-none"
+              onChange={(e) => setForm(prev => ({ ...prev, size: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && form.size.trim()) {
+                  handleSizeSelect(form.size.trim());
+                }
+              }}
+            />
+            {form.size.trim() && (
+              <button
+                onClick={() => handleSizeSelect(form.size.trim())}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
               >
                 Continue
@@ -1008,6 +1152,7 @@ export default function DropPage() {
             <button
               onClick={() => {
                 setSelectedCustomer(null);
+                setNewCustomerPhone('');
                 setForm(prev => ({ ...prev, customerId: '' }));
                 setActiveStep('customer');
               }}
@@ -1021,6 +1166,8 @@ export default function DropPage() {
           <button
             onClick={() => {
               clearCart();
+              setDiscount(0);
+              setNewCustomerPhone('');
               setForm(getInitialFormState());
               setActiveStep('category');
             }}
@@ -1100,17 +1247,18 @@ export default function DropPage() {
                         ...prev,
                         service,
                         variation: 'New Pair',
-                        memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
                       }));
-                      // Navigate to first incomplete required step
+                      // Navigate to fill required fields in order: category → size → color → brand → price
                       if (!form.category) {
                         setActiveStep('category');
+                      } else if (requiresShoeSize && !form.size) {
+                        setActiveStep('size');
                       } else if (!form.color) {
                         setActiveStep('color');
                       } else if (!form.brand) {
                         setActiveStep('brand');
                       } else {
-                        advanceStep('category');
+                        setActiveStep('variation');
                       }
                     }}
                     className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -1128,17 +1276,18 @@ export default function DropPage() {
                         ...prev,
                         service,
                         variation: 'New Pair',
-                        memos: prev.memos.includes(service) ? prev.memos : [...prev.memos, service]
                       }));
-                      // Navigate to first incomplete required step
+                      // Navigate to fill required fields in order: category → size → color → brand → price
                       if (!form.category) {
                         setActiveStep('category');
+                      } else if (requiresShoeSize && !form.size) {
+                        setActiveStep('size');
                       } else if (!form.color) {
                         setActiveStep('color');
                       } else if (!form.brand) {
                         setActiveStep('brand');
                       } else {
-                        advanceStep('category');
+                        setActiveStep('variation');
                       }
                     }}
                     className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -1163,6 +1312,8 @@ export default function DropPage() {
             onPriceChange={handlePreviewPriceChange}
             onDone={handlePreviewDone}
             onCartItemPriceChange={handleCartItemPriceChange}
+            discount={discount}
+            onDiscountChange={setDiscount}
             customer={selectedCustomer}
           />
         </div>

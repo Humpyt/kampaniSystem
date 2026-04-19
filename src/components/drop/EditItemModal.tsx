@@ -40,6 +40,18 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({ item, onSave, onDe
             <div className="text-white font-medium">{editedItem.category}</div>
           </div>
 
+          {editedItem.category !== 'Product' && (
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Shoe Size</label>
+              <input
+                type="text"
+                value={editedItem.size || ''}
+                onChange={(e) => setEditedItem({ ...editedItem, size: e.target.value })}
+                className="w-full px-3 py-2 bg-gray-700 rounded-lg text-white text-sm border border-gray-600 focus:border-indigo-500 outline-none"
+              />
+            </div>
+          )}
+
           {/* Color */}
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Color</label>

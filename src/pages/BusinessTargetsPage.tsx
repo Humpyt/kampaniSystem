@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_ENDPOINTS } from '../config/api';
-import { Target, Users, Trophy, TrendingUp, DollarSign, Calendar, RefreshCw } from 'lucide-react';
+import { Target, Users, Trophy, TrendingUp, DollarSign, Calendar, RefreshCw, TrendingDown, Minus } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useAuthStore } from '../store/authStore';
 
@@ -121,90 +121,92 @@ const BusinessTargetsPage: React.FC = () => {
   // Admin/Manager View
   if (user?.role === 'admin' || user?.role === 'manager') {
     const percentage = businessSummary?.progress?.percentage || 0;
-    const tierBadge = (tier: number) => getTierBadge(tier);
 
     return (
-      <div className="p-6 bg-gray-900 min-h-screen">
+      <div className="min-h-screen bg-gray-900 p-6">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-1">Business Targets</h1>
+            <h1 className="text-2xl font-bold text-white">Business Targets</h1>
             <p className="text-gray-400 text-sm">{businessSummary?.period?.currentMonth || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
           </div>
-          <button onClick={fetchData} className="btn-secondary flex items-center gap-2">
-            <RefreshCw size={18} />
-            Refresh
-          </button>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Monthly Target</p>
-                <p className="text-2xl font-bold text-white">{formatCurrency(businessSummary?.targets?.businessMonthly || 0)}</p>
-              </div>
-              <div className="bg-indigo-900/50 p-3 rounded-lg">
-                <Target className="text-indigo-400" size={24} />
-              </div>
-            </div>
-          </div>
-
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Achieved</p>
-                <p className="text-2xl font-bold text-emerald-400">{formatCurrency(businessSummary?.current?.totalSales || 0)}</p>
-              </div>
-              <div className="bg-emerald-900/50 p-3 rounded-lg">
-                <TrendingUp className="text-emerald-400" size={24} />
-              </div>
-            </div>
-          </div>
-
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Remaining</p>
-                <p className={`text-2xl font-bold ${getProgressColor(percentage)}`}>{formatCurrency(businessSummary?.progress?.remaining || 0)}</p>
-              </div>
-              <div className="bg-gray-700 p-3 rounded-lg">
-                <DollarSign className="text-gray-400" size={24} />
-              </div>
-            </div>
-          </div>
-
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Progress</p>
-                <p className={`text-2xl font-bold ${getProgressColor(percentage)}`}>{percentage.toFixed(0)}%</p>
-              </div>
-              <div className={`${percentage >= 80 ? 'bg-emerald-900/50' : percentage >= 50 ? 'bg-yellow-900/50' : 'bg-red-900/50'} p-3 rounded-lg`}>
-                <Trophy className={percentage >= 80 ? 'text-emerald-400' : percentage >= 50 ? 'text-yellow-400' : 'text-red-400'} size={24} />
-              </div>
-            </div>
-            <div className="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
-              <div className={`h-full ${getProgressBarColor(percentage)} transition-all duration-500`} style={{ width: `${Math.min(percentage, 100)}%` }} />
-            </div>
+          <div className="flex items-center gap-3">
+            <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-all">
+              <RefreshCw size={16} />
+              Refresh
+            </button>
           </div>
         </div>
 
-        {/* Revenue Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <p className="text-gray-400 text-sm mb-2">Operations Revenue</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(businessSummary?.current?.operationsTotal || 0)}</p>
+        {/* Financial Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          {/* Monthly Target */}
+          <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-indigo-300 text-xs font-medium flex items-center gap-1">
+                <Target size={12} />
+                MONTHLY TARGET
+              </span>
+              <Target size={16} className="text-indigo-400" />
+            </div>
+            <p className="text-2xl font-bold text-white mb-1">
+              {formatCurrency(businessSummary?.targets?.businessMonthly || 0)}
+            </p>
           </div>
-          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-            <p className="text-gray-400 text-sm mb-2">Retail Sales</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(businessSummary?.current?.retailTotal || 0)}</p>
+
+          {/* Achieved */}
+          <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-emerald-300 text-xs font-medium flex items-center gap-1">
+                <TrendingUp size={12} />
+                ACHIEVED
+              </span>
+              <TrendingUp size={16} className="text-emerald-400" />
+            </div>
+            <p className="text-2xl font-bold text-white mb-1">
+              {formatCurrency(businessSummary?.current?.totalSales || 0)}
+            </p>
+          </div>
+
+          {/* Remaining / Progress */}
+          <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-rose-300 text-xs font-medium flex items-center gap-1">
+                <Minus size={12} />
+                REMAINING
+              </span>
+              <DollarSign size={16} className="text-rose-400" />
+            </div>
+            <p className="text-2xl font-bold text-white mb-1">
+              {formatCurrency(businessSummary?.progress?.remaining || 0)}
+            </p>
+            <div className="flex items-center gap-1">
+              <span className={`text-xs font-medium ${getProgressColor(percentage)}`}>
+                {percentage.toFixed(0)}%
+              </span>
+              <span className="text-rose-300/60 text-xs">of target</span>
+            </div>
+          </div>
+        </div>
+
+        {/* This Month Summary */}
+        <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+          <div className="text-center">
+            <p className="text-gray-400 text-xs mb-1">Operations Revenue</p>
+            <p className="text-lg font-bold text-indigo-400">{formatCurrency(businessSummary?.current?.operationsTotal || 0)}</p>
+          </div>
+          <div className="text-center border-x border-gray-700">
+            <p className="text-gray-400 text-xs mb-1">Retail Sales</p>
+            <p className="text-lg font-bold text-emerald-400">{formatCurrency(businessSummary?.current?.retailTotal || 0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-gray-400 text-xs mb-1">Progress</p>
+            <p className={`text-lg font-bold ${getProgressColor(percentage)}`}>{percentage.toFixed(0)}%</p>
           </div>
         </div>
 
         {/* Staff Performance Table */}
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg overflow-hidden">
+        <div className="card-bevel overflow-hidden">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Users size={20} className="text-gray-400" />
@@ -221,15 +223,15 @@ const BusinessTargetsPage: React.FC = () => {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-750 sticky top-0">
+                <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Staff</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Tier</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-300">Today</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Progress</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-300">Month</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Progress</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-300">Commission</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Staff</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Tier</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Today</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Progress</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Month</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Progress</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Commission</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
@@ -238,9 +240,9 @@ const BusinessTargetsPage: React.FC = () => {
                     .map((staff, idx) => {
                       const dailyPct = Math.min((staff.today_sales / staff.daily_target) * 100, 100);
                       const monthlyPct = Math.min((staff.monthly_sales / staff.monthly_target) * 100, 100);
-                      const badge = tierBadge(staff.commission_tier);
+                      const badge = getTierBadge(staff.commission_tier);
                       return (
-                        <tr key={staff.id} className="hover:bg-gray-750/50 transition-colors">
+                        <tr key={staff.id} className={`${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
@@ -305,101 +307,123 @@ const BusinessTargetsPage: React.FC = () => {
   const tierBadge = getTierBadge(commission.currentTier);
 
   return (
-    <div className="p-6 bg-gray-900 min-h-screen">
+    <div className="min-h-screen bg-gray-900 p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-1">My Performance</h1>
+          <h1 className="text-2xl font-bold text-white">My Performance</h1>
           <p className="text-gray-400 text-sm flex items-center gap-2">
             <Calendar size={14} />
             {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <button onClick={fetchData} className="btn-secondary flex items-center gap-2">
-          <RefreshCw size={18} />
+        <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-all">
+          <RefreshCw size={16} />
           Refresh
         </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Today</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(dailyPerf.total)}</p>
-              <p className="text-xs text-gray-500 mt-1">{dailyPerf.percentage.toFixed(0)}% of target</p>
-            </div>
-            <div className="bg-blue-900/50 p-3 rounded-lg">
-              <TrendingUp className="text-blue-400" size={24} />
-            </div>
+      {/* Staff Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        {/* Today */}
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium flex items-center gap-1">
+              <TrendingUp size={12} />
+              TODAY
+            </span>
+            <TrendingUp size={16} className="text-indigo-400" />
           </div>
-          <div className="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
-            <div className={`h-full ${getProgressBarColor(dailyPerf.percentage)}`} style={{ width: `${Math.min(dailyPerf.percentage, 100)}%` }} />
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(dailyPerf.total)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium ${getProgressColor((dailyPerf.percentage ?? 0))}`}>
+              {(dailyPerf.percentage ?? 0).toFixed(0)}%
+            </span>
+            <span className="text-indigo-300/60 text-xs">of target</span>
           </div>
-        </div>
-
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">This Month</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(monthlyPerf.total)}</p>
-              <p className="text-xs text-gray-500 mt-1">{monthlyPerf.percentage.toFixed(0)}% of target</p>
-            </div>
-            <div className="bg-indigo-900/50 p-3 rounded-lg">
-              <Target className="text-indigo-400" size={24} />
-            </div>
-          </div>
-          <div className="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
-            <div className={`h-full ${getProgressBarColor(monthlyPerf.percentage)}`} style={{ width: `${Math.min(monthlyPerf.percentage, 100)}%` }} />
+          <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className={`h-full ${getProgressBarColor((dailyPerf.percentage ?? 0))}`} style={{ width: `${Math.min((dailyPerf.percentage ?? 0), 100)}%` }} />
           </div>
         </div>
 
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Commission Tier</p>
-              <p className="text-2xl font-bold text-white">Tier {commission.currentTier}</p>
-              <p className="text-xs text-gray-500 mt-1">{commission.rateDisplay} rate</p>
-            </div>
-            <div className="bg-yellow-900/50 p-3 rounded-lg">
-              <Trophy className="text-yellow-400" size={24} />
-            </div>
+        {/* This Month */}
+        <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-emerald-300 text-xs font-medium flex items-center gap-1">
+              <Target size={12} />
+              THIS MONTH
+            </span>
+            <Target size={16} className="text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(monthlyPerf.total)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium ${getProgressColor((monthlyPerf.percentage ?? 0))}`}>
+              {(monthlyPerf.percentage ?? 0).toFixed(0)}%
+            </span>
+            <span className="text-emerald-300/60 text-xs">of target</span>
+          </div>
+          <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className={`h-full ${getProgressBarColor((monthlyPerf.percentage ?? 0))}`} style={{ width: `${Math.min((monthlyPerf.percentage ?? 0), 100)}%` }} />
           </div>
         </div>
 
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Est. Earnings</p>
-              <p className="text-2xl font-bold text-emerald-400">{formatCurrency(commission.estimatedCommission)}</p>
-              <p className="text-xs text-gray-500 mt-1">this month</p>
-            </div>
-            <div className="bg-emerald-900/50 p-3 rounded-lg">
-              <DollarSign className="text-emerald-400" size={24} />
-            </div>
+        {/* Commission Tier */}
+        <div className="bg-gradient-to-br from-amber-900/50 to-amber-800/30 rounded-xl p-4 border border-amber-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-amber-300 text-xs font-medium flex items-center gap-1">
+              <Trophy size={12} />
+              COMMISSION TIER
+            </span>
+            <Trophy size={16} className="text-amber-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            Tier {commission.currentTier}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-amber-300/60 text-xs">{commission.rateDisplay} rate</span>
+          </div>
+        </div>
+
+        {/* Est. Earnings */}
+        <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-rose-300 text-xs font-medium flex items-center gap-1">
+              <DollarSign size={12} />
+              EST. EARNINGS
+            </span>
+            <DollarSign size={16} className="text-rose-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(commission.estimatedCommission)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-rose-300/60 text-xs">this month</span>
           </div>
         </div>
       </div>
 
       {/* Statistics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4 text-center">
-          <p className="text-gray-400 text-sm mb-1">Daily Average</p>
-          <p className="text-xl font-bold text-white">{formatCurrency(dailyStats.averageDailySales)}</p>
+      <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+        <div className="text-center">
+          <p className="text-gray-400 text-xs mb-1">Daily Average</p>
+          <p className="text-lg font-bold text-white">{formatCurrency(dailyStats.averageDailySales)}</p>
         </div>
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4 text-center">
-          <p className="text-gray-400 text-sm mb-1">Days on Target</p>
-          <p className="text-xl font-bold text-emerald-400">{dailyStats.daysAtTarget} / {dailyStats.totalDays}</p>
+        <div className="text-center border-x border-gray-700">
+          <p className="text-gray-400 text-xs mb-1">Days on Target</p>
+          <p className="text-lg font-bold text-emerald-400">{dailyStats.daysAtTarget} / {dailyStats.totalDays}</p>
         </div>
-        <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-4 text-center">
-          <p className="text-gray-400 text-sm mb-1">Daily Target</p>
-          <p className="text-xl font-bold text-white">{formatCurrency(dailyPerf.target)}</p>
+        <div className="text-center">
+          <p className="text-gray-400 text-xs mb-1">Daily Target</p>
+          <p className="text-lg font-bold text-white">{formatCurrency(dailyPerf.target)}</p>
         </div>
       </div>
 
       {/* Daily Breakdown */}
-      <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg overflow-hidden">
+      <div className="card-bevel overflow-hidden">
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-lg font-semibold text-white">Daily Breakdown</h2>
         </div>
@@ -410,20 +434,20 @@ const BusinessTargetsPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-750 sticky top-0">
+              <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Date</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-300">Sales</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Target</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Progress</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-300">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Date</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Sales</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Target</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Progress</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
                 {dailyBreakdown.map((day, idx) => {
                   const pct = Math.min((day.total / day.target) * 100, 100);
                   return (
-                    <tr key={idx} className="hover:bg-gray-750/50 transition-colors">
+                    <tr key={idx} className={`${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}>
                       <td className="px-4 py-3 text-sm text-white">
                         {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                       </td>

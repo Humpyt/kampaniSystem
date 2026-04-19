@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { Mail, Lock, CheckCircle, Wrench } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -9,8 +9,32 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
   const login = useAuthStore(state => state.login);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (date: Date) => {
+    const hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = (hours % 12 || 12).toString().padStart(2, '0');
+    return { hour: hour12, minute: minutes, second: seconds, ampm };
+  };
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,49 +52,15 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-red-900">
       <div className="w-full max-w-7xl mx-4 flex flex-col lg:flex-row gap-0">
-        {/* Left side - Branding (hidden on mobile) */}
-        <div className="hidden lg:flex lg:w-1/2 bg-white bg-opacity-10 backdrop-blur-lg p-12 flex-col justify-center">
-          <div className="text-center">
-            <Wrench className="w-32 h-32 text-white mx-auto mb-6" />
-            <h1 className="text-5xl font-bold text-white mb-3">
-              Wrench Repair POS
-            </h1>
-            <p className="text-xl text-purple-200 mb-12">
-              Professional Wrench Repair Management
-            </p>
-          </div>
-
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 text-white">
-              <div className="w-10 h-10 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-              </div>
-              <span className="text-lg">Track Operations & Repairs</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-white">
-              <div className="w-10 h-10 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-              </div>
-              <span className="text-lg">Manage Sales & Inventory</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-white">
-              <div className="w-10 h-10 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-              </div>
-              <span className="text-lg">Customer Relationship Management</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-white">
-              <div className="w-10 h-10 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-              </div>
-              <span className="text-lg">Staff Performance Tracking</span>
-            </div>
-          </div>
+        {/* Left side - Logo Only (hidden on mobile) */}
+        <div className="hidden lg:flex lg:w-1/2 items-center justify-center">
+          <img
+            src="/Kampani logo.png"
+            alt="Kampani Logo"
+            className="w-[500px] h-[500px] object-contain drop-shadow-[0_0_80px_rgba(220,38,38,0.4)]"
+          />
         </div>
 
         {/* Right side - Login Form */}
@@ -78,13 +68,30 @@ const LoginPage = () => {
           <div className="w-full max-w-md">
             {/* Mobile logo (only on small screens) */}
             <div className="lg:hidden text-center mb-8">
-              <Wrench className="w-20 h-20 text-white mx-auto mb-4" />
-              <h1 className="text-3xl font-bold text-white mb-2">
-                Wrench Repair POS
-              </h1>
-              <p className="text-purple-200">
-                Professional Wrench Repair Management
-              </p>
+              <img
+                src="/Kampani logo.png"
+                alt="Kampani Logo"
+                className="w-40 h-40 object-contain mx-auto mb-4"
+              />
+            </div>
+
+            {/* Date & Time Display */}
+            <div className="mb-8 text-center">
+              <div className="relative inline-block">
+                <div className="text-6xl md:text-7xl font-bold text-white tracking-wider" style={{ textShadow: '0 0 40px rgba(220,38,38,0.5), 0 0 80px rgba(220,38,38,0.3)' }}>
+                  {formatTime(currentTime).hour}
+                  <span className="text-red-500 animate-pulse">:</span>
+                  {formatTime(currentTime).minute}
+                  <span className="text-red-500 animate-pulse">:</span>
+                  {formatTime(currentTime).second}
+                </div>
+                <div className="absolute -right-8 top-4 text-lg font-medium text-red-400 uppercase tracking-widest">
+                  {formatTime(currentTime).ampm}
+                </div>
+              </div>
+              <div className="mt-3 text-lg text-red-200/80 tracking-widest uppercase font-light">
+                {formatDate(currentTime)}
+              </div>
             </div>
 
             <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 border border-white border-opacity-20 shadow-2xl">
@@ -100,7 +107,7 @@ const LoginPage = () => {
                 )}
 
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-purple-200 mb-2">
+                  <label htmlFor="email" className="block text-sm font-medium text-red-200 mb-2">
                     Email address
                   </label>
                   <div className="relative">
@@ -112,14 +119,14 @@ const LoginPage = () => {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:outline-none"
+                      className="w-full pl-10 pr-4 py-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-transparent focus:outline-none"
                       placeholder="you@example.com"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-purple-200 mb-2">
+                  <label htmlFor="password" className="block text-sm font-medium text-red-200 mb-2">
                     Password
                   </label>
                   <div className="relative">
@@ -131,7 +138,7 @@ const LoginPage = () => {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:outline-none"
+                      className="w-full pl-10 pr-4 py-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-transparent focus:outline-none"
                       placeholder="•••••••••"
                     />
                   </div>
@@ -143,9 +150,9 @@ const LoginPage = () => {
                     id="remember"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded bg-white bg-opacity-10 border border-white border-opacity-30 text-purple-600 focus:ring-purple-500 focus:ring-2"
+                    className="w-4 h-4 rounded bg-white bg-opacity-10 border border-white border-opacity-30 text-red-600 focus:ring-red-500 focus:ring-2"
                   />
-                  <label htmlFor="remember" className="ml-2 block text-sm text-purple-200">
+                  <label htmlFor="remember" className="ml-2 block text-sm text-red-200">
                     Remember me
                   </label>
                 </div>
@@ -153,7 +160,7 @@ const LoginPage = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex justify-center py-3 px-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex justify-center py-3 px-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <span className="flex items-center gap-2">
@@ -168,23 +175,6 @@ const LoginPage = () => {
                   )}
                 </button>
               </form>
-
-              {!rememberMe && (
-                <div className="mt-6 pt-6 border-t border-white border-opacity-20">
-                  <p className="text-xs text-purple-200 mb-3">Test Accounts:</p>
-                  <div className="space-y-1 text-xs text-gray-300">
-                    <p className="bg-white bg-opacity-10 rounded px-2 py-1">
-                      Admin: admin@repairpro.com / admin123
-                    </p>
-                    <p className="bg-white bg-opacity-10 rounded px-2 py-1">
-                      Manager: manager@repairpro.com / manager123
-                    </p>
-                    <p className="bg-white bg-opacity-10 rounded px-2 py-1">
-                      Staff: staff1@repairpro.com / staff123
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

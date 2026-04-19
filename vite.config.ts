@@ -24,9 +24,22 @@ export default defineConfig({
     minify: 'esbuild',
     // Disable source maps for production
     sourcemap: false,
+    // Better code splitting
+    rollupOptions: {
+      output: {
+        // Manual chunks for better splitting
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['@mui/material', '@emotion/react', '@emotion/styled'],
+          'vendor-utils': ['date-fns', 'clsx'],
+        },
+      },
+    },
+    // Enable CSS code splitting
+    cssCodeSplit: true,
   },
   // Optimize deps to ensure proper bundling
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@emotion/react', '@emotion/styled', 'clsx'],
+    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@emotion/react', '@emotion/styled', 'clsx', 'date-fns'],
   },
 });

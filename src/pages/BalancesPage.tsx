@@ -101,6 +101,83 @@ export default function BalancesPage() {
     window.print();
   };
 
+  const handlePrintBalances = () => {
+  const printHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Customer Balances Report</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #111827; }
+        h1 { font-size: 20px; margin-bottom: 5px; }
+        .header-info { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #1e3a8a; color: white; padding: 8px 6px; text-align: left; border: 1px solid #1e3a8a; }
+        td { padding: 7px 6px; border: 1px solid #d1d5db; }
+        tr:nth-child(even) td { background: #f9fafb; }
+        tfoot td { background: #e5e7eb; font-weight: bold; border: 1px solid #d1d5db; }
+        .summary { margin-top: 16px; text-align: right; font-size: 12px; }
+        @media print { body { padding: 0; } }
+      </style>
+    </head>
+    <body>
+      <h1>Customer Balances Report</h1>
+      <div class="header-info">
+        <div>Generated: ${new Date().toLocaleDateString('en-UG', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        <div>${recordCount} records</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Ticket #</th>
+            <th>Customer</th>
+            <th>Phone</th>
+            <th>Date</th>
+            <th style="text-align:right">Original (UGX)</th>
+            <th style="text-align:right">Paid (UGX)</th>
+            <th style="text-align:right">Balance (UGX)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${balanceRecords.map(record => `
+            <tr>
+              <td>#${record.id.slice(-6)}</td>
+              <td>${record.customer?.name || 'Walk-in'}</td>
+              <td>${record.customer?.phone || 'N/A'}</td>
+              <td>${formatDate(record.createdAt)}</td>
+              <td style="text-align:right">${formatCurrency(record.totalAmount)}</td>
+              <td style="text-align:right;color:#059669">${formatCurrency(record.paidAmount)}</td>
+              <td style="text-align:right;font-weight:600">${formatCurrency(record.balance)}</td>
+              <td>${record.paidAmount === 0 ? 'Unpaid' : 'Partial'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4">Total (${recordCount} records)</td>
+            <td style="text-align:right">${formatCurrency(totalOriginal)}</td>
+            <td style="text-align:right">${formatCurrency(totalPaid)}</td>
+            <td style="text-align:right">${formatCurrency(totalBalance)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="summary">
+        <strong>Total Outstanding Balance: ${formatCurrency(totalBalance)}</strong>
+      </div>
+      <script>window.onload = () => { window.print(); }</script>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+  }
+};
+
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -116,93 +193,87 @@ export default function BalancesPage() {
   };
 
   return (
+    <>
     <div className="min-h-screen bg-gray-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Customer Balances</h1>
-            <p className="text-gray-400">Track customers with outstanding payments</p>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Customer Balances</h1>
+          <p className="text-gray-400 text-sm">Track customers with outstanding payments</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-2 text-gray-400 bg-gray-800 px-3 py-2 rounded-lg">
+            <Package className="h-4 w-4" />
+            <span className="text-sm">{recordCount}</span>
+            <DollarSign className="h-4 w-4 ml-2" />
+            <span className="text-sm">{formatCurrency(totalBalance)}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center space-x-2 text-gray-400 bg-gray-800 px-3 py-2 rounded-lg">
-              <Package className="h-4 w-4" />
-              <span className="text-sm">{recordCount}</span>
-              <DollarSign className="h-4 w-4 ml-2" />
-              <span className="text-sm">{formatCurrency(totalBalance)}</span>
-            </div>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-all"
-            >
-              <Printer size={16} />
-              Print
-            </button>
+          <button
+            onClick={handlePrintBalances}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-all"
+          >
+            <Printer size={16} />
+            Print
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards - Matching Operations Page Style */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        {/* Total Customers */}
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <User size={12} />
+              Total Customers
+            </span>
+            <User size={16} className="text-indigo-400" />
           </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {recordCount}
+          </p>
+          <p className="text-indigo-300/60 text-xs">
+            {statusFilter === 'all' ? 'All customers' : statusFilter === 'pending' ? 'Unpaid only' : 'Partial payments'}
+          </p>
         </div>
 
-        {/* Summary Cards - Gradient Style */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          {/* Total Customers */}
-          <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-xl p-4 border border-blue-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-blue-300 text-xs font-medium flex items-center gap-1">
-                <User size={12} />
-                TOTAL CUSTOMERS
-              </span>
-              <User size={16} className="text-blue-400" />
-            </div>
-            <p className="text-2xl font-bold text-white mb-1">
-              {recordCount}
-            </p>
-            <div className="flex items-center gap-1">
-              <span className="text-xs font-medium text-blue-300">
-                {statusFilter === 'all' ? 'All customers' : statusFilter === 'pending' ? 'Unpaid only' : 'Partial payments'}
-              </span>
-            </div>
+        {/* Total Balance */}
+        <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-rose-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <DollarSign size={12} />
+              Total Balance
+            </span>
+            <DollarSign size={16} className="text-rose-400" />
           </div>
-
-          {/* Total Balance */}
-          <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-rose-300 text-xs font-medium flex items-center gap-1">
-                <DollarSign size={12} />
-                TOTAL BALANCE
-              </span>
-              <DollarSign size={16} className="text-rose-400" />
-            </div>
-            <p className="text-2xl font-bold text-white mb-1">
-              {formatCurrency(totalBalance)}
-            </p>
-            <div className="flex items-center gap-1">
-              <span className="text-xs font-medium text-rose-300">
-                Outstanding
-              </span>
-            </div>
-          </div>
-
-          {/* Amount Paid */}
-          <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-emerald-300 text-xs font-medium flex items-center gap-1">
-                <TrendingUp size={12} />
-                AMOUNT PAID
-              </span>
-              <DollarSign size={16} className="text-emerald-400" />
-            </div>
-            <p className="text-2xl font-bold text-white mb-1">
-              {formatCurrency(totalPaid)}
-            </p>
-            <div className="flex items-center gap-1">
-              <span className="text-xs font-medium text-emerald-300">
-                Of {formatCurrency(totalOriginal)} original
-              </span>
-            </div>
-          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(totalBalance)}
+          </p>
+          <p className="text-rose-300/60 text-xs">
+            Outstanding balance
+          </p>
         </div>
+
+        {/* Amount Paid */}
+        <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-emerald-300 text-xs font-medium flex items-center gap-1 uppercase tracking-wide">
+              <TrendingUp size={12} />
+              Amount Paid
+            </span>
+            <DollarSign size={16} className="text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(totalPaid)}
+          </p>
+          <p className="text-emerald-300/60 text-xs">
+            Of {formatCurrency(totalOriginal)} original
+          </p>
+        </div>
+      </div>
 
         {/* Search and Filters */}
-        <div className="card-bevel p-4 mb-6">
+        <div className="card-bevel p-4 mb-6 no-print">
           <div className="flex space-x-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -247,7 +318,7 @@ export default function BalancesPage() {
         </div>
 
         {/* Records Table */}
-        <div className="card-bevel overflow-hidden">
+        <div className="card-bevel overflow-hidden no-print">
           {balanceRecords.length === 0 ? (
             <div className="p-12 text-center">
               <div className="bg-gray-700 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
@@ -371,22 +442,6 @@ export default function BalancesPage() {
           )}
         </div>
 
-        {/* Print Styles */}
-        <style>{`
-          @media print {
-            .no-print {
-              display: none !important;
-            }
-            body {
-              background: white !important;
-            }
-            .card-bevel {
-              box-shadow: none !important;
-              border: 1px solid #ddd !important;
-            }
-          }
-        `}</style>
-
         {/* Payment Modal */}
         <PaymentModal
           isOpen={paymentModalOpen}
@@ -422,6 +477,6 @@ export default function BalancesPage() {
           allowPartialPayments={true}
         />
       </div>
-    </div>
+    </>
   );
 }

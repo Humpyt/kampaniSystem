@@ -107,35 +107,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (token && userStr) {
       try {
-        // Verify token is still valid by fetching current user
-        const response = await fetch('/api/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        // Parse user from localStorage immediately
+        const user = JSON.parse(userStr);
+        if (user && user.id && user.email && user.role) {
+          // Trust token exists - set authenticated immediately
+          set({ user, token, isAuthenticated: true, initializing: false });
 
-        if (response.ok) {
-          const payload = await parseResponseBody(response);
-          if (!payload || typeof payload !== 'object') {
-            throw new Error('Authentication check returned an invalid response.');
-          }
-
-          const user = payload as AuthUser;
-          set({
-            user,
-            token,
-            isAuthenticated: true,
-            initializing: false,
+          // Validate token in background - don't block UI
+          fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }).then(response => {
+            if (!response.ok) {
+              // Token invalid, clear storage and force re-login
+              localStorage.removeItem('auth_token');
+              localStorage.removeItem('auth_user');
+              set({ user: null, token: null, isAuthenticated: false, initializing: false });
+            }
+          }).catch(() => {
+            // Network error - ignore, user stays authenticated
           });
         } else {
-          // Token invalid, clear storage
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
-          set({ user: null, token: null, isAuthenticated: false, initializing: false });
+          throw new Error('Invalid user data');
         }
       } catch (error) {
         console.error('Auth check error:', error);
-        // Clear invalid auth data
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
         set({ user: null, token: null, isAuthenticated: false, initializing: false });

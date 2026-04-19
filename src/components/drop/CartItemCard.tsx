@@ -88,6 +88,8 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({ item, onEdit, onRemo
 
       {/* Line 2: Color • Brand • Material • Description (single line) */}
       <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
+        {item.size && item.category !== 'Product' && <span>Size {item.size}</span>}
+        {item.size && item.category !== 'Product' && (item.color || item.brand || item.material) && <span>•</span>}
         {item.color && <span>{item.color}</span>}
         {item.color && item.brand && <span>•</span>}
         {item.brand && <span>{item.brand}</span>}

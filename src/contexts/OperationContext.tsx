@@ -60,6 +60,38 @@ interface OperationContextType {
 
 const OperationContext = createContext<OperationContextType | undefined>(undefined);
 
+const normalizeOperation = (operation: any): Operation => ({
+  ...operation,
+  customer: operation.customer || null,
+  shoes: Array.isArray(operation.shoes) ? operation.shoes : [],
+  workflowStatus: operation.workflowStatus || 'pending',
+  paymentStatus: operation.paymentStatus || 'unpaid',
+  paidAmount: Number(operation.paidAmount) || 0,
+  totalAmount: Number(operation.totalAmount) || 0,
+  discount: Number(operation.discount) || 0,
+  createdAt: operation.createdAt || new Date().toISOString(),
+  updatedAt: operation.updatedAt || operation.createdAt || new Date().toISOString(),
+  paymentRecords: Array.isArray(operation.paymentRecords) ? operation.paymentRecords : [],
+});
+
+const sortOperationsByNewest = (operations: Operation[]) =>
+  [...operations].sort((a, b) => {
+    const aTime = new Date(a.createdAt || a.updatedAt || 0).getTime();
+    const bTime = new Date(b.createdAt || b.updatedAt || 0).getTime();
+    return bTime - aTime;
+  });
+
+const mergeAndSortOperations = (operations: Operation[]) => {
+  const operationMap = new Map<string, Operation>();
+
+  for (const operation of operations) {
+    if (!operation?.id) continue;
+    operationMap.set(operation.id, normalizeOperation(operation));
+  }
+
+  return sortOperationsByNewest(Array.from(operationMap.values()));
+};
+
 export function OperationProvider({ children }: { children: React.ReactNode }) {
   const [operations, setOperations] = useState<Operation[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -68,8 +100,10 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
   // Fetch operations when component mounts
   useEffect(() => {
     const fetchOperations = async () => {
+      const token = getAuthToken();
+      if (!token) return;
+
       try {
-        const token = getAuthToken();
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
@@ -81,7 +115,7 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Failed to fetch operations');
         }
         const result = await response.json();
-        setOperations(result.data);
+        setOperations(mergeAndSortOperations(result.data || []));
       } catch (error) {
         console.error('Error fetching operations:', error);
       }
@@ -121,19 +155,7 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       }
 
       const newOperation = await response.json() as Operation;
-
-      // Ensure the operation has all fields PickupPage expects
-      const operationWithDefaults = {
-        ...newOperation,
-        shoes: newOperation.shoes || [],
-        retailItems: newOperation.retailItems || [],
-        workflowStatus: newOperation.workflowStatus || 'pending',
-        paymentStatus: newOperation.paymentStatus || 'unpaid',
-        paidAmount: newOperation.paidAmount || 0,
-      };
-
-      // Update the operations state immediately with type safety
-      setOperations(prevOperations => [...prevOperations, operationWithDefaults]);
+      setOperations(prevOperations => mergeAndSortOperations([newOperation, ...prevOperations]));
 
       return newOperation;
     } catch (error) {
@@ -162,7 +184,9 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
       }
 
       const updatedOperation = await response.json();
-      setOperations(prev => prev.map(op => op.id === id ? updatedOperation : op));
+      setOperations(prev =>
+        mergeAndSortOperations(prev.map(op => (op.id === id ? updatedOperation : op)))
+      );
     } catch (error) {
       console.error('Error updating operation:', error);
       throw error;
@@ -208,7 +232,7 @@ export function OperationProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Failed to fetch operations');
       }
       const result = await response.json();
-      setOperations(result.data);
+      setOperations(mergeAndSortOperations(result.data || []));
     } catch (error) {
       console.error('Error refreshing operations:', error);
       throw error;

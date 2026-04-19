@@ -3,6 +3,7 @@ import { API_ENDPOINTS } from '../config/api';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { PaymentModal } from '../components/PaymentModal';
+import { CollectorInfoModal } from '../components/CollectorInfoModal';
 import { Link } from 'react-router-dom';
 import { Search, Package, DollarSign, CreditCard, CheckSquare, X, Clock, User, Gift, Minus, CheckCircle, ArrowRight, ShoppingCart, Sparkles } from 'lucide-react';
 
@@ -25,6 +26,7 @@ interface PickupTicket {
   items: {
     id: string;
     category: string;
+    size?: string;
     color: string;
     description: string;
     services: {
@@ -48,6 +50,9 @@ export default function PickupPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payingTicketId, setPayingTicketId] = useState<string | null>(null); // Track ticket being paid
   const [filter, setFilter] = useState<'all' | 'needs_payment' | 'ready'>('all');
+  const [showCollectorModal, setShowCollectorModal] = useState(false);
+  const [pendingPickupId, setPendingPickupId] = useState<string | null>(null);
+  const [isSubmittingPickup, setIsSubmittingPickup] = useState(false);
 
   // Listen for drop-completed event to refresh data
   useEffect(() => {
@@ -87,6 +92,7 @@ export default function PickupPage() {
       items: op.shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
+        size: shoe.size,
         color: shoe.color,
         description: shoe.description || shoe.category,
         services: shoe.services.map((service: any) => ({
@@ -121,7 +127,7 @@ export default function PickupPage() {
       ticket.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.customerPhone.includes(searchTerm);
 
-    const ticketBalance = Math.max(0, ticket.total - ticket.discount - ticket.paidAmount);
+    const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
 
     if (filter === 'needs_payment') {
       return matchesSearch && ticketBalance > 0;
@@ -133,17 +139,27 @@ export default function PickupPage() {
   });
 
   // Calculate totals for selected ticket (use Number() to handle database string values)
-  const selectedSubtotal = Number(selected?.total) || 0;
+  const selectedSubtotal = Number(selected?.originalTotal) || Number(selected?.total) || 0;
+  const selectedTotal = Number(selected?.total) || 0;
   const selectedDiscount = Number(selected?.discount) || 0;
   const selectedPaid = Number(selected?.paidAmount) || 0;
-  const selectedBalance = Math.max(0, selectedSubtotal - selectedDiscount - selectedPaid);
-  const finalAmount = selectedSubtotal - selectedDiscount;
+  const selectedBalance = Math.max(0, selectedTotal - selectedPaid);
 
   const handleSelectTicket = (ticketId: string) => {
     setSelectedTicket(prev => prev === ticketId ? null : ticketId);
   };
 
   const handleMarkPickedUp = async (ticketId: string) => {
+    // Instead of directly marking picked up, show modal
+    setSelectedTicket(ticketId);
+    setPendingPickupId(ticketId);
+    setShowCollectorModal(true);
+  };
+
+  const handleCollectorConfirm = async (name: string, phone: string) => {
+    if (!pendingPickupId) return;
+
+    setIsSubmittingPickup(true);
     try {
       const token = localStorage.getItem('auth_token');
       const headers = {
@@ -152,20 +168,21 @@ export default function PickupPage() {
       };
       const pickedUpAt = new Date().toISOString();
 
-      // Transition through valid states: pending → in_progress → ready → delivered
       const transitions = [
         { status: 'in_progress', picked_up_at: undefined },
         { status: 'ready', picked_up_at: undefined },
-        { status: 'delivered', picked_up_at: pickedUpAt },
+        { status: 'delivered', picked_up_at: pickedUpAt, picked_up_by_name: name, picked_up_by_phone: phone },
       ];
 
       for (const transition of transitions) {
-        const response = await fetch(`${API_ENDPOINTS.operations}/${ticketId}/workflow-status`, {
+        const response = await fetch(`${API_ENDPOINTS.operations}/${pendingPickupId}/workflow-status`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
             workflow_status: transition.status,
             ...(transition.picked_up_at && { picked_up_at: transition.picked_up_at }),
+            ...(name && { picked_up_by_name: name }),
+            ...(phone && { picked_up_by_phone: phone }),
           }),
         });
         if (!response.ok) {
@@ -176,9 +193,13 @@ export default function PickupPage() {
 
       await refreshOperations();
       setSelectedTicket(null);
+      setShowCollectorModal(false);
+      setPendingPickupId(null);
     } catch (error) {
       console.error('Failed to mark as picked up:', error);
       alert(error instanceof Error ? error.message : 'Failed to mark as picked up. Please try again.');
+    } finally {
+      setIsSubmittingPickup(false);
     }
   };
 
@@ -216,6 +237,10 @@ export default function PickupPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
+      {/* Page Label */}
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-white">Pickup</h1>
+      </div>
       <div className="grid grid-cols-12 gap-6">
         {/* Left Panel */}
         <div className="col-span-7 space-y-6">
@@ -367,7 +392,7 @@ export default function PickupPage() {
                       </td>
                       <td className="px-6 py-4 text-center">
                         {(() => {
-                          const ticketBalance = Math.max(0, ticket.total - ticket.discount - ticket.paidAmount);
+                          const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
                           if (ticketBalance === 0) {
                             return (
                               <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-900/40 text-emerald-400">
@@ -385,7 +410,7 @@ export default function PickupPage() {
                       <td className="px-6 py-4">
                         {ticket.status !== 'completed' ? (
                           (() => {
-                            const ticketBalance = Math.max(0, ticket.total - ticket.discount - ticket.paidAmount);
+                            const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
                             if (ticketBalance > 0) {
                               return (
                                 <button
@@ -510,8 +535,13 @@ export default function PickupPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
+                          {item.size && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                              Size {item.size}
+                            </span>
+                          )}
                           {item.color && <span>{item.color}</span>}
-                          {item.color && <span>•</span>}
+                          {item.color && item.size && <span>•</span>}
                           <span className="italic text-gray-400">{item.services.map(s => s.name).join(', ')}</span>
                         </div>
                       </div>
@@ -615,6 +645,21 @@ export default function PickupPage() {
           )}
         </div>
       </div>
+
+      {/* Collector Info Modal */}
+      {showCollectorModal && selected && (
+        <CollectorInfoModal
+          isOpen={showCollectorModal}
+          onClose={() => {
+            setShowCollectorModal(false);
+            setPendingPickupId(null);
+          }}
+          onConfirm={handleCollectorConfirm}
+          customerName={selected.customerName}
+          customerPhone={selected.customerPhone}
+          isSubmitting={isSubmittingPickup}
+        />
+      )}
 
       {/* Payment Modal */}
       <PaymentModal

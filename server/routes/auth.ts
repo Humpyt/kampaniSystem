@@ -259,7 +259,7 @@ router.get('/users', authenticateToken, requireRole('admin', 'manager'), async (
 router.put('/users/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, status } = req.body;
+    const { name, email, role, status, password } = req.body;
 
     // Validate role if provided
     if (role && !['admin', 'manager', 'staff'].includes(role)) {
@@ -293,6 +293,13 @@ router.put('/users/:id', authenticateToken, requireRole('admin'), async (req, re
     if (status) {
       updates.push(`status = $${paramIndex++}`);
       values.push(status);
+    }
+
+    // If password is provided, hash and update it
+    if (password) {
+      const passwordHash = await bcrypt.hash(password, 10);
+      updates.push(`password_hash = $${paramIndex++}`);
+      values.push(passwordHash);
     }
 
     updates.push(`updated_at = $${paramIndex++}`);

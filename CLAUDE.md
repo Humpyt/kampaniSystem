@@ -45,6 +45,112 @@ npm run import:services    # Import 45 services with UGX pricing
 npm run cleanup:services   # Remove duplicate services
 ```
 
+## Architecture
+
+### Backend (Express + PostgreSQL)
+
+**Entry point:** `server/index.ts` (port 3000)
+
+**Database:** PostgreSQL via `pg` Pool (`server/database.ts`)
+- Connection: `cavemo-repair` database on localhost:5432
+- Schema: `server/db/postgres-schema.ts`
+- Seeds: `server/db/postgres-seeds.ts` (auto-runs on startup)
+- Uses `withTransaction()` helper for multi-step operations
+
+**API Routes** (mounted at `/api/<name>`):
+- `operations` - Repair order management (main router at `server/operations.ts`)
+- `inventory` - Inventory management
+- `printer` - Thermal printer integration (escpos/node-thermal-printer)
+- `sales` - Sales transactions
+- `qrcodes` - QR code generation
+- `supplies` - Supply inventory tracking
+- `categories` - Product categories
+- `products` - Product catalog
+- `analytics` - Reporting data
+- `auth` - Authentication
+- `business` - Business settings
+- `customers` - Customer management (served by `creditRoutes`)
+- `expenses` - Expense tracking
+- `invoices` - Invoice management
+- `retail-products` - Retail product catalog
+- `staff-messages` - Staff messaging
+- `ticket` - Ticket-specific endpoints
+- `colors` - Color/swatch management
+
+**Key tables:** `customers`, `operations`, `operation_shoes`, `operation_services`, `services`, `products`, `categories`, `supplies`, `inventory_items`, `sales`, `sales_items`, `sales_categories`
+
+### Frontend (React + Vite)
+
+**Context provider nesting** (outer to inner):
+```
+CustomerProvider → OperationProvider → AdminProvider → CartProvider →
+ProductProvider → RetailProductProvider → ServiceProvider → StaffMessageProvider → ExpenseProvider
+```
+
+**Lazy-loaded pages** (for performance):
+```
+CustomerPage, SalesPage, ReportsPage, BusinessTargetsPage, AdminPage, ExpensesPage
+```
+These use React.lazy() + Suspense with a spinner fallback.
+
+**Authentication:** Zustand store (`src/store/authStore.ts`) with local mock users in localStorage. Roles: admin, manager, staff. Login at `src/pages/LoginPage.tsx`. Protected routes use `ProtectedRoute` component with permission-based and role-based access control.
+
+**Key routes:**
+- `/store` - Main dashboard
+- `/customers` - Customer management (lazy)
+- `/drop` - New repair order drop-off
+- `/pickup`, `/pickup-order`, `/picked-items` - Customer pickup workflow
+- `/tickets` - Main repair orders list
+- `/ticket-search` - Search tickets
+- `/assembly`, `/racking` - Workshop workflow stages
+- `/deliveries` - Delivery management
+- `/cod-payment` - Cash on delivery payments
+- `/ready-to-pick` - Orders ready for pickup
+- `/balances`, `/unpaid-balances` - Balance tracking
+- `/sales` - Retail sales (lazy)
+- `/expenses` - Business expense tracking (lazy)
+- `/reports` - Analytics dashboard (lazy)
+- `/invoices` - Invoice management
+- `/admin` - Admin panel (lazy)
+- `/business-targets` - Business targets (lazy)
+- `/credits`, `/credit-list` - Customer credits
+- `/new-customers` - New customer registration
+- `/stock-levels` - Inventory stock levels
+- `/customer-rankings` - Customer analytics
+- `/most-performing` - Performance analytics
+- `/discounts` - Discount management
+- `/notifications`, `/notification` - Notifications
+- `/no-charge-do-over` - No-charge redo orders
+
+**API integration:** Vite proxy forwards `/api` requests to `http://localhost:3000`. API config at `src/config/api.ts`.
+
+**UI stack:** Material-UI + Tailwind CSS + Radix UI (select/switch/toast) + Lucide/FontAwesome icons + React Hot Toast + Chart.js 2/Recharts.
+
+## Critical Development Rules
+
+**Do NOT delete functionality, remove pages, or make destructive changes unless explicitly requested.** The codebase has had accidental removals of financial summary cards and other functionality. Always read a file's current state before editing. Preserve all existing functionality when adding new features.
+
+## Key Implementation Details
+
+- **Currency formatting:** `src/config/currency.ts` and `server/config/currency.ts` - UGX with 0 decimals
+- **Service import:** `pricing.txt` → `tsx server/import_services_from_pricing.ts`. Parses CSV with quoted prices, handles ranges (uses max value), auto-categorizes by name patterns, safe to re-run (INSERT OR REPLACE)
+- **Snake_case ↔ camelCase:** `server/utils.ts` has `transformCustomer`, `transformOperation`, `transformService`
+- **Image uploads:** Converted to base64 data URLs (no cloud storage)
+- **Online/offline:** Built-in detection with status indicator
+- **Error handling:** `ErrorBoundary` component on frontend; Express error middleware at end of chain
+- **Layout:** Collapsible sidebar (`MainMenu`) + `QuickActionButtons` on right side + `Outlet` for page content
+
+## Database Schema Relationships
+
+```
+customers (1) ----< (many) operations
+operations (1) ----< (many) operation_shoes
+operation_shoes (1) ----< (many) operation_services
+services (1) ----< (many) operation_services
+categories (1) ----< (many) products
+sales_categories (1) ----< (many) sales_items
+```
+
 ## Development Guidelines
 
 Behavioral guidelines derived from Andrej Karpathy's LLM coding observations. These complement the project-specific rules above.
@@ -109,97 +215,3 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
-## Architecture
-
-### Backend (Express + PostgreSQL)
-
-**Entry point:** `server/index.ts` (port 3000)
-
-**Database:** PostgreSQL via `pg` Pool (`server/database.ts`)
-- Connection: `cavemo-repair` database on localhost:5432
-- Schema: `server/db/postgres-schema.ts`
-- Seeds: `server/db/postgres-seeds.ts` (auto-runs on startup)
-- Uses `withTransaction()` helper for multi-step operations
-
-**Routers** (mounted at `/api/<name>`):
-- `operations` - Repair order management (main `/api/operations` router)
-- `routes/inventory` - Inventory management
-- `routes/printer` - Thermal printer integration (escpos/node-thermal-printer)
-- `routes/sales` - Sales transactions
-- `routes/qrcodes` - QR code generation
-- `routes/supplies` - Supply inventory tracking
-- `routes/categories` - Product categories
-- `routes/products` - Product catalog
-- `routes/analytics` - Reporting data
-- `routes/auth` - Authentication
-- `routes/business` - Business settings
-- `routes/credits` - Customer credits
-- `routes/expenses` - Expense tracking
-- `routes/invoices` - Invoice management
-- `routes/retailProducts` - Retail product catalog
-- `routes/staffMessages` - Staff messaging
-- `routes/ticket` - Ticket-specific endpoints
-- `routes/colors` - Color/swatch management
-
-**Key tables:** `customers`, `operations`, `operation_shoes`, `operation_services`, `services`, `products`, `categories`, `supplies`, `inventory_items`, `sales`, `sales_items`, `sales_categories`
-
-### Frontend (React + Vite)
-
-**Context provider nesting** (outer to inner):
-```
-CustomerProvider → OperationProvider → AdminProvider → CartProvider → ProductProvider → ServiceProvider
-```
-- `CustomerContext` - Customer data
-- `OperationContext` - Repair order/ticket management
-- `AdminContext` - Admin state
-- `CartContext` - Shopping cart for sales
-- `ProductContext` - Product/category catalog
-- `ServiceContext` - Service catalog and pricing
-- Also: `ExpenseContext`, `RetailProductContext`, `StaffMessageContext`
-
-**Authentication:** Zustand store (`src/store/authStore.ts`) with local mock users stored in localStorage. Roles: admin, manager, staff. Login at `src/pages/LoginPage.tsx`. Protected routes use `ProtectedRoute` component.
-
-**Key pages:**
-- `/tickets` - Main repair orders list
-- `/ticket-search` - Search tickets
-- `/drop` - New repair order drop-off
-- `/assembly`, `/racking` - Workshop workflow stages
-- `/pickup`, `/pickup-order` - Customer pickup
-- `/deliveries` - Delivery management
-- `/sales` - Retail sales
-- `/expenses` - Business expense tracking
-- `/supplies` - Supply inventory management
-- `/reports` - Analytics dashboard
-- `/invoices` - Invoice management
-- `/credits` - Customer credits
-- `/operation-page` - Full operation management
-
-**API integration:** Vite proxy forwards `/api` requests to `http://localhost:3000`. API config at `src/config/api.ts`.
-
-**UI stack:** Material-UI + Tailwind CSS + Radix UI (select/switch/toast) + Lucide/FontAwesome icons + React Hot Toast + Chart.js 2/Recharts.
-
-## Critical Development Rules
-
-**Do NOT delete functionality, remove pages, or make destructive changes unless explicitly requested.** The codebase has had accidental removals of financial summary cards and other functionality. Always read a file's current state before editing. Preserve all existing functionality when adding new features.
-
-## Key Implementation Details
-
-- **Currency formatting:** `src/config/currency.ts` and `server/config/currency.ts` - UGX with 0 decimals
-- **Service import:** `pricing.txt` → `tsx server/import_services_from_pricing.ts`. Parses CSV with quoted prices, handles ranges (uses max value), auto-categorizes by name patterns, safe to re-run (INSERT OR REPLACE)
-- **Snake_case ↔ camelCase:** `server/utils.ts` has `transformCustomer`, `transformOperation`, `transformService`
-- **Image uploads:** Converted to base64 data URLs (no cloud storage)
-- **Online/offline:** Built-in detection with status indicator
-- **Error handling:** `ErrorBoundary` component on frontend; Express error middleware at end of chain
-- **Deployment:** Netlify for frontend (`netlify.toml`), PM2 for VPS. Backend requires separate Node.js hosting.
-
-## Database Schema Relationships
-
-```
-customers (1) ----< (many) operations
-operations (1) ----< (many) operation_shoes
-operation_shoes (1) ----< (many) operation_services
-services (1) ----< (many) operation_services
-categories (1) ----< (many) products
-sales_categories (1) ----< (many) sales_items
-```

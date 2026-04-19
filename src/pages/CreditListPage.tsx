@@ -46,10 +46,13 @@ export default function CreditListPage() {
       setLoading(true);
       const response = await fetch(`${API_URL}/customers`);
       if (!response.ok) throw new Error('Failed to fetch customers');
-      const data = await response.json();
+      const result = await response.json();
+
+      // Handle paginated response format
+      const customersData = Array.isArray(result) ? result : (result.data || []);
 
       // Transform and filter customers with positive balance
-      const credits: CustomerCredit[] = data
+      const credits: CustomerCredit[] = customersData
         .filter((c: any) => c.account_balance && c.account_balance > 0)
         .map((c: any) => ({
           id: c.id,

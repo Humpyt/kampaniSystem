@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShoppingCart, Check, Package, Sparkles, DollarSign, Smartphone, CreditCard, Wallet } from 'lucide-react';
 import { CartItem as CartItemType } from '../../types';
 import CartItemCard from './CartItemCard';
@@ -15,12 +15,14 @@ interface CartSummaryProps {
   items: CartItemType[];
   ticketNumber: string;
   onRemoveItem: (id: string) => void;
-  onComplete: (data: { payments: PaymentEntry[] }) => void;
+  onComplete: (data: { payments: PaymentEntry[]; discount: number }) => void;
   disabled?: boolean;
   previewItem?: CartItemType | null;
   onPriceChange?: (price: number) => void;
   onDone?: (item: CartItemType) => void;
   onCartItemPriceChange?: (id: string, price: number) => void;
+  discount?: number;
+  onDiscountChange?: (discount: number) => void;
   customer?: {
     id: string;
     name: string;
@@ -45,12 +47,40 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   onPriceChange,
   onDone,
   onCartItemPriceChange,
+  discount = 0,
+  onDiscountChange,
   customer,
 }) => {
-  const total = items.reduce((sum, item) => sum + item.price, 0);
-  const [paymentAmount, setPaymentAmount] = useState(total > 0 ? total.toString() : '');
+  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+  const normalizedDiscount = Math.min(Math.max(discount, 0), subtotal);
+  const total = Math.max(0, subtotal - normalizedDiscount);
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
   const [creditError, setCreditError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPaymentAmount((current) => {
+      const currentValue = parseInt(current, 10) || 0;
+
+      if (!current) {
+        return '';
+      }
+
+      if (currentValue > total) {
+        return total > 0 ? total.toString() : '';
+      }
+
+      return current;
+    });
+  }, [total]);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setPaymentAmount('');
+      setSelectedMethod('cash');
+      setCreditError(null);
+    }
+  }, [items.length, ticketNumber]);
 
   const paidAmount = parseInt(paymentAmount, 10) || 0;
   const balance = Math.max(0, total - paidAmount);
@@ -82,7 +112,7 @@ const CartSummary: React.FC<CartSummaryProps> = ({
     if (paidAmount > 0) {
       payments.push({ method: selectedMethod, amount: paidAmount });
     }
-    onComplete({ payments });
+    onComplete({ payments, discount: normalizedDiscount });
   };
 
   return (
@@ -164,10 +194,38 @@ const CartSummary: React.FC<CartSummaryProps> = ({
 
       {/* Footer */}
       <div className="border-t-2 border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-gray-100 flex-shrink-0 space-y-3">
-        {/* Total */}
-        <div className="flex justify-between items-center">
-          <span className="text-gray-600 font-bold text-lg">TOTAL</span>
-          <span className="text-gray-800 font-bold text-2xl">{formatCurrency(total)}</span>
+        {/* Totals */}
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500 font-medium">Subtotal</span>
+            <span className="text-gray-700 font-semibold">{formatCurrency(subtotal)}</span>
+          </div>
+
+          {items.length > 0 && (
+            <div className="flex items-center gap-3">
+              <label className="text-gray-500 font-medium text-sm whitespace-nowrap">Discount</label>
+              <input
+                type="number"
+                min="0"
+                max={subtotal}
+                step="100"
+                placeholder="Optional"
+                value={normalizedDiscount > 0 ? normalizedDiscount : ''}
+                onChange={(e) => {
+                  const nextDiscount = Math.min(Math.max(parseInt(e.target.value, 10) || 0, 0), subtotal);
+                  onDiscountChange?.(nextDiscount);
+                  setCreditError(null);
+                }}
+                className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 font-medium placeholder-gray-400 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          )}
+
+          <div className="h-px bg-gray-300 my-1" />
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600 font-bold text-lg">TOTAL</span>
+            <span className="text-gray-800 font-bold text-2xl">{formatCurrency(total)}</span>
+          </div>
         </div>
 
         {/* Payment input - only show if items exist */}

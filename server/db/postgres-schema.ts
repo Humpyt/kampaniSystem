@@ -353,12 +353,23 @@ export async function createSchema(pool: Pool): Promise<void> {
         sale_type TEXT NOT NULL CHECK(sale_type IN ('repair', 'retail', 'pickup')),
         reference_id TEXT NOT NULL,
         total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+        discount DECIMAL(12,2) DEFAULT 0,
         payment_method TEXT,
         created_by TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         FOREIGN KEY (customer_id) REFERENCES customers(id)
       )
+    `);
+
+    // Add discount column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'sales' AND column_name = 'discount') THEN
+          ALTER TABLE sales ADD COLUMN discount DECIMAL(12,2) DEFAULT 0;
+        END IF;
+      END $$
     `);
 
     // ============================================

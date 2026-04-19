@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Percent, TrendingDown, Tag, Award } from 'lucide-react';
+import { Percent, TrendingDown, Tag, Award, TrendingUp } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -9,8 +9,6 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import MetricCard from '../components/MetricCard';
-import { ChartCard } from '../components/ui/ChartCard';
 import { formatCurrency } from '../utils/formatCurrency';
 
 interface DiscountSummary {
@@ -30,7 +28,13 @@ interface TopDiscounted {
   customerName: string;
   totalAmount: number;
   discount: number;
+  discountPercent: number;
   date: string;
+  items: Array<{
+    name: string;
+    type: 'service' | 'product';
+    price: number;
+  }>;
 }
 
 interface DiscountAnalytics {
@@ -52,7 +56,12 @@ const DiscountsPage: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('/api/analytics/discounts');
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/api/analytics/discounts', {
+          headers: {
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        });
         if (!response.ok) {
           throw new Error('Failed to fetch discount analytics');
         }
@@ -136,7 +145,7 @@ const DiscountsPage: React.FC = () => {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-800/95 backdrop-blur-xl border border-white/10 rounded-lg p-3 shadow-xl">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl">
           <p className="text-gray-400 text-sm mb-1">{label}</p>
           <p className="text-white font-semibold">{formatCurrency(payload[0].value)}</p>
           <p className="text-gray-400 text-xs">{payload[0].payload.count} operation(s)</p>
@@ -149,67 +158,21 @@ const DiscountsPage: React.FC = () => {
   const chartData = getAggregatedData();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-gray-900 p-6">
       {/* Header */}
-      <div className="relative rounded-2xl bg-gray-800/60 backdrop-blur-xl border border-white/10 p-6">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 rounded-full bg-emerald-600/10 blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-48 h-48 rounded-full bg-rose-600/10 blur-3xl pointer-events-none"></div>
-
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-rose-500/20 border border-emerald-500/20 flex items-center justify-center">
-              <Percent size={28} className="text-emerald-400" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Discount Analytics</h1>
-              <p className="text-gray-400 text-sm">Track and analyze discount trends</p>
-            </div>
-          </div>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Discount Analytics</h1>
+          <p className="text-gray-400">Track and analyze discount trends</p>
         </div>
-      </div>
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          title="Total Discounts Given"
-          value={formatCurrency(data?.summary?.totalDiscounts || 0)}
-          icon={<TrendingDown size={24} />}
-          loading={loading}
-          type="default"
-        />
-        <MetricCard
-          title="Average Discount %"
-          value={`${(data?.summary?.averageDiscountPercent || 0).toFixed(1)}%`}
-          icon={<Percent size={24} />}
-          loading={loading}
-          type="actions"
-        />
-        <MetricCard
-          title="Operations with Discounts"
-          value={data?.summary?.operationsWithDiscount || 0}
-          icon={<Tag size={24} />}
-          loading={loading}
-          type="tickets"
-        />
-        <MetricCard
-          title="Highest Single Discount"
-          value={formatCurrency(highestDiscount)}
-          icon={<Award size={24} />}
-          loading={loading}
-          type="revenue"
-        />
-      </div>
-
-      {/* Chart Section */}
-      <ChartCard
-        title="Discount Trends"
-        action={
-          <div className="flex items-center gap-1 bg-gray-900/50 rounded-lg p-1">
+        <div className="flex items-center gap-3">
+          {/* Period Toggle */}
+          <div className="flex bg-gray-800 rounded-lg p-1">
             <button
               onClick={() => setPeriodToggle('day')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 periodToggle === 'day'
-                  ? 'bg-emerald-500/20 text-emerald-400'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -217,9 +180,9 @@ const DiscountsPage: React.FC = () => {
             </button>
             <button
               onClick={() => setPeriodToggle('week')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 periodToggle === 'week'
-                  ? 'bg-emerald-500/20 text-emerald-400'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -227,66 +190,145 @@ const DiscountsPage: React.FC = () => {
             </button>
             <button
               onClick={() => setPeriodToggle('month')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 periodToggle === 'month'
-                  ? 'bg-emerald-500/20 text-emerald-400'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
               Month
             </button>
           </div>
-        }
-      >
-        {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <div className="text-gray-400">Loading chart data...</div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        {/* Total Discounts */}
+        <div className="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-xl p-4 border border-rose-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-rose-300 text-xs font-medium flex items-center gap-1">
+              <TrendingDown size={12} />
+              TOTAL DISCOUNTS
+            </span>
+            <Award size={16} className="text-rose-400" />
           </div>
-        ) : chartData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center">
-            <div className="text-gray-400">No discount data available</div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {loading ? '...' : formatCurrency(data?.summary?.totalDiscounts || 0)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-rose-300/60 text-xs">Given to customers</span>
           </div>
-        ) : (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis
-                  dataKey="date"
-                  stroke="#9CA3AF"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#9CA3AF"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => formatCurrency(value)}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  dataKey="total"
-                  fill="url(#emeraldGradient)"
-                  radius={[4, 4, 0, 0]}
-                  name="Discount Total"
-                />
-                <defs>
-                  <linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
-                  </linearGradient>
-                </defs>
-              </BarChart>
-            </ResponsiveContainer>
+        </div>
+
+        {/* Average Discount */}
+        <div className="bg-gradient-to-br from-amber-900/50 to-amber-800/30 rounded-xl p-4 border border-amber-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-amber-300 text-xs font-medium flex items-center gap-1">
+              <Percent size={12} />
+              AVG DISCOUNT
+            </span>
+            <Percent size={16} className="text-amber-400" />
           </div>
-        )}
-      </ChartCard>
+          <p className="text-2xl font-bold text-white mb-1">
+            {loading ? '...' : `${(data?.summary?.averageDiscountPercent || 0).toFixed(1)}%`}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-amber-300/60 text-xs">Per operation</span>
+          </div>
+        </div>
+
+        {/* Operations with Discounts */}
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium flex items-center gap-1">
+              <Tag size={12} />
+              DISCOUNTED OPS
+            </span>
+            <Tag size={16} className="text-indigo-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {loading ? '...' : (data?.summary?.operationsWithDiscount || 0)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-indigo-300/60 text-xs">Operations affected</span>
+          </div>
+        </div>
+
+        {/* Highest Single Discount */}
+        <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-xl p-4 border border-emerald-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-emerald-300 text-xs font-medium flex items-center gap-1">
+              <Award size={12} />
+              HIGHEST
+            </span>
+            <TrendingUp size={16} className="text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">
+            {loading ? '...' : formatCurrency(highestDiscount)}
+          </p>
+          <div className="flex items-center gap-1">
+            <span className="text-emerald-300/60 text-xs">Single largest discount</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart Section */}
+      <div className="card-bevel overflow-hidden mb-4">
+        <div className="p-4 border-b border-gray-700">
+          <h3 className="text-lg font-semibold text-white">Discount Trends</h3>
+        </div>
+        <div className="p-4">
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <div className="text-gray-400">Loading chart data...</div>
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center">
+              <div className="text-gray-400">No discount data available</div>
+            </div>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar
+                    dataKey="total"
+                    fill="url(#roseGradient)"
+                    radius={[4, 4, 0, 0]}
+                    name="Discount Total"
+                  />
+                  <defs>
+                    <linearGradient id="roseGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#F43F5E" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#E11D48" stopOpacity={0.8} />
+                    </linearGradient>
+                  </defs>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Top Discounted Operations Table */}
-      <div className="bg-gray-800/60 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/5">
+      <div className="card-bevel overflow-hidden">
+        <div className="p-4 border-b border-gray-700">
           <h3 className="text-lg font-semibold text-white">Top Discounted Operations</h3>
           <p className="text-sm text-gray-400">Operations with the highest discounts</p>
         </div>
@@ -306,52 +348,70 @@ const DiscountsPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead>
-                <tr className="bg-gray-900/50 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  <th className="px-6 py-3 text-left">Customer</th>
-                  <th className="px-6 py-3 text-right">Original Total</th>
-                  <th className="px-6 py-3 text-right">Discount</th>
-                  <th className="px-6 py-3 text-right">Final Total</th>
-                  <th className="px-6 py-3 text-right">Discount %</th>
-                  <th className="px-6 py-3 text-right">Date</th>
+              <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Items / Services</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Original Total</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Discount</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Discount %</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
-                {data.topDiscounted.map((item) => {
-                  const discountPercent = item.totalAmount > 0
-                    ? ((item.discount / item.totalAmount) * 100).toFixed(1)
-                    : '0.0';
-                  const finalTotal = item.totalAmount - item.discount;
+              <tbody className="divide-y divide-gray-700">
+                {data.topDiscounted.map((item, index) => {
+                  const originalTotal = item.totalAmount + item.discount;
+                  const finalTotal = item.totalAmount;
 
                   return (
-                    <tr key={item.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4">
+                    <tr
+                      key={item.id}
+                      className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}
+                    >
+                      <td className="px-4 py-3">
                         <div className="flex items-center">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/20 to-rose-500/20 flex items-center justify-center mr-3">
-                            <span className="text-emerald-400 text-sm font-semibold">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-500/20 to-amber-500/20 flex items-center justify-center mr-3">
+                            <span className="text-rose-400 text-sm font-semibold">
                               {item.customerName.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <span className="text-white font-medium">{item.customerName}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-300">
-                        {formatCurrency(item.totalAmount)}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {item.items && item.items.length > 0 ? (
+                            item.items.map((serviceItem, idx) => (
+                              <span
+                                key={idx}
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  serviceItem.type === 'service'
+                                    ? 'bg-indigo-500/20 text-indigo-300'
+                                    : 'bg-amber-500/20 text-amber-300'
+                                }`}
+                              >
+                                {serviceItem.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-500 text-xs">No items</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-4 py-3 text-right text-gray-300">
+                        {formatCurrency(originalTotal)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         <span className="text-rose-400 font-semibold">
                           -{formatCurrency(item.discount)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right text-emerald-400 font-semibold">
-                        {formatCurrency(finalTotal)}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="px-2 py-1 rounded-full bg-rose-500/20 text-rose-400 text-xs font-semibold">
-                          {discountPercent}%
+                      <td className="px-4 py-3 text-right">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-semibold">
+                          {item.discountPercent.toFixed(1)}%
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-400 text-sm">
+                      <td className="px-4 py-3 text-right text-gray-400 text-sm">
                         {new Date(item.date).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',

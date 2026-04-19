@@ -123,6 +123,11 @@ export default function SalesPage() {
       case 'repair':
         return sale.details.map((item, index) => (
           <div key={index} className="text-sm text-gray-300">
+            {item.name && (
+              <div>
+                {item.name} x{item.quantity || 1} @ {formatCurrency(item.price)}
+              </div>
+            )}
             {item.category && <div>{item.category}</div>}
             {item.service_name && (
               <div className="ml-4 text-gray-400">
@@ -372,7 +377,7 @@ export default function SalesPage() {
                         ${sale.sale_type === 'retail' ? 'bg-purple-900/20 text-purple-400' : ''}
                         ${sale.sale_type === 'pickup' ? 'bg-orange-900/20 text-orange-400' : ''}
                       `}>
-                        {sale.sale_type}
+                        {sale.sale_type === 'retail' ? 'product' : sale.sale_type}
                       </span>
                     </td>
                     <td className="px-4 py-3">

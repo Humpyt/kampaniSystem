@@ -1,19 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, ShoppingBag, DollarSign, ArrowUpDown } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Cell,
-} from 'recharts';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TrendingUp, BarChart3, ArrowUpDown, Wrench, DollarSign, ShoppingBag } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
-import MetricCard from '../components/MetricCard';
-import { ChartCard } from '../components/ui/ChartCard';
 
 interface ServicePerformance {
   serviceId: string;
@@ -35,370 +22,377 @@ interface ServicePerformanceResponse {
   categoryBreakdown: CategoryBreakdown[];
 }
 
+// Complete list of all 24 services with icons and colors
+const ALL_SERVICES = [
+  { name: 'Elastic', icon: '🔗', color: '#F59E0B' },
+  { name: 'Glue', icon: '🧴', color: '#EF4444' },
+  { name: 'Hardware', icon: '⚙️', color: '#8B5CF6' },
+  { name: 'Heel', icon: '👠', color: '#3B82F6' },
+  { name: 'Heel Fix', icon: '🔧', color: '#6366F1' },
+  { name: 'Insoles', icon: '👣', color: '#14B8A6' },
+  { name: 'Misc', icon: '📦', color: '#64748B' },
+  { name: 'Pad', icon: '🛡️', color: '#22D3EE' },
+  { name: 'Patches', icon: '🩹', color: '#EC4899' },
+  { name: 'Rips', icon: '✂️', color: '#F97316' },
+  { name: 'Sling', icon: '🔗', color: '#F59E0B' },
+  { name: 'Stitch', icon: '🧵', color: '#A855F7' },
+  { name: 'Straps', icon: '🎗️', color: '#EC4899' },
+  { name: 'Stretch', icon: '📏', color: '#0EA5E9' },
+  { name: 'Tassels', icon: '🎀', color: '#F472B6' },
+  { name: 'Zipper', icon: '🤐', color: '#06B6D4' },
+  { name: 'Clean', icon: '✨', color: '#10B981' },
+  { name: 'Dye', icon: '🎨', color: '#8B5CF6' },
+  { name: 'Waterproof', icon: '💧', color: '#0EA5E9' },
+  { name: 'Shine', icon: '🌟', color: '#FACC15' },
+  { name: 'Heels', icon: '👠', color: '#EC4899' },
+  { name: 'Half Soles', icon: '👟', color: '#F97316' },
+  { name: 'Sole Guard', icon: '🛡️', color: '#84CC16' },
+  { name: 'Others', icon: '📋', color: '#6B7280' },
+];
+
+const SERVICE_INFO: Record<string, { icon: string; color: string }> = {};
+ALL_SERVICES.forEach(s => {
+  SERVICE_INFO[s.name] = { icon: s.icon, color: s.color };
+});
+
 type ViewMode = 'revenue' | 'orders';
 
-// Color palette for categories
-const CATEGORY_COLORS: Record<string, string> = {
-  'Cleaning': '#10B981',
-  'Heel': '#3B82F6',
-  'Sole': '#F97316',
-  'Dyeing': '#8B5CF6',
-  'Stitching': '#EC4899',
-  'Repair': '#6366F1',
-  'Conditioning': '#14B8A6',
-  'Uncategorized': '#64748B',
-  'Default': '#9CA3AF',
-};
-
-// Get color for a category
-const getCategoryColor = (category: string): string => {
-  return CATEGORY_COLORS[category] || CATEGORY_COLORS.Default;
-};
-
-// Custom tooltip for bar chart
-const BarChartTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-gray-800/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 shadow-xl">
-        <p className="text-white font-semibold mb-1">{data.serviceName}</p>
-        <p className="text-gray-400 text-sm">Category: {data.category}</p>
-        <p className="text-emerald-400 font-bold mt-2">
-          Revenue: {formatCurrency(data.totalRevenue)}
-        </p>
-        <p className="text-blue-400 text-sm">
-          Orders: {data.orderCount}
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
-
-// Custom tooltip for pie chart
-const PieChartTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-gray-800/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 shadow-xl">
-        <p className="text-white font-semibold mb-1">{data.category}</p>
-        <p className="text-emerald-400 font-bold">
-          Revenue: {formatCurrency(data.totalRevenue)}
-        </p>
-        <p className="text-blue-400 text-sm">
-          Orders: {data.orderCount}
-        </p>
-        <p className="text-gray-400 text-sm">
-          % of Total: {data.percentage}%
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
-
 export default function MostPerformingPage() {
-  const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ServicePerformanceResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('revenue');
-  const [sortColumn, setSortColumn] = useState<'revenue' | 'orders'>('revenue');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const fetchServicePerformance = async () => {
+    const fetchData = async () => {
       try {
-        setLoading(true);
-        const res = await fetch('/api/analytics/service-performance');
-        if (!res.ok) throw new Error('Failed to fetch');
-        const result = await res.json();
-        setData(result);
-      } catch (err) {
-        console.error('Error fetching service performance:', err);
+        const response = await fetch('/api/analytics/service-performance');
+        if (response.ok) {
+          const result = await response.json();
+          setData(result);
+        }
+      } catch (error) {
+        console.error('Error fetching service performance:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchServicePerformance();
+    fetchData();
   }, []);
 
-  // Get current services based on view mode
-  const currentServices = viewMode === 'revenue' ? data?.byRevenue : data?.byOrders;
+  // Build complete service list with all 24 services, merging API data
+  const allServices = useMemo(() => {
+    const serviceMap = new Map<string, ServicePerformance>();
 
-  // Get top 10 services for chart
-  const top10Services = currentServices?.slice(0, 10) || [];
+    // First, add all 24 services with zero values
+    ALL_SERVICES.forEach(s => {
+      serviceMap.set(s.name, {
+        serviceId: s.name.toLowerCase().replace(/\s+/g, '-'),
+        serviceName: s.name,
+        category: s.name === 'Elastic' || s.name === 'Glue' || s.name === 'Hardware' ? 'Repair' :
+                  s.name === 'Heel' || s.name === 'Heel Fix' || s.name === 'Heels' ? 'Heel' :
+                  s.name === 'Insoles' || s.name === 'Pad' || s.name === 'Half Soles' || s.name === 'Sole Guard' ? 'Sole' :
+                  s.name === 'Patches' || s.name === 'Rips' || s.name === 'Stitch' ? 'Stitching' :
+                  s.name === 'Sling' || s.name === 'Straps' || s.name === 'Stretch' || s.name === 'Tassels' ? 'Straps' :
+                  s.name === 'Zipper' ? 'Zipper' :
+                  s.name === 'Clean' ? 'Cleaning' :
+                  s.name === 'Dye' ? 'Dyeing' :
+                  s.name === 'Waterproof' ? 'Waterproof' :
+                  s.name === 'Shine' ? 'Shine' : 'Others',
+        totalRevenue: 0,
+        orderCount: 0,
+      });
+    });
 
-  // Prepare chart data (reversed for horizontal bar - lowest at bottom)
-  const chartData = [...top10Services].reverse();
-
-  // Prepare category chart data
-  const totalCategoryRevenue = data?.categoryBreakdown.reduce((sum, c) => sum + c.totalRevenue, 0) || 0;
-  const categoryChartData = data?.categoryBreakdown.map(cat => ({
-    ...cat,
-    percentage: totalCategoryRevenue > 0 ? Math.round((cat.totalRevenue / totalCategoryRevenue) * 100) : 0,
-  })) || [];
-
-  // Calculate metrics
-  const topServiceRevenue = data?.byRevenue[0];
-  const uniqueServicesCount = data?.byRevenue.filter(s => s.orderCount > 0).length || 0;
-  const busiestService = data?.byOrders[0];
-  const mostProfitableCategory = data?.categoryBreakdown[0];
-
-  // Handle sort toggle
-  const handleSort = (column: 'revenue' | 'orders') => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('desc');
+    // Override with actual data from API
+    if (data) {
+      data.byRevenue.forEach(s => {
+        if (serviceMap.has(s.serviceName)) {
+          const existing = serviceMap.get(s.serviceName)!;
+          serviceMap.set(s.serviceName, { ...s, category: existing.category });
+        } else {
+          serviceMap.set(s.serviceName, s);
+        }
+      });
     }
-  };
 
-  // Sort services for table
-  const sortedServices = [...(currentServices || [])].sort((a, b) => {
-    const aValue = sortColumn === 'revenue' ? a.totalRevenue : a.orderCount;
-    const bValue = sortColumn === 'revenue' ? b.totalRevenue : b.orderCount;
-    return sortDirection === 'desc' ? bValue - aValue : aValue - bValue;
-  });
+    return Array.from(serviceMap.values());
+  }, [data]);
+
+  // Filter and sort services
+  const filteredServices = useMemo(() => {
+    let services = [...allServices];
+
+    // Filter by search
+    if (searchTerm) {
+      services = services.filter(s =>
+        s.serviceName.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Sort by revenue or orders
+    if (viewMode === 'revenue') {
+      services.sort((a, b) => b.totalRevenue - a.totalRevenue);
+    } else {
+      services.sort((a, b) => b.orderCount - a.orderCount);
+    }
+
+    return services;
+  }, [allServices, viewMode, searchTerm]);
+
+  // Stats
+  const totalRevenue = data?.byRevenue.reduce((sum, s) => sum + s.totalRevenue, 0) || 0;
+  const totalOrders = data?.byOrders.reduce((sum, s) => sum + s.orderCount, 0) || 0;
+  const totalServiceCount = allServices.filter(s => s.orderCount > 0).length;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-gray-400 animate-pulse text-lg">Loading Service Performance...</div>
+      <div className="min-h-screen bg-gray-900 p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 w-64 bg-gray-800 rounded" />
+          <div className="grid grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-24 bg-gray-800 rounded-xl" />
+            ))}
+          </div>
+          <div className="h-96 bg-gray-800 rounded-xl" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center gap-4 mb-2">
-              <Trophy className="text-yellow-500" size={36} />
-              Most Performing Services
-            </h1>
-            <p className="text-gray-400 font-medium max-w-2xl">
-              Analyze service performance metrics to identify top performers and optimize your offerings.
-            </p>
+    <div className="min-h-screen bg-gray-900 p-6">
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 bg-indigo-600/20 rounded-lg flex items-center justify-center">
+            <TrendingUp className="w-6 h-6 text-indigo-400" />
           </div>
+          <h1 className="text-2xl font-bold text-white">Most Performing Services</h1>
+        </div>
+        <p className="text-gray-400 text-sm">Track service performance across all repair operations</p>
+      </div>
 
-          {/* View Toggle */}
-          <div className="flex gap-2 bg-gray-800/60 backdrop-blur-sm rounded-xl p-1 border border-white/10">
-            <button
-              onClick={() => setViewMode('revenue')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                viewMode === 'revenue'
-                  ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              By Revenue
-            </button>
-            <button
-              onClick={() => setViewMode('orders')}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                viewMode === 'orders'
-                  ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              By Orders
-            </button>
+      {/* Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-emerald-900/40 to-emerald-800/20 rounded-xl p-5 border border-emerald-700/30">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-emerald-600/20 rounded-lg flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-emerald-300/70 text-xs font-medium uppercase tracking-wider">Total Revenue</p>
+              <p className="text-2xl font-bold text-white">{formatCurrency(totalRevenue)}</p>
+            </div>
           </div>
         </div>
 
-        {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <MetricCard
-            title="Top Service Revenue"
-            value={topServiceRevenue ? formatCurrency(topServiceRevenue.totalRevenue) : 'UGX 0'}
-            icon={<DollarSign size={24} />}
-            type="revenue"
-            trend={topServiceRevenue?.serviceName}
-            trendUp={true}
-          />
-          <MetricCard
-            title="Total Services Offered"
-            value={uniqueServicesCount}
-            icon={<ShoppingBag size={24} />}
-            type="tickets"
-          />
-          <MetricCard
-            title="Busiest Service"
-            value={busiestService?.serviceName || 'N/A'}
-            icon={<TrendingUp size={24} />}
-            type="actions"
-            trend={busiestService ? `${busiestService.orderCount} orders` : ''}
-            trendUp={true}
-          />
-          <MetricCard
-            title="Most Profitable Category"
-            value={mostProfitableCategory?.category || 'N/A'}
-            icon={<Trophy size={24} />}
-            type="revenue"
-            trend={mostProfitableCategory ? formatCurrency(mostProfitableCategory.totalRevenue) : ''}
-            trendUp={true}
-          />
+        <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/20 rounded-xl p-5 border border-blue-700/30">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center">
+              <ShoppingBag className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <p className="text-blue-300/70 text-xs font-medium uppercase tracking-wider">Total Orders</p>
+              <p className="text-2xl font-bold text-white">{totalOrders.toLocaleString()}</p>
+            </div>
+          </div>
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Services Bar Chart */}
-          <ChartCard
-            title="Top 10 Services by Revenue"
-            action={
-              <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-1 rounded">
-                Horizontal bars
-              </span>
-            }
+        <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/20 rounded-xl p-5 border border-purple-700/30">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-purple-600/20 rounded-lg flex items-center justify-center">
+              <Wrench className="w-6 h-6 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-purple-300/70 text-xs font-medium uppercase tracking-wider">Active Services</p>
+              <p className="text-2xl font-bold text-white">{totalServiceCount} / {ALL_SERVICES.length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        {/* Search */}
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            placeholder="Search services..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+
+        {/* View Toggle */}
+        <div className="flex bg-gray-800 rounded-lg p-1 border border-gray-700">
+          <button
+            onClick={() => setViewMode('revenue')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'revenue'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'text-gray-400 hover:text-white'
+            }`}
           >
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
-                  layout="vertical"
-                  margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#374151" />
-                  <XAxis
-                    type="number"
-                    stroke="#9CA3AF"
-                    tickFormatter={(val) => `${(val / 1000000).toFixed(1)}M`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="serviceName"
-                    stroke="#9CA3AF"
-                    width={95}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Tooltip content={<BarChartTooltip />} />
-                  <Bar
-                    dataKey="totalRevenue"
-                    radius={[0, 4, 4, 0]}
-                    maxBarSize={25}
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={getCategoryColor(entry.category)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </ChartCard>
-
-          {/* Category Breakdown Pie Chart */}
-          <ChartCard title="Revenue by Category">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="totalRevenue"
-                  >
-                    {categoryChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={getCategoryColor(entry.category)} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<PieChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            {/* Legend */}
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {categoryChartData.slice(0, 6).map((cat) => (
-                <div key={cat.category} className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: getCategoryColor(cat.category) }}
-                  />
-                  <span className="text-xs text-gray-300 truncate">{cat.category}</span>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
+            <BarChart3 className="w-4 h-4" />
+            By Revenue
+          </button>
+          <button
+            onClick={() => setViewMode('orders')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'orders'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            By Orders
+          </button>
         </div>
+      </div>
 
-        {/* Services Table */}
-        <ChartCard title="All Services Performance">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Service Name
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th
-                    className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleSort('revenue')}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      Total Revenue
-                      <ArrowUpDown size={14} className={sortColumn === 'revenue' ? 'text-emerald-400' : ''} />
-                    </div>
-                  </th>
-                  <th
-                    className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white transition-colors"
-                    onClick={() => handleSort('orders')}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      Order Count
-                      <ArrowUpDown size={14} className={sortColumn === 'orders' ? 'text-emerald-400' : ''} />
-                    </div>
-                  </th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Average Price
-                  </th>
+      {/* Services Table - Industrial List Style */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto max-h-[calc(100vh-380px)] overflow-y-auto">
+          <table className="w-full">
+            <thead className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-16">#</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Service</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-32">Category</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider w-32">Orders</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider w-40">Revenue</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-48">Performance Bar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700/50">
+              {filteredServices.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                    No services found
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {sortedServices.map((service) => {
-                  const avgPrice = service.orderCount > 0 ? service.totalRevenue / service.orderCount : 0;
+              ) : (
+                filteredServices.map((service, index) => {
+                  const info = SERVICE_INFO[service.serviceName] || { icon: '🔧', color: '#6B7280' };
+                  const maxValue = viewMode === 'revenue'
+                    ? Math.max(...filteredServices.map(s => s.totalRevenue), 1)
+                    : Math.max(...filteredServices.map(s => s.orderCount), 1);
+                  const barWidth = viewMode === 'revenue'
+                    ? (service.totalRevenue / maxValue) * 100
+                    : (service.orderCount / maxValue) * 100;
+                  const displayValue = viewMode === 'revenue'
+                    ? formatCurrency(service.totalRevenue)
+                    : service.orderCount.toLocaleString();
+
                   return (
                     <tr
                       key={service.serviceId}
-                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                      className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750/50'} hover:bg-gray-700 transition-colors`}
                     >
-                      <td className="py-3 px-4 text-white font-medium">
-                        {service.serviceName}
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-medium text-gray-400">{index + 1}</span>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+                            style={{ backgroundColor: `${info.color}20` }}
+                          >
+                            {info.icon}
+                          </div>
+                          <span className="text-sm font-medium text-white">{service.serviceName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
                         <span
-                          className="px-2 py-1 rounded-full text-xs font-semibold"
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                           style={{
-                            backgroundColor: `${getCategoryColor(service.category)}20`,
-                            color: getCategoryColor(service.category),
+                            backgroundColor: `${info.color}20`,
+                            color: info.color
                           }}
                         >
                           {service.category}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right text-emerald-400 font-semibold">
-                        {formatCurrency(service.totalRevenue)}
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-semibold text-white">{service.orderCount.toLocaleString()}</span>
                       </td>
-                      <td className="py-3 px-4 text-right text-blue-400 font-semibold">
-                        {service.orderCount}
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-bold text-emerald-400">{formatCurrency(service.totalRevenue)}</span>
                       </td>
-                      <td className="py-3 px-4 text-right text-gray-300">
-                        {formatCurrency(avgPrice)}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500 ease-out"
+                              style={{
+                                width: `${barWidth}%`,
+                                backgroundColor: info.color,
+                                boxShadow: `0 0 8px ${info.color}50`
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-400 w-12 text-right">{displayValue}</span>
+                        </div>
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </ChartCard>
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Footer */}
+        <div className="px-4 py-3 bg-gray-900/50 border-t border-gray-700/50">
+          <p className="text-xs text-gray-500">
+            Showing {filteredServices.length} of {ALL_SERVICES.length} services
+            {totalOrders > 0 && ` • ${totalOrders.toLocaleString()} total orders • ${formatCurrency(totalRevenue)} total revenue`}
+          </p>
+        </div>
+      </div>
+
+      {/* Category Breakdown - Compact Horizontal Bars */}
+      <div className="mt-6 bg-gray-800/50 rounded-xl border border-gray-700 p-5">
+        <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">Revenue by Category</h3>
+        <div className="space-y-3">
+          {data?.categoryBreakdown
+            .sort((a, b) => b.totalRevenue - a.totalRevenue)
+            .map((category) => {
+              const maxRevenue = data?.categoryBreakdown[0]?.totalRevenue || 1;
+              const barWidth = (category.totalRevenue / maxRevenue) * 100;
+
+              return (
+                <div key={category.category} className="flex items-center gap-4">
+                  <div className="w-28 text-sm text-gray-300 truncate">{category.category}</div>
+                  <div className="flex-1 h-5 bg-gray-700/30 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full flex items-center justify-end pr-2 transition-all duration-700"
+                      style={{
+                        width: `${barWidth}%`,
+                        backgroundColor: '#6366F1',
+                        minWidth: category.totalRevenue > 0 ? '40px' : '0'
+                      }}
+                    >
+                      {category.totalRevenue > 0 && (
+                        <span className="text-xs font-bold text-white">{formatCurrency(category.totalRevenue)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-20 text-right">
+                    <span className="text-xs text-gray-400">{category.orderCount} orders</span>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
       </div>
     </div>
   );

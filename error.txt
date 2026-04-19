@@ -1,2 +1,0 @@
-:5173/src/pages/DropPage.tsx?t=1774426913528:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)
-vendor.js:151 Uncaught (in promise) Error: Uncaught Error: No Listener: tabs:outgoing.message.ready
