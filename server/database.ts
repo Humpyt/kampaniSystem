@@ -1,14 +1,24 @@
 import { Pool, PoolClient } from 'pg';
+import dotenv from 'dotenv';
 
-export const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'cavemo-repair',
-  user: 'postgres',
-  password: 'postgres123',
-  max: 20,
-  idleTimeoutMillis: 30000,
-});
+dotenv.config();
+
+// Support DATABASE_URL env var for production, with fallback to local dev settings
+const connectionString = process.env.DATABASE_URL;
+
+export const pool = new Pool(
+  connectionString
+    ? { connectionString, max: 20, idleTimeoutMillis: 30000 }
+    : {
+        host: 'localhost',
+        port: 5432,
+        database: 'cavemo-repair',
+        user: 'postgres',
+        password: 'postgres123',
+        max: 20,
+        idleTimeoutMillis: 30000,
+      }
+);
 
 // withTransaction helper
 export async function withTransaction<T>(
