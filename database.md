@@ -6,17 +6,25 @@ This project uses **PostgreSQL** as its database. The current configuration is s
 
 ---
 
-## Current Configuration (Local Development)
+## Current Configuration
 
-The database connection is in `server/database.ts`:
+The database connection is in `server/database.ts`. It **automatically** supports:
+
+- **Production:** Uses `DATABASE_URL` environment variable (recommended)
+- **Local Dev:** Falls back to hardcoded localhost settings
 
 ```typescript
-host: 'localhost',
-port: 5432,
-database: 'cavemo-repair',
-user: 'postgres',
-password: 'postgres123',
+// server/database.ts - already configured!
+const connectionString = process.env.DATABASE_URL;
+
+export const pool = new Pool(
+  connectionString
+    ? { connectionString, max: 20, idleTimeoutMillis: 30000 }
+    : { host: 'localhost', port: 5432, database: 'cavemo-repair', user: 'postgres', password: 'postgres123', max: 20, idleTimeoutMillis: 30000 }
+);
 ```
+
+**No code changes needed.** Just set your `DATABASE_URL` in `.env`.
 
 ---
 
@@ -51,43 +59,21 @@ GRANT ALL PRIVILEGES ON DATABASE kampani TO kampani_admin;
 \q
 ```
 
-### 4. Update Database Configuration
+### 4. Configure Environment Variables
 
-Option A: **Environment Variable (Recommended)**
+Copy the example env file and set your `DATABASE_URL`:
 
-Add to your `.env` file:
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set your database connection:
+
 ```env
 DATABASE_URL=postgresql://kampani_admin:your-strong-password@localhost:5432/kampani
 ```
 
-Then update `server/database.ts` to read from `DATABASE_URL`:
-
-```typescript
-import dotenv from 'dotenv';
-dotenv.config();
-
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-});
-```
-
-Option B: **Hardcoded (Quick Setup)**
-
-Edit `server/database.ts` directly:
-
-```typescript
-export const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'kampani',
-  user: 'kampani_admin',
-  password: 'your-strong-password',
-  max: 20,
-  idleTimeoutMillis: 30000,
-});
-```
+**That's it!** The app automatically reads `DATABASE_URL` and connects. No code changes needed.
 
 ---
 
