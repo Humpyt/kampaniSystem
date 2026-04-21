@@ -23,6 +23,7 @@ interface PickupTicket {
   status: 'pending' | 'ready' | 'completed';
   workflowStatus: 'pending' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overpaid';
+  promisedDate?: string;
   items: {
     id: string;
     category: string;
@@ -100,6 +101,7 @@ export default function PickupPage() {
           price: Number(service.price),
         })),
       })),
+      promisedDate: op.promisedDate || undefined,
       retailItems,
     };
   };
@@ -324,6 +326,7 @@ export default function PickupPage() {
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ready By</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Pieces</th>
                     <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
@@ -333,7 +336,7 @@ export default function PickupPage() {
                 <tbody className="divide-y divide-gray-800">
                   {filteredTickets.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center">
+                      <td colSpan={8} className="px-6 py-12 text-center">
                         <Package size={48} className="text-gray-600 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-400 mb-2">No Tickets Found</h3>
                         <p className="text-sm text-gray-500">
@@ -370,6 +373,7 @@ export default function PickupPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
+                      <td className="px-6 py-4 text-sm text-indigo-400">{ticket.promisedDate ? new Date(ticket.promisedDate).toLocaleDateString() : '-'}</td>
                       <td className="px-6 py-4 text-center text-sm text-gray-300">{ticket.pieces}</td>
                       <td className="px-6 py-4 text-right">
                         {ticket.discount > 0 ? (

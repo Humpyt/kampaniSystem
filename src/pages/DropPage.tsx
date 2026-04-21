@@ -108,9 +108,9 @@ const SHOE_CATEGORY_NAMES = new Set(
 
 const SHOE_SIZES = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45'];
 
-type StepName = 'customer' | 'category' | 'size' | 'color' | 'brand' | 'material' | 'description' | 'memos' | 'service' | 'variation';
+type StepName = 'customer' | 'category' | 'size' | 'color' | 'brand' | 'material' | 'description' | 'memos' | 'service' | 'variation' | 'readyBy';
 
-const STEPS_ORDER: StepName[] = ['customer', 'category', 'size', 'color', 'brand', 'material', 'description', 'memos', 'service', 'variation'];
+const STEPS_ORDER: StepName[] = ['customer', 'category', 'size', 'color', 'brand', 'material', 'description', 'memos', 'service', 'variation', 'readyBy'];
 
 // Helper to get initial form state
 const getInitialFormState = (): DropFormState => ({
@@ -125,6 +125,7 @@ const getInitialFormState = (): DropFormState => ({
   service: '',
   variation: '',
   price: '',
+  readyByDate: '',
 });
 
 export default function DropPage() {
@@ -232,6 +233,7 @@ export default function DropPage() {
     memos: form.memos,
     services: form.service && form.variation ? [{ service: form.service, variation: form.variation }] : [],
     price: parseInt(form.price, 10) || 0,
+      readyByDate: form.readyByDate || undefined,
   } : null;
 
   const handlePreviewPriceChange = (price: number) => {
@@ -332,6 +334,11 @@ export default function DropPage() {
     advanceStep('variation');
   };
 
+  const handleReadyByDateChange = (date: string) => {
+    setForm(prev => ({ ...prev, readyByDate: date }));
+    advanceStep('readyBy');
+  };
+
   const handlePriceChange = (value: string) => {
     setForm(prev => ({ ...prev, price: value }));
   };
@@ -349,6 +356,7 @@ export default function DropPage() {
       memos: form.memos,
       services: [{ service: form.service, variation: form.variation }],
       price: parseInt(form.price, 10) || 0,
+      readyByDate: form.readyByDate || undefined,
     };
     addToCart(item);
     setForm(prev => ({
@@ -363,6 +371,7 @@ export default function DropPage() {
       service: '',
       variation: '',
       price: '',
+  readyByDate: '',
     }));
     setActiveStep('category');
     toast.success('Item added to cart');
@@ -382,6 +391,7 @@ export default function DropPage() {
       service: '',
       variation: '',
       price: '',
+  readyByDate: '',
     }));
     setActiveStep('category');
     toast.success('Item added to cart');
@@ -474,6 +484,7 @@ export default function DropPage() {
         isDelivery: false,
         isPickup: false,
         notes: '',
+        promisedDate: cartItems[0]?.readyByDate || null,
         ticket_number: ticketNumber,
       };
 
@@ -678,6 +689,7 @@ export default function DropPage() {
       case 'memos': return form.memos.length > 0;
       case 'service': return Boolean(form.service);
       case 'variation': return Boolean(form.variation);
+      case 'readyBy': return Boolean(form.readyByDate);
       default: return false;
     }
   };
@@ -695,6 +707,7 @@ export default function DropPage() {
       case 'memos': return form.memos.length > 0 ? form.memos.join(', ') : '(none)';
       case 'service': return form.service;
       case 'variation': return form.variation;
+      case 'readyBy': return form.readyByDate ? new Date(form.readyByDate).toLocaleDateString() : '';
       default: return '';
     }
   };
@@ -1125,6 +1138,25 @@ export default function DropPage() {
             {form.variation && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-center">
                 <span className="text-amber-400 text-xs">💰 Enter price in the cart →</span>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'readyBy':
+        return (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-400 mb-2">When should this be ready?</div>
+            <input
+              type="date"
+              value={form.readyByDate}
+              onChange={e => handleReadyByDateChange(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-lg"
+              min={new Date().toISOString().split('T')[0]}
+            />
+            {form.readyByDate && (
+              <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-center">
+                <span className="text-indigo-400 text-xs">Ready by: {new Date(form.readyByDate).toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
               </div>
             )}
           </div>

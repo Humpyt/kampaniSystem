@@ -115,6 +115,7 @@ export interface CartItem {
   memos: string[];      // multi-select
   services: ServiceSelection[];
   price: number;        // manually entered
+  readyByDate?: string; // promised pickup date
 }
 
 export interface DropFormState {
@@ -129,4 +130,5 @@ export interface DropFormState {
   service: string;
   variation: string;
   price: string;
+  readyByDate: string;
 }

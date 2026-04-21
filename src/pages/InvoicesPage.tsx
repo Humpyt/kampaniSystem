@@ -333,7 +333,8 @@ export default function InvoicesPage() {
             <div className="p-6 overflow-y-auto max-h-[60vh]">
               {/* Store Info */}
               <div className="text-center mb-6 p-4 bg-gray-900/50 rounded-xl">
-                <h3 className="text-lg font-bold text-white">SHOE REPAIR POS</h3>
+                <h3 className="text-lg font-bold text-white">Kampani Shoes and Bag Clinic</h3>
+                <p className="text-sm text-gray-400">FORESTMALL, KAMPALA, Uganda</p>
                 <p className="text-sm text-gray-400">Your Trusted Shoe Repair Service</p>
               </div>
 
