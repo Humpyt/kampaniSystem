@@ -69,7 +69,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
     }
 
     // Check if email already exists
-    const existingUser = await db.get('SELECT id FROM users WHERE email = $1', [email]);
+    const existingUser = await db.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUser) {
       return res.status(400).json({ error: 'Email already exists' });
     }
@@ -87,7 +87,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
     // Create user
     await db.run(
       `INSERT INTO users (id, name, email, password_hash, role, status, created_by, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8)`,
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
       [userId, name, email, passwordHash, role, req.user.id, now, now]
     );
 
@@ -95,7 +95,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
     if (role === 'staff') {
       await db.run(
         `INSERT INTO staff_targets (id, user_id, daily_target, monthly_target, effective_date, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [uuidv4(), userId, 1000000, 26000000, now, now, now]
       );
     }
@@ -105,7 +105,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
       for (const permission of permissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES (?, ?, ?, ?, ?)`,
           [uuidv4(), userId, permission, 1, now]
         );
       }
@@ -120,7 +120,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
       for (const permission of defaultStaffPermissions) {
         await db.run(
           `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES (?, ?, ?, ?, ?)`,
           [uuidv4(), userId, permission, 1, now]
         );
       }
@@ -128,7 +128,7 @@ router.post('/register', authenticateToken, requireRole('admin'), async (req, re
 
     // Return created user (without password)
     const newUser = await db.get(
-      'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE id = $1',
+      'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE id = ?',
       [userId]
     );
 
@@ -150,7 +150,7 @@ router.post('/login', async (req, res) => {
 
     // Find user by email
     const user = await db.get(
-      'SELECT * FROM users WHERE email = $1 AND status = $2',
+      'SELECT * FROM users WHERE email = ? AND status = ?',
       [email, 'active']
     );
 
@@ -166,7 +166,7 @@ router.post('/login', async (req, res) => {
 
     // Get user permissions
     const permissions = await db.all(
-      'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
+      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
       [user.id]
     );
 
@@ -194,7 +194,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = await db.get(
-      'SELECT id, name, email, role, status FROM users WHERE id = $1',
+      'SELECT id, name, email, role, status FROM users WHERE id = ?',
       [req.user.id]
     );
 
@@ -204,7 +204,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     // Get user permissions
     const permissions = await db.all(
-      'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
+      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
       [user.id]
     );
 
@@ -237,7 +237,7 @@ router.get('/users', authenticateToken, requireRole('admin', 'manager'), async (
     const usersWithPermissions = await Promise.all(
       users.map(async (user: any) => {
         const permissions = await db.all(
-          'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
+          'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
           [user.id]
         );
 
@@ -259,7 +259,7 @@ router.get('/users', authenticateToken, requireRole('admin', 'manager'), async (
 router.put('/users/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, status, password } = req.body;
+    const { name, email, role, status } = req.body;
 
     // Validate role if provided
     if (role && !['admin', 'manager', 'staff'].includes(role)) {
@@ -273,47 +273,39 @@ router.put('/users/:id', authenticateToken, requireRole('admin'), async (req, re
 
     const updates: string[] = [];
     const values: any[] = [];
-    let paramIndex = 1;
 
     if (name) {
-      updates.push(`name = $${paramIndex++}`);
+      updates.push('name = ?');
       values.push(name);
     }
 
     if (email) {
-      updates.push(`email = $${paramIndex++}`);
+      updates.push('email = ?');
       values.push(email);
     }
 
     if (role) {
-      updates.push(`role = $${paramIndex++}`);
+      updates.push('role = ?');
       values.push(role);
     }
 
     if (status) {
-      updates.push(`status = $${paramIndex++}`);
+      updates.push('status = ?');
       values.push(status);
     }
 
-    // If password is provided, hash and update it
-    if (password) {
-      const passwordHash = await bcrypt.hash(password, 10);
-      updates.push(`password_hash = $${paramIndex++}`);
-      values.push(passwordHash);
-    }
-
-    updates.push(`updated_at = $${paramIndex++}`);
+    updates.push('updated_at = ?');
     values.push(new Date().toISOString());
     values.push(id);
 
     await db.run(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
       values
     );
 
     // Return updated user
     const updatedUser = await db.get(
-      'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE id = $1',
+      'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE id = ?',
       [id]
     );
 
@@ -334,7 +326,7 @@ router.delete('/users/:id', authenticateToken, requireRole('admin'), async (req,
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
 
-    await db.run('DELETE FROM users WHERE id = $1', [id]);
+    await db.run('DELETE FROM users WHERE id = ?', [id]);
 
     res.status(204).send();
   } catch (error) {
@@ -356,13 +348,13 @@ router.put('/users/:id/permissions', authenticateToken, requireRole('admin'), as
     const now = new Date().toISOString();
 
     // Delete existing permissions
-    await db.run('DELETE FROM user_permissions WHERE user_id = $1', [id]);
+    await db.run('DELETE FROM user_permissions WHERE user_id = ?', [id]);
 
     // Add new permissions
     for (const permission of permissions) {
       await db.run(
         `INSERT INTO user_permissions (id, user_id, permission, granted, created_at)
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES (?, ?, ?, ?, ?)`,
         [uuidv4(), id, permission, 1, now]
       );
     }
@@ -385,7 +377,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
 
     // Get current user
     const user = await db.get(
-      'SELECT * FROM users WHERE id = $1',
+      'SELECT * FROM users WHERE id = ?',
       [req.user.id]
     );
 
@@ -404,7 +396,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
 
     // Update password
     await db.run(
-      'UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3',
+      'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
       [newPasswordHash, new Date().toISOString(), req.user.id]
     );
 

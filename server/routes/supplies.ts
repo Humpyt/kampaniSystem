@@ -8,18 +8,18 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const { category } = req.query;
-
+    
     let query = 'SELECT * FROM supplies';
     let params: any[] = [];
-
+    
     if (category && category !== 'all') {
-      query += ` WHERE category = $${params.length + 1}`;
+      query += ' WHERE category = ?';
       params.push(category);
     }
-
+    
     query += ' ORDER BY name ASC';
-
-    const items = await db.all(query, params);
+    
+    const items = await db.prepare(query).all(...params);
     res.json(items);
   } catch (error) {
     console.error('Error fetching supplies:', error);
@@ -31,12 +31,12 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const item = await db.get('SELECT * FROM supplies WHERE id = $1', [id]);
-
+    const item = await db.prepare('SELECT * FROM supplies WHERE id = ?').get(id);
+    
     if (!item) {
       return res.status(404).json({ error: 'Supply item not found' });
     }
-
+    
     res.json(item);
   } catch (error) {
     console.error('Error fetching supply item:', error);
@@ -48,7 +48,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, category, price, quantity, image_url } = req.body;
-
+    
     // Validate required fields
     if (!name || !category || price === undefined || quantity === undefined) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -64,15 +64,15 @@ router.post('/', async (req, res) => {
 
     const now = new Date().toISOString();
     const id = uuidv4();
-
-    await db.run(`
+    
+    await db.prepare(`
       INSERT INTO supplies (
         id, name, category, price, quantity,
         image_url, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [id, name, category, price, quantity, image_url || null, now, now]);
-
-    const newItem = await db.get('SELECT * FROM supplies WHERE id = $1', [id]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, category, price, quantity, image_url || null, now, now);
+    
+    const newItem = await db.prepare('SELECT * FROM supplies WHERE id = ?').get(id);
     res.status(201).json(newItem);
   } catch (error) {
     console.error('Error creating supply item:', error);
@@ -85,7 +85,7 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category, price, quantity, image_url } = req.body;
-
+    
     // Validate required fields
     if (!name || !category || price === undefined || quantity === undefined) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -100,19 +100,19 @@ router.put('/:id', async (req, res) => {
     }
 
     const now = new Date().toISOString();
-
-    await db.run(`
+    
+    await db.prepare(`
       UPDATE supplies SET
-        name = $1,
-        category = $2,
-        price = $3,
-        quantity = $4,
-        image_url = $5,
-        updated_at = $6
-      WHERE id = $7
-    `, [name, category, price, quantity, image_url || null, now, id]);
-
-    const updatedItem = await db.get('SELECT * FROM supplies WHERE id = $1', [id]);
+        name = ?,
+        category = ?,
+        price = ?,
+        quantity = ?,
+        image_url = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(name, category, price, quantity, image_url || null, now, id);
+    
+    const updatedItem = await db.prepare('SELECT * FROM supplies WHERE id = ?').get(id);
     if (!updatedItem) {
       return res.status(404).json({ error: 'Supply item not found' });
     }
@@ -127,9 +127,9 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.run('DELETE FROM supplies WHERE id = $1', [id]);
-
-    if ((result as any).rowCount === 0) {
+    const result = await db.prepare('DELETE FROM supplies WHERE id = ?').run(id);
+    
+    if ((result as any).changes === 0) {
       return res.status(404).json({ error: 'Supply item not found' });
     }
     res.json({ message: 'Supply item deleted successfully' });

@@ -17,11 +17,11 @@ function generateInvoiceNumber(type: 'invoice' | 'receipt'): string {
 }
 
 const getRetailItems = async (operationId: string) => {
-  return db.all(`
+  return db.prepare(`
     SELECT * FROM operation_retail_items
-    WHERE operation_id = $1
+    WHERE operation_id = ?
     ORDER BY created_at ASC
-  `, [operationId]);
+  `).all(operationId);
 };
 
 // Get all invoices with filters
@@ -38,28 +38,28 @@ router.get('/', async (req, res) => {
     const params: any[] = [];
 
     if (type && type !== 'all') {
-      query += ` AND i.type = $${params.length + 1}`;
+      query += ` AND i.type = ?`;
       params.push(type);
     }
 
     if (startDate) {
-      query += ` AND DATE(i.created_at) >= DATE($${params.length + 1})`;
+      query += ` AND DATE(i.created_at) >= DATE(?)`;
       params.push(startDate);
     }
 
     if (endDate) {
-      query += ` AND DATE(i.created_at) <= DATE($${params.length + 1})`;
+      query += ` AND DATE(i.created_at) <= DATE(?)`;
       params.push(endDate);
     }
 
     if (customer) {
-      query += ` AND i.customer_name LIKE $${params.length + 1}`;
+      query += ` AND i.customer_name LIKE ?`;
       params.push(`%${customer}%`);
     }
 
     query += ` ORDER BY i.created_at DESC`;
 
-    const invoices = await db.all(query, params);
+    const invoices = await db.prepare(query).all(...params);
 
     res.json(invoices.map((inv: any) => ({
       id: inv.id,
@@ -88,9 +88,9 @@ router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const invoice = await db.get(`
-      SELECT * FROM invoices WHERE id = $1
-    `, [id]);
+    const invoice = await db.prepare(`
+      SELECT * FROM invoices WHERE id = ?
+    `).get(id);
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -99,26 +99,26 @@ router.get('/:id', async (req, res) => {
     const inv = invoice as any;
 
     // Get operation details
-    const operation = await db.get(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [inv.operation_id]);
+      WHERE o.id = ?
+    `).get(inv.operation_id);
 
     // Get shoes and services
-    const shoes = await db.all(`
+    const shoes = await db.prepare(`
       SELECT os.*, s.name as service_name, oss.price as service_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
       LEFT JOIN services s ON oss.service_id = s.id
-      WHERE os.operation_id = $1
-    `, [inv.operation_id]);
+      WHERE os.operation_id = ?
+    `).all(inv.operation_id);
     const retailItems = await getRetailItems(inv.operation_id);
 
     // Get payments if receipt
     const payments = inv.type === 'receipt'
-      ? await db.all(`SELECT * FROM operation_payments WHERE operation_id = $1`, [inv.operation_id])
+      ? await db.prepare(`SELECT * FROM operation_payments WHERE operation_id = ?`).all(inv.operation_id)
       : [];
 
     res.json({
@@ -190,12 +190,12 @@ router.post('/', async (req, res) => {
     }
 
     // Get operation with customer
-    const operation = await db.get(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [operationId]);
+      WHERE o.id = ?
+    `).get(operationId);
 
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
@@ -210,9 +210,9 @@ router.post('/', async (req, res) => {
     }
 
     // Check if invoice already exists for this operation
-    const existing = await db.get(`
-      SELECT id FROM invoices WHERE operation_id = $1 AND type = $2
-    `, [operationId, documentType]);
+    const existing = await db.prepare(`
+      SELECT id FROM invoices WHERE operation_id = ? AND type = ?
+    `).get(operationId, documentType);
 
     if (existing) {
       return res.status(400).json({ error: `This ${documentType} already exists`, invoiceId: (existing as any).id });
@@ -226,9 +226,9 @@ router.post('/', async (req, res) => {
     // Get payment method if any payments exist
     let paymentMethod = null;
     if (amountPaid > 0) {
-      const lastPayment = await db.get(`
-        SELECT payment_method FROM operation_payments WHERE operation_id = $1 ORDER BY created_at DESC LIMIT 1
-      `, [operationId]);
+      const lastPayment = await db.prepare(`
+        SELECT payment_method FROM operation_payments WHERE operation_id = ? ORDER BY created_at DESC LIMIT 1
+      `).get(operationId);
       paymentMethod = lastPayment ? (lastPayment as any).payment_method : null;
     }
 
@@ -236,13 +236,13 @@ router.post('/', async (req, res) => {
     const invoiceNumber = generateInvoiceNumber(documentType);
     const now = new Date().toISOString();
 
-    await db.run(`
+    await db.prepare(`
       INSERT INTO invoices (
         id, operation_id, type, invoice_number, customer_name, customer_phone,
         subtotal, discount, total, amount_paid, payment_method, notes,
         promised_date, generated_by, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-    `, [
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       invoiceId,
       operationId,
       documentType,
@@ -259,9 +259,9 @@ router.post('/', async (req, res) => {
       generatedBy || null,
       now,
       now
-    ]);
+    );
 
-    const invoice = await db.get('SELECT * FROM invoices WHERE id = $1', [invoiceId]);
+    const invoice = await db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
     res.json(invoice);
   } catch (error) {
     console.error('Failed to generate invoice:', error);
@@ -274,37 +274,37 @@ router.post('/:id/print', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const invoice = await db.get('SELECT * FROM invoices WHERE id = $1', [id]) as any;
+    const invoice = await db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) as any;
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
     // Get operation details
-    const operation = await db.get(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance as customer_credit
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [invoice.operation_id]) as any;
+      WHERE o.id = ?
+    `).get(invoice.operation_id) as any;
 
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
     }
 
     // Get shoes and services
-    const shoes = await db.all(`
+    const shoes = await db.prepare(`
       SELECT os.*, s.name as service_name, oss.price as service_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
       LEFT JOIN services s ON oss.service_id = s.id
-      WHERE os.operation_id = $1
-    `, [invoice.operation_id]);
+      WHERE os.operation_id = ?
+    `).all(invoice.operation_id);
     const retailItems = await getRetailItems(invoice.operation_id);
 
     // Get payments
     const payments = invoice.type === 'receipt'
-      ? await db.all('SELECT * FROM operation_payments WHERE operation_id = $1', [invoice.operation_id])
+      ? await db.prepare('SELECT * FROM operation_payments WHERE operation_id = ?').all(invoice.operation_id)
       : [];
 
     // Format currency helper

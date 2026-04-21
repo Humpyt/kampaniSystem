@@ -61,26 +61,33 @@ router.post('/print/order/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get order details with customer info
-    const order = await db.get(`
-      SELECT o.*, c.name as customer_name, c.phone as customer_phone
+    // Get order details with customer info and payment info
+    const order = await db.prepare(`
+      SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.id as customer_id
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [id]);
+      WHERE o.id = ?
+    `).get(id);
 
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
     // Get shoes and services for the order
-    const shoes = await db.all(`
+    const shoes = await db.prepare(`
       SELECT os.*, s.name as service_name, s.price as service_base_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
       LEFT JOIN services s ON oss.service_id = s.id
-      WHERE os.operation_id = $1
-    `, [id]);
+      WHERE os.operation_id = ?
+    `).all(id);
+
+    // Get payment records for this order
+    const payments = await db.prepare(`
+      SELECT * FROM operation_payments WHERE operation_id = ?
+    `).all(id);
+
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
     const { printerModule, escposModule } = await loadPrinterModules();
     
@@ -94,90 +101,112 @@ router.post('/print/order/:id', async (req, res) => {
     // Create printer instance
     const printer = new ThermalPrinter(printerConfig);
 
-    // Print header
+    // Print header with business name and address
     printer.alignCenter();
     printer.bold(true);
     printer.setTextSize(1, 1);
-    printer.println('SHOE REPAIR POS');
+    printer.println('Kampani Shoes and Bag Clinic');
     printer.bold(false);
-    printer.println('123 Main Street');
-    printer.println('Phone: (555) 123-4567');
+    printer.setTextSize(0, 0);
+    printer.println('FORESTMALL, KAMPALA, Uganda');
     printer.newLine();
 
-    // Print order info
+    // Print order number and Customer Copy label
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println(`${order.ticket_number || order.id} - Customer Copy`);
+    printer.bold(false);
+    printer.newLine();
+
+    // Print customer info block
     printer.alignLeft();
-    printer.bold(true);
-    printer.println(`Order #: ${order.id}`);
-    printer.bold(false);
-    printer.println(`Date: ${new Date(order.created_at).toLocaleDateString()}`);
-    printer.println(`Customer: ${order.customer_name}`);
-    if (order.customer_phone) {
-      printer.println(`Phone: ${order.customer_phone}`);
-    }
-    printer.drawLine();
+    
+    // Format date: 30 Mar, 2026 18:09
+    const orderDate = new Date(order.created_at);
+    const day = orderDate.getDate();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[orderDate.getMonth()];
+    const year = orderDate.getFullYear();
+    const hours = orderDate.getHours().toString().padStart(2, '0');
+    const minutes = orderDate.getMinutes().toString().padStart(2, '0');
+    const dateStr = `${order.customer_name} ${day} ${month}, ${year} ${hours}:${minutes}`;
+    
+    printer.println(dateStr);
+    
+    // Shop info
+    printer.println('DEF DEF KAMPANISTS-TWO');
+    printer.println(', KAMPALA, Uganda');
+    
+    // Account and phone
+    printer.println(`Acct:${order.customer_id || 'N/A'} Tel (${order.customer_phone || 'N/A'})`);
+    printer.newLine();
 
-    // Print items
-    printer.bold(true);
-    printer.println('ITEMS');
-    printer.bold(false);
-
-    let total = 0;
-    shoes.forEach((shoe: any, index: number) => {
+    // Print items with details
+    let subtotal = 0;
+    shoes.forEach((shoe: any) => {
+      // Item description and price
       printer.bold(true);
-      printer.println(`Item ${index + 1}: ${shoe.category}`);
+      printer.println(`1 ${shoe.category || 'Item'} Ush${shoe.price}`);
       printer.bold(false);
-      if (shoe.color) printer.println(`Color: ${shoe.color}`);
-      if (shoe.notes) printer.println(`Notes: ${shoe.notes}`);
       
+      // Item attributes/details (color, brand, etc)
+      if (shoe.color) printer.println(shoe.color);
+      if (shoe.notes) printer.println(shoe.notes);
+      
+      // Service applied
       if (shoe.service_name) {
-        printer.alignRight();
-        printer.println(`${shoe.service_name}: ${formatCurrency(shoe.price)}`);
-        printer.alignLeft();
-        total += shoe.price;
+        printer.println(`${shoe.service_name} - ${shoe.service_type || 'Standard'}`);
       }
+      
+      // Pieces
+      printer.println('1 PIECES');
+      
+      subtotal += shoe.price || 0;
       printer.newLine();
     });
 
-    // Print totals
+    // Print totals block
+    const total = subtotal; // Could add tax here if needed
+    const balance = total - totalPaid;
+    
     printer.drawLine();
     printer.alignRight();
-    printer.println(`Subtotal: ${formatCurrency(total)}`);
-    if (order.tax) {
-      printer.println(`Tax: ${formatCurrency(order.tax)}`);
-      total += order.tax;
-    }
+    printer.println(`SubTotal: Ush${subtotal}`);
     printer.bold(true);
-    printer.println(`Total: ${formatCurrency(total)}`);
+    printer.println(`Total: Ush${total}`);
+    printer.bold(false);
+    printer.println(`Paid Amount: Ush${totalPaid}`);
+    printer.bold(true);
+    printer.println(`Balance: Ush${balance}`);
     printer.bold(false);
     printer.newLine();
 
-    // Print promised date if exists
+    // Print promised pickup date
     if (order.promised_date) {
+      const promDate = new Date(order.promised_date);
+      const promDayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][promDate.getDay()];
+      const promDay = promDate.getDate().toString().padStart(2, '0');
+      const promMonth = (promDate.getMonth() + 1).toString().padStart(2, '0');
+      const promYear = promDate.getFullYear();
+      const promHours = promDate.getHours().toString().padStart(2, '0');
+      const promMinutes = promDate.getMinutes().toString().padStart(2, '0');
+      
+      printer.drawLine();
       printer.alignCenter();
-      printer.println('Ready for pickup on:');
+      printer.println(`${promDayName}${promDay}/${promMonth}/${promYear} ${promHours}:${promMinutes}`);
       printer.bold(true);
-      printer.setTextSize(1, 1);
-      printer.println(new Date(order.promised_date).toLocaleDateString());
-      printer.setTextSize(0, 0);
+      printer.println('REG/PICKUP');
       printer.bold(false);
-      printer.newLine();
-    }
-
-    // Print notes if exists
-    if (order.notes) {
-      printer.alignLeft();
-      printer.bold(true);
-      printer.println('Notes:');
-      printer.bold(false);
-      printer.println(order.notes);
       printer.newLine();
     }
 
     // Print footer
     printer.alignCenter();
-    printer.println('Thank you for your business!');
-    printer.println('Please keep this receipt');
+    printer.println('Thank You for Your Business');
+    printer.println('Store Hours Mon-Fri:8:00AM - 6:30PM');
+    printer.println('Saturday: 8:30AM - 5:00PM');
     printer.newLine();
+    
     printer.cut();
 
     try {
@@ -315,12 +344,12 @@ router.post('/print/quotation/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     
     // Get quotation details with customer info
-    const quotation = await db.get(`
+    const quotation = await db.prepare(`
       SELECT q.*, c.name as customer_name, c.phone as customer_phone
       FROM quotations q
       LEFT JOIN customers c ON q.customer_id = c.id
-      WHERE q.id = $1
-    `, [id]);
+      WHERE q.id = ?
+    `).get(id);
 
     if (!quotation) {
       return res.status(404).json({ error: 'Quotation not found' });
@@ -342,12 +371,10 @@ router.post('/print/quotation/:id', async (req: Request, res: Response) => {
     printer.alignCenter();
     printer.bold(true);
     printer.setTextSize(1, 1);
-    printer.println('SHOE REPAIR POS');
+    printer.println('Kampani Shoes and Bag Clinic');
     printer.setTextSize(0, 0);
-    printer.println('QUOTATION');
+    printer.println('FORESTMALL, KAMPALA, Uganda');
     printer.bold(false);
-    printer.println('123 Main Street');
-    printer.println('Phone: (555) 123-4567');
     printer.newLine();
 
     // Print quotation info
@@ -356,7 +383,9 @@ router.post('/print/quotation/:id', async (req: Request, res: Response) => {
     printer.println(`Quotation #: ${quotation.id}`);
     printer.bold(false);
     printer.println(`Date: ${new Date(quotation.created_at).toLocaleDateString()}`);
-    printer.println(`Valid Until: ${new Date(quotation.valid_until).toLocaleDateString()}`);
+    if (quotation.valid_until) {
+      printer.println(`Valid Until: ${new Date(quotation.valid_until).toLocaleDateString()}`);
+    }
     printer.println(`Customer: ${quotation.customer_name}`);
     if (quotation.customer_phone) {
       printer.println(`Phone: ${quotation.customer_phone}`);

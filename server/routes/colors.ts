@@ -6,12 +6,12 @@ const router = express.Router();
 // Get all active colors
 router.get('/', async (req, res) => {
   try {
-    const colors = await db.all(`
+    const colors = await db.prepare(`
       SELECT id, name, hex_code, display_order
       FROM colors
-      WHERE is_active = true
+      WHERE is_active = 1
       ORDER BY display_order ASC, name ASC
-    `);
+    `).all();
 
     res.json(colors.map((color: any) => ({
       id: color.id,

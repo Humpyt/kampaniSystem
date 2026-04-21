@@ -7,12 +7,12 @@ const router = express.Router();
 // Get all products
 router.get('/', async (req, res) => {
   try {
-    const products = await db.all(`
-      SELECT products.*, categories.name as category_name
-      FROM products
+    const products = await db.prepare(`
+      SELECT products.*, categories.name as category_name 
+      FROM products 
       LEFT JOIN categories ON products.category_id = categories.id
       ORDER BY products.name ASC
-    `);
+    `).all();
     res.json(products);
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -24,11 +24,11 @@ router.get('/', async (req, res) => {
 router.get('/category/:categoryId', async (req, res) => {
   try {
     const { categoryId } = req.params;
-    const products = await db.all(`
-      SELECT * FROM products
-      WHERE category_id = $1
+    const products = await db.prepare(`
+      SELECT * FROM products 
+      WHERE category_id = ? 
       ORDER BY name ASC
-    `, [categoryId]);
+    `).all(categoryId);
     res.json(products);
   } catch (error) {
     console.error('Error fetching products by category:', error);
@@ -40,25 +40,25 @@ router.get('/category/:categoryId', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, price, description, imageUrl, categoryId, inStock, featured } = req.body;
-
+    
     if (!name || !categoryId || price === undefined) {
       return res.status(400).json({ error: 'Name, categoryId and price are required' });
     }
 
     const id = uuidv4();
     const now = new Date().toISOString();
-
-    await db.run(`
+    
+    await db.prepare(`
       INSERT INTO products (
-        id, name, price, description, image_url, category_id,
+        id, name, price, description, image_url, category_id, 
         in_stock, featured, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    `, [
-      id, name, price, description || null, imageUrl || null, categoryId,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, name, price, description || null, imageUrl || null, categoryId, 
       inStock ? 1 : 0, featured ? 1 : 0, now, now
-    ]);
-
-    const newProduct = await db.get('SELECT * FROM products WHERE id = $1', [id]);
+    );
+    
+    const newProduct = await db.prepare('SELECT * FROM products WHERE id = ?').get(id);
     res.status(201).json(newProduct);
   } catch (error) {
     console.error('Error creating product:', error);
@@ -74,29 +74,25 @@ router.put('/:id', async (req, res) => {
     const now = new Date().toISOString();
 
     // Create SET clause dynamically from provided updates
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    const setClause = Object.keys(updates)
+      .map(key => {
+        // Convert camelCase to snake_case for database
+        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        return `${dbKey} = ?`;
+      })
+      .concat(['updated_at = ?'])
+      .join(', ');
 
-    Object.keys(updates).forEach(key => {
-      // Convert camelCase to snake_case for database
-      const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      setClauses.push(`${dbKey} = $${paramIndex++}`);
-      values.push(updates[key]);
-    });
+    const values = [...Object.values(updates), now, id];
 
-    setClauses.push(`updated_at = $${paramIndex++}`);
-    values.push(now);
-    values.push(id);
+    const result = await db.prepare(`
+      UPDATE products 
+      SET ${setClause}
+      WHERE id = ?
+    `).run(...values);
 
-    const result = await db.run(`
-      UPDATE products
-      SET ${setClauses.join(', ')}
-      WHERE id = $${paramIndex}
-    `, values);
-
-    if ((result as any).rowCount > 0) {
-      const updatedProduct = await db.get('SELECT * FROM products WHERE id = $1', [id]);
+    if ((result as any).changes > 0) {
+      const updatedProduct = await db.prepare('SELECT * FROM products WHERE id = ?').get(id);
       res.json(updatedProduct);
     } else {
       res.status(404).json({ error: 'Product not found' });
@@ -111,9 +107,9 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.run('DELETE FROM products WHERE id = $1', [id]);
-
-    if ((result as any).rowCount > 0) {
+    const result = await db.prepare('DELETE FROM products WHERE id = ?').run(id);
+    
+    if ((result as any).changes > 0) {
       res.json({ message: 'Product deleted successfully' });
     } else {
       res.status(404).json({ error: 'Product not found' });

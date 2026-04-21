@@ -7,7 +7,7 @@ const router = express.Router();
 // Initialize QR codes table if it doesn't exist
 (async () => {
   try {
-    await db.query(`
+    await db.prepare(`
       CREATE TABLE IF NOT EXISTS qrcodes (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
@@ -15,7 +15,7 @@ const router = express.Router();
         data TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
-    `);
+    `).run();
   } catch (error) {
     console.error('Error creating qrcodes table:', error);
   }
@@ -24,10 +24,10 @@ const router = express.Router();
 // Get all QR codes
 router.get('/', async (req, res) => {
   try {
-    const qrCodes = await db.all(`
-      SELECT * FROM qrcodes
+    const qrCodes = await db.prepare(`
+      SELECT * FROM qrcodes 
       ORDER BY created_at DESC
-    `);
+    `).all();
     res.json(qrCodes);
   } catch (error) {
     console.error('Error fetching QR codes:', error);
@@ -40,13 +40,13 @@ router.post('/', async (req, res) => {
   try {
     const { type, label, data } = req.body;
     const id = uuidv4();
-
-    await db.run(`
+    
+    await db.prepare(`
       INSERT INTO qrcodes (id, type, label, data)
-      VALUES ($1, $2, $3, $4)
-    `, [id, type, label, data]);
-
-    const newQRCode = await db.get('SELECT * FROM qrcodes WHERE id = $1', [id]);
+      VALUES (?, ?, ?, ?)
+    `).run(id, type, label, data);
+    
+    const newQRCode = await db.prepare('SELECT * FROM qrcodes WHERE id = ?').get(id);
     res.status(201).json(newQRCode);
   } catch (error) {
     console.error('Error creating QR code:', error);
@@ -58,7 +58,7 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.run('DELETE FROM qrcodes WHERE id = $1', [id]);
+    await db.prepare('DELETE FROM qrcodes WHERE id = ?').run(id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting QR code:', error);

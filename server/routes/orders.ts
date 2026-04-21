@@ -5,36 +5,38 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Create a new order
-router.post('/orders', async (req: any, res: any) => {
+router.post('/orders', (req, res) => {
   try {
     const { items, total, paymentMethod, customerInfo } = req.body;
     const now = new Date().toISOString();
-
+    
     // Create order
     const orderId = uuidv4();
-    await db.run(`
+    db.prepare(`
       INSERT INTO orders (
         id, total_amount, payment_method, customer_name,
         customer_phone, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [
-      orderId, total, paymentMethod,
-      customerInfo?.name || null,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderId, total, paymentMethod, 
+      customerInfo?.name || null, 
       customerInfo?.phone || null,
       now, now
-    ]);
+    );
 
     // Create order items
+    const insertOrderItem = db.prepare(`
+      INSERT INTO order_items (
+        id, order_id, item_id, quantity, price,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
     for (const item of items) {
-      await db.run(`
-        INSERT INTO order_items (
-          id, order_id, item_id, quantity, price,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [
+      insertOrderItem.run(
         uuidv4(), orderId, item.id, item.quantity,
         item.price, now, now
-      ]);
+      );
     }
 
     res.status(201).json({ id: orderId });

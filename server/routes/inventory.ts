@@ -9,18 +9,18 @@ router.get('/supplies', async (req, res) => {
   try {
     const { category } = req.query;
     console.log('Fetching supplies for category:', category);
-
-    const query = category
-      ? 'SELECT * FROM supplies WHERE LOWER(category) = LOWER($1)'
+    
+    const query = category 
+      ? 'SELECT * FROM supplies WHERE LOWER(category) = LOWER(?)'
       : 'SELECT * FROM supplies';
-
+    
     const items = category
-      ? await db.all(query, [category])
-      : await db.all(query);
-
+      ? await db.prepare(query).all(category)
+      : await db.prepare(query).all();
+    
     console.log('Found items:', items.length);
     console.log('Sample item:', items[0]);
-
+    
     res.json(items);
   } catch (error) {
     console.error('Error fetching supplies:', error);
@@ -34,18 +34,18 @@ router.post('/supplies', async (req, res) => {
     const { name, category, description, onHand, minStock, cost, unit } = req.body;
     const now = new Date().toISOString();
     const id = uuidv4();
-
-    await db.run(`
+    
+    await db.prepare(`
       INSERT INTO supplies (
         id, name, category, description, on_hand, min_stock, cost, unit,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    `, [
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       id, name, category, description, onHand, minStock, cost, unit,
       now, now
-    ]);
-
-    const item = await db.get('SELECT * FROM supplies WHERE id = $1', [id]);
+    );
+    
+    const item = await db.prepare('SELECT * FROM supplies WHERE id = ?').get(id);
     res.status(201).json(item);
   } catch (error) {
     console.error('Error creating supply:', error);
@@ -59,24 +59,24 @@ router.put('/supplies/:id', async (req, res) => {
     const { id } = req.params;
     const { name, category, description, onHand, minStock, cost, unit } = req.body;
     const now = new Date().toISOString();
-
-    await db.run(`
+    
+    await db.prepare(`
       UPDATE supplies SET
-        name = $1,
-        category = $2,
-        description = $3,
-        on_hand = $4,
-        min_stock = $5,
-        cost = $6,
-        unit = $7,
-        updated_at = $8
-      WHERE id = $9
-    `, [
+        name = ?,
+        category = ?,
+        description = ?,
+        on_hand = ?,
+        min_stock = ?,
+        cost = ?,
+        unit = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
       name, category, description, onHand, minStock, cost, unit,
       now, id
-    ]);
-
-    const item = await db.get('SELECT * FROM supplies WHERE id = $1', [id]);
+    );
+    
+    const item = await db.prepare('SELECT * FROM supplies WHERE id = ?').get(id);
     if (!item) {
       return res.status(404).json({ error: 'Supply item not found' });
     }
@@ -91,8 +91,8 @@ router.put('/supplies/:id', async (req, res) => {
 router.delete('/supplies/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.run('DELETE FROM supplies WHERE id = $1', [id]);
-    if ((result as any).rowCount === 0) {
+    const result = await db.prepare('DELETE FROM supplies WHERE id = ?').run(id);
+    if ((result as any).changes === 0) {
       return res.status(404).json({ error: 'Supply item not found' });
     }
     res.status(204).send();

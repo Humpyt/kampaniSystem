@@ -2,8 +2,6 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from './database';
 import { transformOperation } from './utils';
-import { applyPaymentsToOperation, PaymentInput, PaymentSource } from './helpers/applyPayments';
-import { authenticateToken } from './routes/auth';
 
 const router = express.Router();
 
@@ -23,12 +21,12 @@ const getRetailItemsByOperationIds = async (operationIds: string[]) => {
     return retailItemsMap;
   }
 
-  const placeholders = operationIds.map((_, i) => `$${i + 1}`).join(',');
-  const retailItems = await db.all(`
+  const placeholders = operationIds.map(() => '?').join(',');
+  const retailItems = await db.prepare(`
     SELECT * FROM operation_retail_items
     WHERE operation_id IN (${placeholders})
     ORDER BY created_at ASC
-  `, operationIds);
+  `).all(...operationIds);
 
   for (const item of retailItems) {
     if (!retailItemsMap.has(item.operation_id)) {
@@ -41,14 +39,14 @@ const getRetailItemsByOperationIds = async (operationIds: string[]) => {
 };
 
 // Get all operations
-router.get('/', authenticateToken, async (req: any, res) => {
+router.get('/', async (req, res) => {
   try {
     const { created_by, status, limit = 1000, offset = 0 } = req.query;
     const parsedLimit = Math.min(parseInt(limit as string) || 1000, 5000);
     const parsedOffset = parseInt(offset as string) || 0;
 
     let query = `
-      SELECT o.*, c.id as customer_id, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
+      SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
@@ -56,18 +54,13 @@ router.get('/', authenticateToken, async (req: any, res) => {
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // Role-based filtering: staff can only see their own operations
-    if (req.user.role === 'staff') {
-      conditions.push(`o.created_by = $${params.length + 1}`);
-      params.push(req.user.id);
-    } else if (created_by) {
-      // Admin/manager can filter by created_by via query param
-      conditions.push(`o.created_by = $${params.length + 1}`);
+    if (created_by) {
+      conditions.push(`o.created_by = ?`);
       params.push(created_by);
     }
 
     if (status) {
-      conditions.push(`o.status = $${params.length + 1}`);
+      conditions.push(`o.status = ?`);
       params.push(status);
     }
 
@@ -75,19 +68,15 @@ router.get('/', authenticateToken, async (req: any, res) => {
       query += ` WHERE ` + conditions.join(' AND ');
     }
 
-    query += ` ORDER BY o.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`;
     params.push(parsedLimit, parsedOffset);
 
-    const operations = await db.all(query, params);
+    const operations = await db.prepare(query).all(...params);
 
     // Get total count
-    let countQuery = `SELECT COUNT(*) as total FROM operations o`;
-    let countParams: any[] = [];
-    if (conditions.length > 0) {
-      countQuery += ` WHERE ` + conditions.join(' AND ');
-      countParams = params.slice(0, -2);
-    }
-    const { total } = await db.get(countQuery, countParams);
+    const countQuery = `SELECT COUNT(*) as total FROM operations ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}`;
+    const countParams = conditions.length > 0 ? params.slice(0, -2) : [];
+    const { total } = await db.prepare(countQuery).get(...countParams);
 
     // Optimization: Fetch all shoes in a single query instead of N+1 queries
     const operationIds = operations.map((op: any) => op.id);
@@ -95,14 +84,14 @@ router.get('/', authenticateToken, async (req: any, res) => {
     const retailItemsMap = await getRetailItemsByOperationIds(operationIds);
 
     if (operationIds.length > 0) {
-      const placeholders = operationIds.map((_, i) => `$${i + 1}`).join(',');
-      const allShoes = await db.all(`
+      const placeholders = operationIds.map(() => '?').join(',');
+      const allShoes = await db.prepare(`
         SELECT os.*, s.name as service_name, s.price as service_base_price
         FROM operation_shoes os
         LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
         LEFT JOIN services s ON oss.service_id = s.id
         WHERE os.operation_id IN (${placeholders})
-      `, operationIds);
+      `).all(...operationIds);
 
       // Group shoes by operation_id
       for (const shoe of allShoes) {
@@ -119,7 +108,6 @@ router.get('/', authenticateToken, async (req: any, res) => {
       shoes: (shoesMap.get(operation.id) || []).map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
-        size: shoe.shoe_size || null,
         color: shoe.color,
         colorDescription: shoe.color_description || '',
         notes: shoe.notes,
@@ -149,41 +137,35 @@ router.get('/', authenticateToken, async (req: any, res) => {
 });
 
 // Get operation by ID
-router.get('/:id', authenticateToken, async (req: any, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const operation = await db.get(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
-      WHERE o.id = $1
-    `, [id]);
+      WHERE o.id = ?
+    `).get(id);
 
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
     }
 
-    // Role-based access control: staff can only view their own operations
-    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
     // Get shoes and services for this operation
-    const shoes = await db.all(`
+    const shoes = await db.prepare(`
       SELECT os.*, s.name as service_name, s.price as service_base_price
       FROM operation_shoes os
       LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
       LEFT JOIN services s ON oss.service_id = s.id
-      WHERE os.operation_id = $1
-    `, [id]);
+      WHERE os.operation_id = ?
+    `).all(id);
 
     const operationWithShoes = {
       ...operation,
       shoes: shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
-        size: shoe.shoe_size || null,
         color: shoe.color,
         colorDescription: shoe.color_description || '',
         notes: shoe.notes,
@@ -204,24 +186,15 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Get payment history for an operation
-router.get('/:id/payments', authenticateToken, async (req: any, res) => {
+router.get('/:id/payments', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check operation ownership for staff
-    const operation = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
-    if (!operation) {
-      return res.status(404).json({ error: 'Operation not found' });
-    }
-    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const payments = await db.all(`
+    const payments = await db.prepare(`
       SELECT * FROM operation_payments
-      WHERE operation_id = $1
+      WHERE operation_id = ?
       ORDER BY created_at DESC
-    `, [id]);
+    `).all(id);
 
     res.json(payments);
   } catch (error) {
@@ -231,13 +204,13 @@ router.get('/:id/payments', authenticateToken, async (req: any, res) => {
 });
 
 // Create new operation
-router.post('/', authenticateToken, async (req: any, res) => {
+router.post('/', async (req, res) => {
   console.log('Received operation request:', JSON.stringify(req.body, null, 2));
   const {
     customer,
     shoes = [],
     retailItems = [],
-    workflow_status = 'pending',
+    status,
     totalAmount,
     discount,
     isNoCharge,
@@ -246,16 +219,14 @@ router.post('/', authenticateToken, async (req: any, res) => {
     isPickup,
     notes,
     promisedDate,
-    ticket_number,
-    payments = [],
+    created_by,
   } = req.body;
-  // Use authenticated user's ID as creator; fallback to body-created_by only for admin/manager
-  const created_by = req.user.id;
   const now = new Date().toISOString();
   const normalizedShoes = Array.isArray(shoes) ? shoes : [];
   const normalizedRetailItems = Array.isArray(retailItems) ? retailItems : [];
   const finalTotalAmount = Number(totalAmount) || 0;
   const discountAmount = Number(discount) || 0;
+  let generatedDocumentId: string | null = null;
 
   if (!customer || !customer.id) {
     console.error('Invalid customer data:', customer);
@@ -267,27 +238,24 @@ router.post('/', authenticateToken, async (req: any, res) => {
     return res.status(400).json({ error: 'At least one repair or retail item is required' });
   }
 
-  let operationId: string = '';
-
   try {
-    // First transaction: Create the operation
-    await db.withTransaction(async (client) => {
+    await db.run('BEGIN TRANSACTION');
+
+    try {
       // Insert the operation
-      operationId = uuidv4();
+      const operationId = uuidv4();
       console.log('Creating operation with ID:', operationId);
 
-      await client.run(`
+      await db.prepare(`
         INSERT INTO operations (
-          id, customer_id, status, workflow_status, payment_status, total_amount, discount, notes, promised_date,
+          id, customer_id, status, total_amount, discount, notes, promised_date,
           is_no_charge, is_do_over, is_delivery, is_pickup,
-          created_by, created_at, updated_at, ticket_number
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-      `, [
+          created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
         operationId,
         customer.id,
-        'pending', // legacy status field - kept for compatibility
-        workflow_status, // new workflow_status field
-        'unpaid', // initial payment_status (will be updated if payments provided)
+        status || 'pending',
         finalTotalAmount,
         discountAmount,
         notes || null,
@@ -298,9 +266,8 @@ router.post('/', authenticateToken, async (req: any, res) => {
         isPickup ? 1 : 0,
         created_by || null,
         now,
-        now,
-        ticket_number || null
-      ]);
+        now
+      );
 
       // Insert each shoe
       for (let index = 0; index < normalizedShoes.length; index++) {
@@ -308,11 +275,11 @@ router.post('/', authenticateToken, async (req: any, res) => {
         console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2));
         const shoeId = uuidv4();
 
-        await client.run(`
+        await db.prepare(`
           INSERT INTO operation_shoes (
             id, operation_id, category, shoe_size, color, color_description, notes, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
           shoeId,
           operationId,
           shoe.category,
@@ -322,7 +289,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
           shoe.notes || null,
           now,
           now
-        ]);
+        );
 
         // Insert services for each shoe
         if (Array.isArray(shoe.services)) {
@@ -334,12 +301,12 @@ router.post('/', authenticateToken, async (req: any, res) => {
               throw new Error(`Missing service_id for service ${sIndex + 1} of shoe ${index + 1}`);
             }
 
-            await client.run(`
+            await db.prepare(`
               INSERT INTO operation_services (
                 id, operation_shoe_id, service_id, quantity, price, notes,
                 created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            `, [
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
               uuidv4(),
               shoeId,
               service.service_id,
@@ -348,7 +315,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
               service.notes || null,
               now,
               now
-            ]);
+            );
           }
         }
       }
@@ -364,11 +331,11 @@ router.post('/', authenticateToken, async (req: any, res) => {
           throw new Error(`Invalid retail item at position ${index + 1}`);
         }
 
-        await client.run(`
+        await db.prepare(`
           INSERT INTO operation_retail_items (
             id, operation_id, product_id, product_name, unit_price, quantity, total_price, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
           uuidv4(),
           operationId,
           item.productId || null,
@@ -377,98 +344,99 @@ router.post('/', authenticateToken, async (req: any, res) => {
           quantity,
           totalPrice,
           now
-        ]);
+        );
+      }
+
+      // Return the created operation with all related data
+      const operation = await db.prepare(`
+        SELECT 
+          o.*,
+          c.name as customer_name,
+          c.phone as customer_phone,
+          c.email as customer_email
+        FROM operations o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        WHERE o.id = ?
+      `).get(operationId);
+
+      // Get shoes for this operation
+      const operationShoes = await db.prepare(`
+        SELECT * FROM operation_shoes WHERE operation_id = ?
+      `).all(operationId);
+      const operationRetailItems = (await getRetailItemsByOperationIds([operationId])).get(operationId) || [];
+
+      // Get services for each shoe
+      const shoesWithServices = [];
+      for (const shoe of operationShoes) {
+        const services = await db.prepare(`
+          SELECT 
+            os.*,
+            s.name as service_name,
+            s.price as service_base_price
+          FROM operation_services os
+          LEFT JOIN services s ON os.service_id = s.id
+          WHERE os.operation_shoe_id = ?
+        `).all(shoe.id);
+
+        shoesWithServices.push({
+          ...shoe,
+          services: services.map((s: any) => ({
+            id: s.service_id,
+            name: s.service_name,
+            price: s.price,
+            quantity: s.quantity,
+            notes: s.notes
+          }))
+        });
       }
 
       // Update customer stats: increment total_orders and update last_visit
-      await client.run(`
+      await db.prepare(`
         UPDATE customers
         SET total_orders = total_orders + 1,
-            last_visit = $1
-        WHERE id = $2
-      `, [now, customer.id]);
-    });
+            last_visit = ?
+        WHERE id = ?
+      `).run(now, customer.id);
 
-    // Transaction committed. Now handle payments or invoice generation.
+      await db.run('COMMIT');
 
-    // If payments provided at creation, apply them using the shared helper
-    if (payments && payments.length > 0) {
-      console.log('[POST /] Applying payments at creation:', payments);
-      const paymentResult = await applyPaymentsToOperation(operationId, payments as PaymentInput[], 'drop');
-      if (!paymentResult.success) {
-        console.error('[POST /] Payment application failed:', paymentResult.error);
-        return res.status(400).json({ error: paymentResult.error });
+      // Auto-generate invoice since no payment was made yet
+      try {
+        const invoiceId = uuidv4();
+        const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+        await db.prepare(`
+          INSERT INTO invoices (
+            id, operation_id, type, invoice_number, customer_name, customer_phone,
+            subtotal, discount, total, amount_paid, payment_method, notes,
+            promised_date, generated_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          invoiceId, operationId, 'invoice', invoiceNumber,
+          customer.name, customer.phone || '',
+          finalTotalAmount + discountAmount, discountAmount, finalTotalAmount,
+          0, null, notes || null, promisedDate || null, created_by || null, now, now
+        );
+        generatedDocumentId = invoiceId;
+      } catch (err) {
+        console.error('Failed to auto-generate invoice:', err);
       }
-      console.log('[POST /] Payments applied successfully');
-      return res.json(paymentResult.operation);
+
+      res.json(transformOperation({
+        ...operation,
+        shoes: shoesWithServices,
+        retailItems: operationRetailItems,
+        isNoCharge: Boolean(operation.is_no_charge),
+        isDoOver: Boolean(operation.is_do_over),
+        isDelivery: Boolean(operation.is_delivery),
+        isPickup: Boolean(operation.is_pickup),
+        discount: operation.discount || 0,
+        generatedDocumentId,
+        generatedDocumentType: generatedDocumentId ? 'invoice' : null,
+      }));
+    } catch (error) {
+      await db.run('ROLLBACK');
+      throw error;
     }
-
-    // No payments: auto-generate invoice
-    const invoiceId = uuidv4();
-    const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-    try {
-      await db.run(`
-        INSERT INTO invoices (
-          id, operation_id, type, invoice_number, customer_name, customer_phone,
-          subtotal, discount, total, amount_paid, payment_method, notes,
-          promised_date, generated_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      `, [
-        invoiceId, operationId, 'invoice', invoiceNumber,
-        customer.name, customer.phone || '',
-        finalTotalAmount + discountAmount, discountAmount, finalTotalAmount,
-        0, null, notes || null, promisedDate || null, created_by || null, now, now
-      ]);
-    } catch (err) {
-      console.error('Failed to auto-generate invoice:', err);
-    }
-
-    // Return the created operation
-    const operation = await db.get(`
-      SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.email as customer_email
-      FROM operations o
-      LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [operationId]);
-
-    const operationShoes = await db.all(`SELECT * FROM operation_shoes WHERE operation_id = $1`, [operationId]);
-    const operationRetailItems = (await getRetailItemsByOperationIds([operationId])).get(operationId) || [];
-
-    const shoesWithServices = [];
-    for (const shoe of operationShoes) {
-      const services = await db.all(`
-        SELECT os.*, s.name as service_name, s.price as service_base_price
-        FROM operation_services os
-        LEFT JOIN services s ON os.service_id = s.id
-        WHERE os.operation_shoe_id = $1
-      `, [shoe.id]);
-
-      shoesWithServices.push({
-        ...shoe,
-        size: shoe.shoe_size || null,
-        services: services.map((s: any) => ({
-          id: s.service_id,
-          name: s.service_name,
-          price: s.price,
-          quantity: s.quantity,
-          notes: s.notes
-        }))
-      });
-    }
-
-    res.json(transformOperation({
-      ...operation,
-      shoes: shoesWithServices,
-      retailItems: operationRetailItems,
-      isNoCharge: Boolean(operation.is_no_charge),
-      isDoOver: Boolean(operation.is_do_over),
-      isDelivery: Boolean(operation.is_delivery),
-      isPickup: Boolean(operation.is_pickup),
-      discount: operation.discount || 0,
-      generatedDocumentId: invoiceId,
-      generatedDocumentType: invoiceId ? 'invoice' : null,
-    }));
-
   } catch (error) {
     console.error('Error creating operation:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create operation' });
@@ -476,43 +444,34 @@ router.post('/', authenticateToken, async (req: any, res) => {
 });
 
 // Update operation status
-router.patch('/:id', authenticateToken, async (req: any, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
     const now = new Date().toISOString();
 
-    // Check operation ownership for staff
-    const existingOp = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
-    if (!existingOp) {
-      return res.status(404).json({ error: 'Operation not found' });
-    }
-    if (req.user.role === 'staff' && existingOp.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
     const setClauses = Object.keys(updates)
-      .map((key, i) => {
+      .map(key => {
         const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-        return `${dbKey} = $${i + 1}`;
+        return `${dbKey} = ?`;
       })
-      .concat([`updated_at = $${Object.keys(updates).length + 1}`])
+      .concat(['updated_at = ?'])
       .join(', ');
 
     const values = [...Object.values(updates), now, id];
 
-    await db.run(`
+    await db.prepare(`
       UPDATE operations
       SET ${setClauses}
-      WHERE id = $${values.length}
-    `, values);
+      WHERE id = ?
+    `).run(...values);
 
-    const operation = await db.get(`
+    const operation = await db.prepare(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
-    `, [id]);
+      WHERE o.id = ?
+    `).get(id);
 
     res.json(transformOperation(operation));
   } catch (error) {
@@ -521,117 +480,144 @@ router.patch('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Process payment with multiple methods
-router.post('/:id/payments', authenticateToken, async (req: any, res) => {
+router.post('/:id/payments', async (req, res) => {
   try {
     const { id } = req.params;
-    const { payments } = req.body;
-
-    console.log('[PAYMENT] Received payment request for operation:', id);
-    console.log('[PAYMENT] Payments data:', JSON.stringify(payments));
+    const { payments } = req.body; // Array of { method, amount, transaction_id }
 
     if (!Array.isArray(payments) || payments.length === 0) {
       return res.status(400).json({ error: 'Payments array is required' });
     }
 
-    // Check operation ownership for staff
-    const operation = await db.get('SELECT created_by FROM operations WHERE id = $1', [id]);
-    if (!operation) {
-      return res.status(404).json({ error: 'Operation not found' });
-    }
-    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    // Use the shared payment helper
-    const result = await applyPaymentsToOperation(id, payments as PaymentInput[], 'pickup');
-
-    if (!result.success) {
-      console.log('[PAYMENT] Payment application failed:', result.error);
-      return res.status(400).json({ error: result.error });
-    }
-
-    console.log('[PAYMENT] Payment applied successfully');
-    res.json(result.operation);
-
-  } catch (error) {
-    console.error('Error processing payment:', error);
-    res.status(500).json({ error: 'Failed to process payment' });
-  }
-});
-
-// Update workflow status (for marking as picked up, delivered, etc.)
-router.patch('/:id/workflow-status', authenticateToken, async (req: any, res) => {
-  try {
-    const { id } = req.params;
-    const { workflow_status, picked_up_at, picked_up_by_name, picked_up_by_phone } = req.body;
-
-    const validTransitions: Record<string, string[]> = {
-      'pending': ['in_progress', 'cancelled'],
-      'in_progress': ['ready', 'cancelled'],
-      'ready': ['delivered', 'cancelled'],
-      'delivered': [],
-      'cancelled': []
-    };
-
-    // Get current operation
-    const operation = await db.get('SELECT workflow_status, created_by FROM operations WHERE id = $1', [id]);
+    // Get operation
+    const operation = await db.get(`
+      SELECT o.*, c.name as customer_name, c.phone as customer_phone
+      FROM operations o
+      LEFT JOIN customers c ON o.customer_id = c.id
+      WHERE o.id = ?
+    `, [id]);
     if (!operation) {
       return res.status(404).json({ error: 'Operation not found' });
     }
 
-    // Role-based access control: staff can only update their own operations
-    if (req.user.role === 'staff' && operation.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const currentStatus = operation.workflow_status || 'pending';
-
-    // Validate transition
-    if (!validTransitions[currentStatus]?.includes(workflow_status)) {
-      return res.status(400).json({
-        error: `Invalid transition from '${currentStatus}' to '${workflow_status}'`
-      });
-    }
-
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
     const now = new Date().toISOString();
-    const updates: string[] = ['workflow_status = $1', 'updated_at = $2'];
-    const values: any[] = [workflow_status, now];
 
-    if (picked_up_at) {
-      values.push(picked_up_at);
-      updates.push(`picked_up_at = $${values.length}`);
+    await db.run('BEGIN TRANSACTION');
+
+    // Add each payment
+    for (const payment of payments) {
+      const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await db.run(`
+        INSERT INTO operation_payments (id, operation_id, payment_method, amount, transaction_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [paymentId, id, payment.method, payment.amount, payment.transaction_id || null, now]);
     }
 
-    if (picked_up_by_name) {
-      values.push(picked_up_by_name);
-      updates.push(`picked_up_by_name = $${values.length}`);
+    // Update operation paid_amount
+    const newPaidAmount = (operation.paid_amount || 0) + totalPaid;
+    await db.run(`
+      UPDATE operations
+      SET paid_amount = ?,
+          status = CASE WHEN ? >= total_amount THEN 'completed' ELSE status END,
+          updated_at = ?
+      WHERE id = ?
+    `, [newPaidAmount, newPaidAmount, now, id]);
+
+    // Update customer stats: add to total_spent and update last_visit
+    await db.prepare(`
+      UPDATE customers
+      SET total_spent = total_spent + ?,
+          last_visit = ?
+      WHERE id = ?
+    `).run(totalPaid, now, (operation as any).customer_id);
+
+    // Auto-capture 2% credit on transaction
+    const creditAmount = Math.round(totalPaid * 0.02);
+    if (creditAmount > 0) {
+      const customerId = (operation as any).customer_id;
+      const creditTransactionId = `credit_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const currentCustomer = await db.get('SELECT account_balance FROM customers WHERE id = ?', [customerId]);
+      const newCreditBalance = (currentCustomer?.account_balance || 0) + creditAmount;
+      await db.run(`
+        INSERT INTO customer_credits (id, customer_id, amount, balance_after, type, description, created_by, created_at)
+        VALUES (?, ?, ?, ?, 'credit', ?, ?, ?)
+      `, [creditTransactionId, customerId, creditAmount, newCreditBalance, '2% transaction credit', null, now]);
+      await db.run('UPDATE customers SET account_balance = ? WHERE id = ?', [newCreditBalance, customerId]);
     }
 
-    if (picked_up_by_phone) {
-      values.push(picked_up_by_phone);
-      updates.push(`picked_up_by_phone = $${values.length}`);
+    await db.run('COMMIT');
+
+    let generatedDocumentId: string | null = null;
+    let generatedDocumentType: 'invoice' | 'receipt' | null = null;
+
+    // Auto-generate receipt if fully paid
+    if (newPaidAmount >= (operation as any).total_amount) {
+      try {
+        // Check if receipt already exists
+        const existingReceipt = await db.get(
+          'SELECT id FROM invoices WHERE operation_id = ? AND type = ?',
+          [id, 'receipt']
+        );
+        if (!existingReceipt) {
+          const invoiceId = uuidv4();
+          const invoiceNumber = `RCP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+          await db.prepare(`
+            INSERT INTO invoices (
+              id, operation_id, type, invoice_number, customer_name, customer_phone,
+              subtotal, discount, total, amount_paid, payment_method, notes,
+              promised_date, generated_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            invoiceId, id, 'receipt', invoiceNumber,
+            (operation as any).customer_name || '', (operation as any).customer_phone || '',
+            (operation as any).total_amount + ((operation as any).discount || 0),
+            (operation as any).discount || 0,
+            (operation as any).total_amount,
+            newPaidAmount,
+            payments[0]?.method || null,
+            (operation as any).notes,
+            (operation as any).promised_date,
+            null, now, now
+          );
+          generatedDocumentId = invoiceId;
+        } else {
+          generatedDocumentId = (existingReceipt as any).id;
+        }
+        generatedDocumentType = 'receipt';
+      } catch (err) {
+        console.error('Failed to auto-generate receipt:', err);
+      }
+    } else {
+      const existingInvoice = await db.get(
+        'SELECT id FROM invoices WHERE operation_id = ? AND type = ?',
+        [id, 'invoice']
+      );
+      if (existingInvoice) {
+        generatedDocumentId = (existingInvoice as any).id;
+        generatedDocumentType = 'invoice';
+      }
     }
 
-    values.push(id);
-
-    await db.run(
-      `UPDATE operations SET ${updates.join(', ')} WHERE id = $${values.length}`,
-      values
-    );
-
-    // Get updated operation with customer info
+    // Return updated operation
     const updatedOperation = await db.get(`
       SELECT o.*, c.name as customer_name, c.phone as customer_phone
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
-      WHERE o.id = $1
+      WHERE o.id = ?
     `, [id]);
-
-    res.json(transformOperation(updatedOperation));
+    const retailItems = (await getRetailItemsByOperationIds([id])).get(id) || [];
+    res.json(transformOperation({
+      ...updatedOperation,
+      retailItems,
+      generatedDocumentId,
+      generatedDocumentType,
+    }));
 
   } catch (error) {
-    console.error('Error updating workflow status:', error);
-    res.status(500).json({ error: 'Failed to update workflow status' });
+    await db.run('ROLLBACK');
+    console.error('Error processing payment:', error);
+    res.status(500).json({ error: 'Failed to process payment' });
   }
 });
 

@@ -22,12 +22,12 @@ router.get('/conversations', authenticateToken, async (req: any, res: any) => {
         ) as last_message,
         (
           SELECT COUNT(*) FROM staff_messages
-          WHERE conversation_id = sc.id AND sender_id != $1 AND is_read = false
+          WHERE conversation_id = sc.id AND sender_id != ? AND is_read = 0
         ) as unread_count
       FROM staff_conversations sc
       JOIN users u1 ON sc.participant1_id = u1.id
       JOIN users u2 ON sc.participant2_id = u2.id
-      WHERE sc.participant1_id = $2 OR sc.participant2_id = $3
+      WHERE sc.participant1_id = ? OR sc.participant2_id = ?
       ORDER BY sc.last_message_at DESC
     `, [userId, userId, userId]);
 
@@ -61,7 +61,7 @@ router.get('/conversations/:id', authenticateToken, async (req: any, res: any) =
 
     // Verify user is part of this conversation
     const conversation = await db.get(`
-      SELECT * FROM staff_conversations WHERE id = $1 AND (participant1_id = $2 OR participant2_id = $3)
+      SELECT * FROM staff_conversations WHERE id = ? AND (participant1_id = ? OR participant2_id = ?)
     `, [id, userId, userId]);
 
     if (!conversation) {
@@ -73,14 +73,14 @@ router.get('/conversations/:id', authenticateToken, async (req: any, res: any) =
       SELECT sm.*, u.name as sender_name
       FROM staff_messages sm
       JOIN users u ON sm.sender_id = u.id
-      WHERE sm.conversation_id = $1
+      WHERE sm.conversation_id = ?
       ORDER BY sm.created_at ASC
     `, [id]);
 
     // Mark messages as read
     await db.run(`
-      UPDATE staff_messages SET is_read = true
-      WHERE conversation_id = $1 AND sender_id != $2 AND is_read = false
+      UPDATE staff_messages SET is_read = 1
+      WHERE conversation_id = ? AND sender_id != ? AND is_read = 0
     `, [id, userId]);
 
     res.json(messages);
@@ -107,8 +107,8 @@ router.post('/conversations', authenticateToken, async (req: any, res: any) => {
     // Check if conversation exists
     let conversation = await db.get(`
       SELECT * FROM staff_conversations
-      WHERE (participant1_id = $1 AND participant2_id = $2)
-         OR (participant1_id = $3 AND participant2_id = $4)
+      WHERE (participant1_id = ? AND participant2_id = ?)
+         OR (participant1_id = ? AND participant2_id = ?)
     `, [senderId, recipientId, recipientId, senderId]);
 
     // Create if doesn't exist
@@ -117,7 +117,7 @@ router.post('/conversations', authenticateToken, async (req: any, res: any) => {
       const now = new Date().toISOString();
       await db.run(`
         INSERT INTO staff_conversations (id, participant1_id, participant2_id, created_at, last_message_at)
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES (?, ?, ?, ?, ?)
       `, [id, senderId, recipientId, now, now]);
       conversation = { id };
     }
@@ -141,7 +141,7 @@ router.post('/', authenticateToken, async (req: any, res: any) => {
 
     // Verify user is part of this conversation
     const conversation = await db.get(`
-      SELECT * FROM staff_conversations WHERE id = $1 AND (participant1_id = $2 OR participant2_id = $3)
+      SELECT * FROM staff_conversations WHERE id = ? AND (participant1_id = ? OR participant2_id = ?)
     `, [conversationId, senderId, senderId]);
 
     if (!conversation) {
@@ -154,16 +154,16 @@ router.post('/', authenticateToken, async (req: any, res: any) => {
     // Insert message
     await db.run(`
       INSERT INTO staff_messages (id, conversation_id, sender_id, content, created_at)
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES (?, ?, ?, ?, ?)
     `, [id, conversationId, senderId, content.trim(), now]);
 
     // Update conversation last_message_at
     await db.run(`
-      UPDATE staff_conversations SET last_message_at = $1 WHERE id = $2
+      UPDATE staff_conversations SET last_message_at = ? WHERE id = ?
     `, [now, conversationId]);
 
     // Get sender name
-    const sender = await db.get('SELECT name FROM users WHERE id = $1', [senderId]);
+    const sender = await db.get('SELECT name FROM users WHERE id = ?', [senderId]);
 
     res.json({
       id,
@@ -188,9 +188,9 @@ router.get('/unread-count', authenticateToken, async (req: any, res: any) => {
     const result = await db.get(`
       SELECT COUNT(*) as count FROM staff_messages sm
       JOIN staff_conversations sc ON sm.conversation_id = sc.id
-      WHERE (sc.participant1_id = $1 OR sc.participant2_id = $2)
-        AND sm.sender_id != $3
-        AND sm.is_read = false
+      WHERE (sc.participant1_id = ? OR sc.participant2_id = ?)
+        AND sm.sender_id != ?
+        AND sm.is_read = 0
     `, [userId, userId, userId]);
 
     res.json({ count: result?.count || 0 });

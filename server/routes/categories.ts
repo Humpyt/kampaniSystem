@@ -7,7 +7,7 @@ const router = express.Router();
 // Get all categories
 router.get('/', async (req, res) => {
   try {
-    const categories = await db.all('SELECT * FROM categories ORDER BY name ASC');
+    const categories = await db.prepare('SELECT * FROM categories ORDER BY name ASC').all();
     res.json(categories);
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -19,12 +19,12 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const category = await db.get('SELECT * FROM categories WHERE id = $1', [id]);
-
+    const category = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    
     if (!category) {
       return res.status(404).json({ error: 'Category not found' });
     }
-
+    
     res.json(category);
   } catch (error) {
     console.error('Error fetching category:', error);
@@ -36,20 +36,20 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name } = req.body;
-
+    
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
 
     const now = new Date().toISOString();
     const id = uuidv4();
-
-    await db.run(`
+    
+    await db.prepare(`
       INSERT INTO categories (id, name, created_at, updated_at)
-      VALUES ($1, $2, $3, $4)
-    `, [id, name, now, now]);
-
-    const newCategory = await db.get('SELECT * FROM categories WHERE id = $1', [id]);
+      VALUES (?, ?, ?, ?)
+    `).run(id, name, now, now);
+    
+    const newCategory = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
     res.status(201).json(newCategory);
   } catch (error) {
     console.error('Error creating category:', error);
@@ -62,22 +62,22 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
-
+    
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
 
     const now = new Date().toISOString();
-
-    const result = await db.run(`
+    
+    const result = await db.prepare(`
       UPDATE categories SET
-        name = $1,
-        updated_at = $2
-      WHERE id = $3
-    `, [name, now, id]);
-
-    if ((result as any).rowCount > 0) {
-      const updatedCategory = await db.get('SELECT * FROM categories WHERE id = $1', [id]);
+        name = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(name, now, id);
+    
+    if ((result as any).changes > 0) {
+      const updatedCategory = await db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
       res.json(updatedCategory);
     } else {
       res.status(404).json({ error: 'Category not found' });
@@ -92,16 +92,16 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
+    
     // Check if category is in use
-    const itemsUsingCategory = await db.get('SELECT COUNT(*) as count FROM supplies WHERE category = $1', [id]);
+    const itemsUsingCategory = await db.prepare('SELECT COUNT(*) as count FROM supplies WHERE category = ?').get(id);
     if (itemsUsingCategory.count > 0) {
       return res.status(400).json({ error: 'Cannot delete category that is in use' });
     }
 
-    const result = await db.run('DELETE FROM categories WHERE id = $1', [id]);
-
-    if ((result as any).rowCount > 0) {
+    const result = await db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    
+    if ((result as any).changes > 0) {
       res.json({ message: 'Category deleted successfully' });
     } else {
       res.status(404).json({ error: 'Category not found' });
