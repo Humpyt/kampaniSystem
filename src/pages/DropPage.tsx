@@ -1148,17 +1148,22 @@ export default function DropPage() {
           <div className="space-y-4">
             <div className="text-sm text-gray-400 mb-2">When should this be ready?</div>
             <input
-              type="date"
+              type="datetime-local"
               value={form.readyByDate}
               onChange={e => handleReadyByDateChange(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-lg"
-              min={new Date().toISOString().split('T')[0]}
+              min={new Date().toISOString().slice(0, 16)}
             />
-            {form.readyByDate && (
-              <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-center">
-                <span className="text-indigo-400 text-xs">Ready by: {new Date(form.readyByDate).toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
-              </div>
-            )}
+            {form.readyByDate && (() => {
+              const d = new Date(form.readyByDate);
+              const dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+              const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+              return (
+                <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-center">
+                  <span className="text-indigo-400 text-xs">Ready by: {dateStr} at {timeStr}</span>
+                </div>
+              );
+            })()}
           </div>
         );
 

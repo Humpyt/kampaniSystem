@@ -33,20 +33,20 @@ async function loadPrinterModules() {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PDF receipt generator — returns a Buffer ready to send as a PDF response
-// ─────────────────────────────────────────────────────────────────────────────
 async function generateReceiptPDF(data: {
-  title: string;
+  title?: string;
   ticketId?: string;
   ticketNumber?: string;
   customerName?: string;
   customerPhone?: string;
+  customerAddress?: string;
+  customerAccount?: string;
   date?: string;
+  time?: string;
   promisedDate?: string;
-  items: { description: string; price: number }[];
+  promisedTime?: string;
+  items: { description: string; price: number; quantity?: number }[];
   subtotal: number;
-  tax?: number;
   total: number;
   amountPaid?: number;
   balance?: number;
@@ -54,112 +54,183 @@ async function generateReceiptPDF(data: {
   notes?: string;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
-  // 80mm thermal receipt style: 226pt wide, auto height
-  const doc = new PDFDocument({ margin: 15, size: [226, 600], layout: 'portrait' });
+  // 8cm wide receipt (226.8pt)
+  const PW = 226.8;
+  const ML = 12; const MR = 12;
+  const CW = PW - ML - MR;  // content width = 202.8
+  const doc = new PDFDocument({ margin: 0, size: [PW, 700], layout: 'portrait' });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
-  const W = 196; // content width
-  const RX = 160; // amount column start
-  const fmt = (n: number) => 'UGX ' + (n || 0).toLocaleString('en-US');
+  const fmt = (n: number) => (n || 0).toLocaleString('en-US');
+  const fmtUGX = (n: number) => 'UGX ' + fmt(n);
 
-  let y = 15;
+  // Helper: draw a horizontal rule
+  const rule = (y: number, color = '#cccccc') => {
+    doc.moveTo(ML, y).lineTo(PW - MR, y).strokeColor(color).stroke();
+  };
 
-  // ── Header ────────────────────────────────────────────────────────────────
-  doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold');
-  doc.text('KAMPANIS', 0, y, { align: 'center', width: 226 });
+  let y = 12;
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
+  doc.text('Kampanis Shoes and Bags Clinic', ML, y, { align: 'center', width: CW });
+  y += 15;
+  doc.fontSize(8).font('Helvetica').fillColor('#555555');
+  doc.text('Forest Mall, Kampala', ML, y, { align: 'center', width: CW });
+  y += 10;
+  doc.text('+256 789 183784', ML, y, { align: 'center', width: CW });
+  y += 8;
+  // CUSTOMER COPY badge
+  doc.setFillColor('#000000').roundedRect(ML + CW / 2 - 35, y, 70, 14, 4).fill();
+  doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
+  doc.text('CUSTOMER COPY', ML + CW / 2 - 35, y + 3, { align: 'center', width: 70 });
   y += 20;
-  doc.fontSize(8).font('Helvetica');
-  doc.text('Shoes & Bags Clinic', 0, y, { align: 'center', width: 226 });
-  y += 11;
-  doc.fontSize(6.5).fillColor('#777777');
-  doc.text('FORESET MALL, KOLOLO, KAMPALA, UGANDA', 0, y, { align: 'center', width: 226 });
-  y += 11;
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#cccccc').stroke(); y += 9;
 
+  rule(y, '#bbbbbb'); y += 8;
+
+  // ── Receipt No (large centered) ─────────────────────────────────────────
+  const recNo = data.ticketNumber || data.ticketId || '';
+  doc.fillColor('#000000').fontSize(18).font('Helvetica-Bold');
+  doc.text(recNo, ML, y, { align: 'center', width: CW });
+  y += 22;
+
+  rule(y, '#dddddd'); y += 8;
+
+  // ── Customer block ─────────────────────────────────────────────────────
+  const cname = (data.customerName || 'WALK-IN CUSTOMER').toUpperCase();
+  const cphone = data.customerPhone || '';
+  const caddr = data.customerAddress || '';
+  const cacct = data.customerAccount || '';
+
+  doc.setFillColor('#f5f5f5').roundedRect(ML, y, CW, 42, 4).fill();
+  const cbY = y + 6;
   doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-  doc.text(data.title, 0, y, { align: 'center', width: 226 });
-  y += 9;
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#dddddd').stroke(); y += 9;
-
-  // ── Info block ───────────────────────────────────────────────────────────
-  const infoPairs: [string, string][] = [];
-  if (data.ticketNumber) infoPairs.push(['Ticket No', data.ticketNumber]);
-  if (data.date) infoPairs.push(['Date', data.date]);
-  if (data.customerName) infoPairs.push(['Customer', data.customerName]);
-  if (data.customerPhone) infoPairs.push(['Phone', data.customerPhone]);
-  if (data.promisedDate) infoPairs.push(['Ready On', data.promisedDate]);
-
-  doc.fontSize(7.5).font('Helvetica');
-  for (const [label, value] of infoPairs) {
-    doc.fillColor('#999999').text(label + ': ', 15, y, { width: 70 });
-    doc.fillColor('#222222').text(value || 'N/A', 85, y, { width: RX - 85 });
-    y += 12;
+  doc.text(cname, ML + 6, cbY, { width: CW - 12 });
+  doc.fontSize(8).font('Helvetica').fillColor('#555555');
+  doc.text(caddr || 'Kampala', ML + 6, cbY + 12, { width: CW - 12 });
+  doc.text(cphone, ML + 6, cbY + 23, { width: CW - 12 });
+  // Acct line
+  if (cacct) {
+    doc.text('Acct: ' + cacct, ML + 6, cbY + 34, { width: 80 });
   }
-  y += 4;
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#cccccc').stroke(); y += 9;
+  y += 48;
 
-  // ── Column headers ───────────────────────────────────────────────────────
-  doc.fillColor('#888888').fontSize(7).font('Helvetica-Bold');
-  doc.text('SERVICE', 15, y, { width: 130 });
-  doc.text('AMOUNT', RX, y, { align: 'right', width: 66 });
-  y += 7;
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#dddddd').stroke(); y += 6;
+  rule(y, '#cccccc'); y += 8;
 
-  // ── Line items ───────────────────────────────────────────────────────────
-  // For each item, render multiline detail block: category → size → color → service
-  const DESC_X = 15;
-  const AMT_X = 160;      // right-align amounts within the 226pt page
-  const AMT_W = 51;
-  doc.font('Helvetica').fillColor('#222222').fontSize(8);
+  // ── Date / Time ─────────────────────────────────────────────────────────
+  const dateStr = data.date || '';
+  const timeStr = data.time || '';
+  doc.fontSize(9).font('Helvetica').fillColor('#333333');
+  doc.text(dateStr, ML, y, { width: CW / 2 });
+  doc.text(timeStr, ML + CW / 2, y, { align: 'right', width: CW / 2 });
+  y += 14;
+
+  rule(y); y += 8;
+
+  // ── Items table header ──────────────────────────────────────────────────
+  doc.setFillColor('#000000');
+  doc.rect(ML, y, CW, 16).fill();
+  doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
+  doc.text('Q', ML + 2, y + 4, { width: 14 });
+  doc.text('Item', ML + 18, y + 4, { width: 100 });
+  doc.text('P', ML + 120, y + 4, { width: 36, align: 'right' });
+  doc.text('T', ML + 158, y + 4, { width: 36, align: 'right' });
+  y += 16;
+
+  // ── Line items ──────────────────────────────────────────────────────────
+  const itemLines: string[] = [];
   for (const item of data.items) {
-    // description carries the full detail text
     const lines = (item.description || 'Service').split('\n');
-    let maxHeight = 0;
-    for (const line of lines) {
-      const lh = doc.heightOfString(line, { width: 130 });
-      doc.text(line, DESC_X, y, { width: 130, height: lh });
-      maxHeight = Math.max(maxHeight, lh);
+    for (const ln of lines) itemLines.push(ln);
+  }
+
+  const DESC_X = ML + 18;
+  const AMT_X = ML + 158;
+  const LINE_H = 12;
+
+  for (const item of data.items) {
+    const qty = item.quantity || 1;
+    const total = item.price * qty;
+    const descLines = (item.description || 'Service').split('\n');
+    const maxLines = Math.max(descLines.length, 1);
+
+    // Draw qty
+    doc.fontSize(8).font('Helvetica').fillColor('#222222');
+    doc.text(String(qty), ML + 2, y + 2, { width: 14 });
+    doc.text('P', ML + 122, y + 2, { width: 34, align: 'right' });
+    doc.text('T', ML + 158, y + 2, { width: 34, align: 'right' });
+
+    // Draw description lines
+    let dy = y + 2;
+    for (const ln of descLines) {
+      doc.text(ln, DESC_X, dy, { width: 100 });
+      dy += LINE_H;
     }
-    const amtStr = fmt(item.price);
-    doc.text(amtStr, AMT_X, y, { align: 'right', width: AMT_W });
-    y += Math.max(maxHeight + 2, 13);
+
+    // Draw prices on first desc line only
+    doc.text(fmtUGX(item.price), ML + 122, y + 2, { width: 34, align: 'right' });
+    doc.text(fmtUGX(total), ML + 158, y + 2, { width: 34, align: 'right' });
+
+    // Separator
+    rule(y + maxLines * LINE_H + 2, '#cccccc');
+    y += maxLines * LINE_H + 4;
   }
 
   y += 4;
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#cccccc').stroke(); y += 9;
 
-  // ── Totals ───────────────────────────────────────────────────────────────
-  const totals: [string, string, boolean][] = [];
-  totals.push(['Subtotal', fmt(data.subtotal || data.total), false]);
-  if (data.tax) totals.push(['Tax', fmt(data.tax), false]);
-  totals.push(['TOTAL', fmt(data.total), true]);
+  // ── Piece count summary ────────────────────────────────────────────────
+  const totalQty = data.items.reduce((s, i) => s + (i.quantity || 1), 0);
+  doc.setFillColor('#f5f5f5').roundedRect(ML + CW / 2 - 40, y, 80, 18, 4).fill();
+  doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
+  doc.text(totalQty + ' PIECE' + (totalQty !== 1 ? 'S' : ''), ML, y + 4, { align: 'center', width: CW });
+  y += 26;
+
+  // ── Totals ──────────────────────────────────────────────────────────────
+  const totals: [string, string, boolean][] = [
+    ['Sub:', fmtUGX(data.subtotal), false],
+    ['Total:', fmtUGX(data.total), true],
+  ];
+  if (data.amountPaid !== undefined) {
+    totals.push(['Paid:', fmtUGX(data.amountPaid), false]);
+    if (data.balance !== undefined && data.balance !== 0) {
+      totals.push([data.balance > 0 ? 'Bal:' : 'Change:', fmtUGX(Math.abs(data.balance)), true]);
+    }
+  }
 
   for (const [label, value, bold] of totals) {
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 9.5 : 8);
-    doc.fillColor(bold ? '#000000' : '#555555').text(label + ':', 15, y, { width: 130 });
-    doc.fillColor('#000000').text(value, RX, y, { align: 'right', width: 66 });
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 9);
+    doc.fillColor(bold ? '#000000' : '#555555');
+    doc.text(label, ML, y, { width: 100 });
+    doc.fillColor('#000000');
+    doc.text(value, ML + 100, y, { align: 'right', width: 94 });
     y += bold ? 14 : 12;
   }
 
-  if (data.amountPaid !== undefined) {
-    doc.fontSize(8).font('Helvetica').fillColor('#666666');
-    doc.text('Paid (' + (data.paymentMethod || 'Cash') + '):', 15, y, { width: 130 });
-    doc.fillColor('#000000').text(fmt(data.amountPaid), RX, y, { align: 'right', width: 66 });
+  y += 6;
+  rule(y); y += 8;
+
+  // ── Ready by ────────────────────────────────────────────────────────────
+  if (data.promisedDate || data.promisedTime) {
+    doc.fillColor('#555555').fontSize(9).font('Helvetica');
+    doc.text('Ready:', ML, y);
     y += 12;
-    if (data.balance !== undefined && data.balance !== 0) {
-      doc.font('Helvetica-Bold').fillColor(data.balance > 0 ? '#cc2200' : '#008800');
-      doc.text(data.balance > 0 ? 'Balance:' : 'Change:', 15, y, { width: 130 });
-      doc.text(fmt(Math.abs(data.balance)), RX, y, { align: 'right', width: 66 });
-      y += 12;
+    if (data.promisedDate) {
+      doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
+      doc.text(data.promisedDate, ML, y, { width: CW });
+      y += 14;
     }
+    if (data.promisedTime) {
+      doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
+      doc.text(data.promisedTime, ML, y, { width: CW });
+      y += 14;
+    }
+    y += 4;
+    rule(y); y += 8;
   }
 
   // ── Barcode & REG/PICKUP ─────────────────────────────────────────────
-  if (data.promisedDate) {
-    y += 6;
-    doc.moveTo(15, y).lineTo(211, y).strokeColor('#cccccc').stroke(); y += 9;
-    // Barcode image via external URL (tec-it.com free barcode API)
+  if (data.ticketNumber || data.ticketId) {
     try {
       const https = await import('https');
       const barcodeData = data.ticketNumber || data.ticketId || '';
@@ -173,44 +244,33 @@ async function generateReceiptPDF(data: {
         }).on('error', reject);
       });
       if (imgBuf && imgBuf.length > 0) {
-        doc.image(imgBuf, 60, y, { width: 106, height: 40 });
-        y += 45;
+        const bW = 160; const bH = 44;
+        const bX = ML + (CW - bW) / 2;
+        doc.image(imgBuf, bX, y, { width: bW, height: bH });
+        y += bH + 4;
       }
-    } catch (_e) {
-      // Barcode unavailable — skip silently
-    }
-    // REG/PICKUP label below barcode
-    doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold');
-    doc.text('REG/PICKUP', 0, y, { align: 'center', width: 226 });
+    } catch (_e) { /* barcode unavailable */ }
+    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
+    doc.text('REG/PICKUP', ML, y, { align: 'center', width: CW });
     y += 14;
   }
 
-  // ── Notes ────────────────────────────────────────────────────────────────
-  if (data.notes) {
-    y += 4;
-    doc.moveTo(15, y).lineTo(211, y).strokeColor('#dddddd').stroke(); y += 8;
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#888888').text('Notes:', 15, y, { width: W }); y += 10;
-    doc.font('Helvetica').fillColor('#444444');
-    const noteLines = doc.wrapText(String(data.notes), W);
-    for (const line of noteLines) { doc.text(line, 15, y, { width: W }); y += 10; }
-    y += 4;
+  // ── Footer ─────────────────────────────────────────────────────────────
+  if (y < 580) {
+    rule(y, '#bbbbbb'); y += 8;
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
+    doc.text('Thank You!', ML, y, { align: 'center', width: CW });
+    y += 11;
+    doc.fontSize(7.5).font('Helvetica').fillColor('#888888');
+    doc.text('Mon–Fri: 8AM–6:30PM', ML, y, { align: 'center', width: CW });
+    y += 9;
+    doc.text('Sat: 8:30AM–5PM', ML, y, { align: 'center', width: CW });
   }
 
-  // ── Footer ──────────────────────────────────────────────────────────────
-  doc.moveTo(15, y).lineTo(211, y).strokeColor('#cccccc').stroke(); y += 9;
-  doc.fillColor('#999999').fontSize(7).font('Helvetica');
-  doc.text('Thank you for your business!', 0, y, { align: 'center', width: 226 }); y += 11;
-  doc.fontSize(6).fillColor('#bbbbbb');
-  doc.text('Items not collected after 30 days attract storage fees.', 0, y, { align: 'center', width: 226 }); y += 9;
-  doc.text('After 60 days items may be disposed of.', 0, y, { align: 'center', width: 226 });
-
-  // doc.end() returns undefined (not a Promise) — wait for 'end' event
-  await new Promise<void>((resolve) => {
-    doc.on('end', resolve);
-    doc.end();
-  });
+  await new Promise<void>((resolve) => { doc.on('end', resolve); doc.end(); });
   return Buffer.concat(chunks);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Try to send ZPL to Zebra printer (silent — failures are non-fatal)
@@ -324,12 +384,29 @@ router.get("/print/order/:id", async (req, res) => {
 
   const zl: string[] = [];
   zl.push('^XA','^CI28');
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(60,60)+' '+fd('KAMPANIS')); y+=65;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(28,28)+' '+fd('Shoes & Bags Clinic')); y+=35;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('FORESET MALL, KOLOLO, KAMPALA, UGANDA')); y+=30;
+  // Header
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(45,45)+' '+fd('Kampanis Shoes and Bags Clinic')); y+=50;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('Forest Mall, Kampala')); y+=26;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('+256 789 183784')); y+=26;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd(' CUSTOMER COPY ')); y+=24;
   zl.push(vl(y,3)); y+=12;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(30,30)+' '+fd('ORDER TICKET')); y+=10;
+  // Receipt number (large centered)
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(50,50)+' '+fd(order.ticket_number || order.id)); y+=55;
   zl.push(vl(y,2)); y+=15;
+  // Customer block
+  const cname = (order.customer_name || 'WALK-IN CUSTOMER').toUpperCase();
+  const cphone = order.customer_phone || '';
+  const caddr = order.customer_address || 'Kampala';
+  zl.push(fo(LM,y)+font(22,22)+' '+fd(cname)); y+=LH+4;
+  zl.push(fo(LM,y)+font(18,18)+' '+fd(caddr)); y+=LH+2;
+  if (cphone) { zl.push(fo(LM,y)+font(18,18)+' '+fd(cphone)); y+=LH+2; }
+  y+=4; zl.push(vl(y,2)); y+=12;
+  // Date and time
+  const orderDate = new Date(order.created_at);
+  const dateStr = orderDate.toLocaleDateString('en-UG', {day:'2-digit',month:'2-digit',year:'numeric'});
+  const timeStr = orderDate.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',hour12:false});
+  zl.push(fo(LM,y)+font(20,20)+' '+fd(dateStr)); zl.push(fo(RX,y)+font(20,20)+' '+fd(timeStr)); y+=LH+6;
+  zl.push(vl(y,2)); y+=12;
   const col1X = LM, col2X = LM + 150;
   const ip: [string, string][] = [
     ['Order No', order.ticket_number || order.id],
@@ -338,16 +415,19 @@ router.get("/print/order/:id", async (req, res) => {
   ];
   if (order.customer_phone) ip.push(['Phone', order.customer_phone]);
   for (const [l, v] of ip) { zl.push(fo(col1X,y)+font(22,22)+'^B1 '+fd(l+' :')); zl.push(fo(col2X,y)+font(22,22)+'^B0 '+fd(v)); y+=LH+4; }
-  if (order.promised_date) { zl.push(fo(col1X,y)+font(22,22)+'^B1 '+fd('Ready On :')); zl.push(fo(col2X,y)+font(22,22)+'^B1 '+fd(new Date(order.promised_date).toLocaleDateString('en-UG', {day:'2-digit',month:'short',year:'numeric'}))); y+=LH+4; }
+  if (order.promised_date) { const pd = new Date(order.promised_date); const pdStr = pd.toLocaleDateString('en-UG', {weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}); const ptStr = pd.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}); zl.push(fo(LM,y)+font(20,20)+' '+fd('Ready:')); y+=LH+4; zl.push(fo(LM,y)+font(24,24)+' '+fd(pdStr)); y+=LH+6; zl.push(fo(LM,y)+font(24,24)+' '+fd(ptStr)); y+=LH+8; zl.push(vl(y,2)); y+=10; }
   y+=5; zl.push(vl(y,2)); y+=12;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(22,22)+' ^B1 '+fd('ITEMS TO WORK ON')); y+=8;
   zl.push(vl(y,2)); y+=12;
-  zl.push(fo(LM,y)+font(18,18)+' '+fd('Service / Item')); zl.push(fo(RX,y)+font(18,18)+' '+fd('Amount')); y+=8;
+  zl.push(fo(LM,y)+font(18,18)+' '+fd('Q ')); zl.push(fo(LM+30,y)+font(18,18)+' '+fd('Item')); zl.push(fo(RX,y)+font(18,18)+' '+fd('P ')); zl.push(fo(RX+50,y)+font(18,18)+' '+fd('T ')); y+=8;
   zl.push(vl(y,1)); y+=10;
   if (lineItems.length > 0) {
     for (const item of lineItems) { zl.push(fo(LM,y)+font(20,20)+' '+fd(item.description.substring(0,35))); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(item.price))); y+=LH+3; }
   } else { zl.push(fo(LM,y)+font(20,20)+' '+fd('No charge')); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(0))); y+=LH+3; }
   y+=5; zl.push(vl(y,1)); y+=10;
+  const totalQty = lineItems.reduce((s: number, i: any) => s + (i.quantity || 1), 0);
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(22,22)+' '+fd(totalQty+' PIECE'+(totalQty!==1?'S':''))); y+=28;
+  zl.push(vl(y,2)); y+=10;
   zl.push(rl('Subtotal', subtotal, y)); y+=LH+2;
   if (order.discount > 0) { zl.push(rl('Discount', Number(order.discount), y)); y+=LH+2; }
   zl.push(vl(y,2)); y+=8;
@@ -376,11 +456,16 @@ router.get("/print/order/:id", async (req, res) => {
       ticketNumber: order.ticket_number || order.id,
       customerName: order.customer_name || undefined,
       customerPhone: order.customer_phone || undefined,
-      date: new Date(order.created_at).toLocaleDateString('en-UG', { day: '2-digit', month: 'short', year: 'numeric' }),
-      promisedDate: order.promised_date ? new Date(order.promised_date).toLocaleDateString('en-UG', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
-      items: lineItems,
+      date: new Date(order.created_at).toLocaleDateString('en-UG', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      time: new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      promisedDate: order.promised_date ? new Date(order.promised_date).toLocaleDateString('en-UG', {day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short'}) : undefined,
+      promisedTime: order.promised_date ? new Date(order.promised_date).toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false}) : undefined,
+      customerAddress: order.customer_address || undefined,
+      items: lineItems.map(i => ({ ...i, quantity: i.quantity || 1 })),
       subtotal,
       total: orderTotal,
+      amountPaid: Number(order.paid_amount) || undefined,
+      balance: (Number(order.paid_amount) || 0) !== orderTotal ? (orderTotal - (Number(order.paid_amount) || 0)) : undefined,
       notes: order.notes || undefined,
     });
     
