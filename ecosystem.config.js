@@ -1,17 +1,16 @@
 // PM2 Ecosystem Configuration for Shoe Repair POS Backend
-// Save this as ecosystem.config.js in the project root on the VPS
-
 module.exports = {
   apps: [{
     name: 'shoe-repair-pos',
-    script: './server/index.js',
+    script: 'node_modules/.bin/tsx',
+    args: 'server/index.ts',
     instances: 1,
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 3001
     },
     error_file: './logs/error.log',
     out_file: './logs/out.log',

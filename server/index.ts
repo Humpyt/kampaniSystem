@@ -22,7 +22,7 @@ import expensesRouter from './routes/expenses';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
-const port = 3000;
+const port = 3001;
 
 app.use(cors());
 app.use(express.json());
@@ -53,6 +53,28 @@ app.use('/api/auth', authRoutes);
 app.use('/api/staff-messages', staffMessagesRouter);
 app.use('/api/colors', colorsRouter);
 app.use('/api/invoices', invoicesRouter);
+
+// Ticket next number
+app.get('/api/ticket/next', async (req, res) => {
+  try {
+    const dbModule = await import('./database.js');
+    const db = dbModule.default;
+    const result = db.prepare('SELECT ticket_number FROM operations ORDER BY id DESC LIMIT 1').get();
+    let nextNum = 1;
+    if (result && result.ticket_number) {
+      const parts = result.ticket_number.split('-');
+      if (parts.length === 2) {
+        nextNum = parseInt(parts[1], 10) + 1;
+      }
+    }
+    const ticket_number = `01-${String(nextNum).padStart(6, '0')}`;
+    res.json({ ticket_number });
+  } catch (err) {
+    console.error('Error generating ticket number:', err);
+    res.status(500).json({ error: 'Failed to generate ticket number' });
+  }
+});
+
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/retail-products', retailProductsRouter);
 app.use('/api/expenses', expensesRouter);
