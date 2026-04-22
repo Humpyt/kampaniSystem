@@ -22,7 +22,7 @@ import expensesRouter from './routes/expenses';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
-const port = 3001;
+const port = 3000;
 
 app.use(cors());
 app.use(express.json());

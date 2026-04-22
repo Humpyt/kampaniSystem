@@ -220,6 +220,7 @@ router.post('/', async (req, res) => {
     notes,
     promisedDate,
     created_by,
+    ticket_number,
   } = req.body;
   const now = new Date().toISOString();
   const normalizedShoes = Array.isArray(shoes) ? shoes : [];
@@ -228,10 +229,42 @@ router.post('/', async (req, res) => {
   const discountAmount = Number(discount) || 0;
   let generatedDocumentId: string | null = null;
 
-  if (!customer || !customer.id) {
-    console.error('Invalid customer data:', customer);
-    return res.status(400).json({ error: 'Invalid customer data' });
+  // Promise-based customer validation (db.get/db.run are promisified)
+  const walkInId = 'w001';
+  try {
+    // Ensure walk-in customer exists
+    const existingWalkIn = await (db.get as any)('SELECT id FROM customers WHERE id = ?', [walkInId]);
+    if (!existingWalkIn) {
+      await (db.run as any)(
+        "INSERT INTO customers (id, name, phone, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [walkInId, 'WALK-IN CUSTOMER', 'N/A', 'active', now, now]
+      );
+    }
+    // Handle customer ID
+    if (!customer || !customer.id || String(customer.id).trim() === '') {
+      req.body.customer = { ...customer, id: walkInId };
+    } else {
+      const existingCustomer = await (db.get as any)('SELECT id FROM customers WHERE id = ?', [customer.id]);
+      if (!existingCustomer) {
+        try {
+          await (db.run as any)(
+            "INSERT INTO customers (id, name, phone, email, address, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [customer.id, (customer as any).name || 'Unknown', (customer as any).phone || 'N/A', (customer as any).email || null, (customer as any).address || null, 'active', now, now]
+          );
+        } catch (insertErr: any) {
+          if (!String(insertErr).includes('UNIQUE')) throw insertErr;
+        }
+      }
+    }
+  } catch (validationErr) {
+    console.error('Customer validation error:', validationErr);
+    if (!customer || !customer.id) {
+      req.body.customer = { ...customer, id: walkInId };
+    }
   }
+
+  // Sync 'customer' variable with req.body.customer after validation
+
 
   if (normalizedShoes.length === 0 && normalizedRetailItems.length === 0) {
     console.error('Invalid operation items:', { shoes, retailItems });
@@ -250,8 +283,8 @@ router.post('/', async (req, res) => {
         INSERT INTO operations (
           id, customer_id, status, total_amount, discount, notes, promised_date,
           is_no_charge, is_do_over, is_delivery, is_pickup,
-          created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ticket_number, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         operationId,
         customer.id,
@@ -264,6 +297,7 @@ router.post('/', async (req, res) => {
         isDoOver ? 1 : 0,
         isDelivery ? 1 : 0,
         isPickup ? 1 : 0,
+        ticket_number || null,
         created_by || null,
         now,
         now

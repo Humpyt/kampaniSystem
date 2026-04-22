@@ -424,19 +424,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status);
 `);
 
-// Migration: Add image_url column to retail_products if it doesn't exist
-try {
-  const result = db.exec("PRAGMA table_info(retail_products)");
-  const columns = result[0]?.values?.map((v: any[]) => v[1]) || [];
-  if (!columns.includes('image_url')) {
-    db.exec('ALTER TABLE retail_products ADD COLUMN image_url TEXT');
-    console.log('Migration: Added image_url column to retail_products table');
-  }
-} catch (e) {
-  // Migration already applied or other error, continue
-}
-
-// Create a wrapper to mimic better-sqlite3's prepare interface
+// DISABLED: // Migration: Add image_url column to retail_products if it doesn't exist
+// DISABLED: try {
+// DISABLED:   const stmt = db.prepare("PRAGMA table_info(retail_products)");
+// DISABLED:   const rows = stmt.all() as any[];
+// DISABLED:   const columns = rows.map((r: any) => r.name).filter(Boolean);
+// DISABLED:   if (!columns.includes('image_url')) {
+// DISABLED:     db.exec('ALTER TABLE retail_products ADD COLUMN image_url TEXT');
+// DISABLED:     console.log('Migration: Added image_url column to retail_products table');
+// DISABLED:   }
+// DISABLED: } catch (e) {
+// DISABLED:   // If duplicate column error, that's fine — already has the column
+// DISABLED:   const eStr = String(e);
+// DISABLED:   if (eStr.includes('duplicate column')) {
+// DISABLED:     console.log('Migration: image_url column already exists, skipping');
+// DISABLED:   }
+// DISABLED:   // Otherwise continue silently
+// DISABLED: }
+// DISABLED: 
+// DISABLED: // Create a wrapper to mimic better-sqlite3's prepare interface
 const createStatement = (sql: string) => {
   return {
     run: (...params: any[]) => db.run(sql, params),

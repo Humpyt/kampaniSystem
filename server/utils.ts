@@ -41,7 +41,8 @@ export const transformOperation = (operation: any) => ({
     shoes: operation.shoes || [],
     retailItems: operation.retailItems || [],
     generatedDocumentId: operation.generatedDocumentId || null,
-    generatedDocumentType: operation.generatedDocumentType || null
+    generatedDocumentType: operation.generatedDocumentType || null,
+    ticketNumber: operation.ticket_number || null
 });
 
 export const transformService = (service: any) => ({

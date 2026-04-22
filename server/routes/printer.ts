@@ -255,7 +255,7 @@ router.put('/config', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Print receipt for an order — returns PDF to browser, optionally prints USB
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/print/order/:id', async (req, res) => {
+router.get("/print/order/:id", async (req, res) => {
   const { id } = req.params;
 
   const order = await db.get(`
@@ -542,16 +542,16 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-router.post('/print/policy', async (req, res) => {
+router.get('/print/policy', async (req, res) => {
   try {
-    const data: PolicyPrintData = req.body;
-    if (!data || !data.ticketNumber) {
+    const { ticketNumber, date, customerNumber, customerName } = req.query as any;
+    if (!ticketNumber) {
       res.status(400).json({ error: 'Missing required fields: ticketNumber' });
       return;
     }
-    const pdfBuf = await generatePolicyPDF(data);
+    const pdfBuf = await generatePolicyPDF({ ticketNumber, date: date || '', customerNumber: customerNumber || '', customerName: customerName || '' });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="policies-' + (data.ticketNumber || 'receipt') + '.pdf"');
+    res.setHeader('Content-Disposition', 'inline; filename="policies-' + (ticketNumber || 'receipt') + '.pdf"');
     res.setHeader('Content-Length', pdfBuf.length);
     res.end(pdfBuf);
   } catch (err: any) {
