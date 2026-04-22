@@ -43,6 +43,7 @@ const RackingPage = lazy(() => import('./pages/RackingPage'));
 const PickupOrderPage = lazy(() => import('./pages/PickupOrderPage'));
 const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage'));
 const CodPaymentPage = lazy(() => import('./pages/CodPaymentPage'));
+const PolicyPage = lazy(() => import('./pages/PolicyPage'));
 const ProductCategoryManager = lazy(() => import('./pages/ProductCategoryManager'));
 const ReadyToPickPage = lazy(() => import('./pages/ReadyToPickPage'));
 const DiscountsPage = lazy(() => import('./pages/DiscountsPage'));
@@ -332,6 +333,11 @@ function App() {
                       <Route path="cod-payment" element={
                         <Suspense fallback={<PageLoader />}>
                           <CodPaymentPage />
+                        </Suspense>
+                      } />
+                      <Route path="policy" element={
+                        <Suspense fallback={<PageLoader />}>
+                          <PolicyPage />
                         </Suspense>
                       } />
                       <Route path="ready-to-pick" element={

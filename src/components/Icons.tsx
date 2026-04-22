@@ -3,7 +3,8 @@ import {
   ShoppingBag, 
   LogOut,
   Package,
-  Clock
+  Clock,
+  FileText
 } from 'lucide-react';
 
 export const CustomIcons = {
@@ -11,5 +12,6 @@ export const CustomIcons = {
   OpenDrawer: ShoppingBag,
   Exit: LogOut,
   Clock: Clock,
+  Policy: FileText,
   Add: PlusCircle
 };

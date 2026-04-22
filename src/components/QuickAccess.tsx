@@ -43,11 +43,11 @@ export default function QuickAccess() {
         <span>Deliveries</span>
       </button>
       <button 
-        onClick={() => navigate('/cod-payment')}
+        onClick={() => navigate('/policy')}
         className="bg-gray-700 p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:bg-gray-600"
       >
-        <CustomIcons.TimeClock />
-        <span>COD Payment</span>
+        <CustomIcons.Policy />
+        <span>Policy</span>
       </button>
     </div>
   );
