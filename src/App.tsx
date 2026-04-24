@@ -61,48 +61,7 @@ const PageLoader = () => (
   </div>
 );
 
-const pageTitleFromPath = (path: string) => {
-  const cleanPath = path.split('/').filter(Boolean)[0] || 'store';
-  const titles: Record<string, string> = {
-    store: 'Dashboard',
-    customers: 'Customers',
-    drop: 'Drop',
-    pickup: 'Pickup',
-    balances: 'Balances',
-    operation: 'Operations',
-    expenses: 'Expenses',
-    sales: 'Sales',
-    'sales-items': 'Sale Items',
-    services: 'Services',
-    reports: 'Reports',
-    'business-targets': 'Business Targets',
-    notifications: 'Notifications',
-    admin: 'Admin',
-    'no-charge-do-over': 'No Charge / Do Over',
-    'ticket-search': 'Ticket Search',
-    assembly: 'Assembly',
-    racking: 'Racking',
-    'pickup-order': 'Pickup Order',
-    deliveries: 'Deliveries',
-    'cod-payment': 'COD Payment',
-    policy: 'Company Policies',
-    'ready-to-pick': 'Ready to Pick',
-    discounts: 'Discounts',
-    'new-customers': 'New Customers',
-    'stock-levels': 'Stock Levels',
-    'customer-rankings': 'Customer Rankings',
-    'most-performing': 'Most Performing',
-    'credit-list': 'Credit List',
-    receipts: 'Receipts',
-  };
-  return titles[cleanPath] || 'Repair System';
-};
-
 const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boolean; toggleSidebar: () => void }) => {
-  const location = useLocation();
-  const title = pageTitleFromPath(location.pathname);
-  const user = useAuthStore(state => state.user);
-
   return (
     <div className="flex h-screen bg-slate-950 text-white">
       {/* Sidebar */}
@@ -116,20 +75,6 @@ const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boo
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between border-b border-white/10 bg-slate-900/70 px-5 backdrop-blur-xl">
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Kampanis Shoes & Bags Clinic</div>
-            <h1 className="truncate text-lg font-semibold text-white">{title}</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-              Live
-            </div>
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-              {user?.name || 'User'}
-            </div>
-          </div>
-        </header>
         <div className="min-h-0 flex-1 overflow-auto pr-24 lg:pr-28">
           <Outlet />
         </div>
