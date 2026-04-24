@@ -248,6 +248,8 @@ export async function seedUsers(pool: Pool): Promise<void> {
 export async function syncRetailProducts(pool: Pool): Promise<void> {
   const existing = await pool.query('SELECT * FROM retail_products');
   const consumedIds = new Set<string>();
+  let inserted = 0;
+  let updated = 0;
 
   for (const product of RETAIL_PRODUCT_CATALOG) {
     const aliases = new Set(
@@ -261,22 +263,34 @@ export async function syncRetailProducts(pool: Pool): Promise<void> {
 
     if (match) {
       consumedIds.add(match.id);
-      await pool.query(
-        `UPDATE retail_products
-         SET name=$1, category=$2, description=$3, default_price=$4, display_order=$5, is_active=true, updated_at=CURRENT_TIMESTAMP
-         WHERE id=$6`,
-        [product.name, product.category, product.description, product.default_price, product.display_order, match.id]
-      );
+      const hasChanges =
+        match.name !== product.name ||
+        match.category !== product.category ||
+        (match.description || '') !== product.description ||
+        Number(match.default_price) !== Number(product.default_price) ||
+        Number(match.display_order) !== Number(product.display_order) ||
+        match.is_active !== true;
+
+      if (hasChanges) {
+        await pool.query(
+          `UPDATE retail_products
+           SET name=$1, category=$2, description=$3, default_price=$4, display_order=$5, is_active=true, updated_at=CURRENT_TIMESTAMP
+           WHERE id=$6`,
+          [product.name, product.category, product.description, product.default_price, product.display_order, match.id]
+        );
+        updated++;
+      }
     } else {
       await pool.query(
         `INSERT INTO retail_products (id, name, category, description, default_price, display_order, is_active, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [uuidv4(), product.name, product.category, product.description, product.default_price, product.display_order]
       );
+      inserted++;
     }
   }
 
-  console.log(`Retail catalog synced (${RETAIL_PRODUCT_CATALOG.length} canonical products)`);
+  console.log(`Retail catalog synced (${RETAIL_PRODUCT_CATALOG.length} canonical products, ${inserted} inserted, ${updated} updated)`);
 }
 
 /**

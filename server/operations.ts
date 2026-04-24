@@ -233,35 +233,37 @@ router.get('/', async (req, res) => {
     query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`;
     params.push(parsedLimit, parsedOffset);
 
-    const operations = await db.prepare(query).all(...params);
-
-    // Get total count
     const countQuery = `SELECT COUNT(*) as total FROM operations o ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}`;
     const countParams = conditions.length > 0 ? params.slice(0, -2) : [];
-    const { total } = await db.prepare(countQuery).get(...countParams);
+    const [operations, countResult] = await Promise.all([
+      db.prepare(query).all(...params),
+      db.prepare(countQuery).get(...countParams)
+    ]);
+    const total = Number(countResult?.total || 0);
 
     // Optimization: Fetch all shoes in a single query instead of N+1 queries
     const operationIds = operations.map((op: any) => op.id);
     let shoesMap: Map<string, any[]> = new Map();
-    const retailItemsMap = await getRetailItemsByOperationIds(operationIds);
+    const placeholders = operationIds.map(() => '?').join(',');
+    const retailItemsPromise = getRetailItemsByOperationIds(operationIds);
+    const shoesPromise = operationIds.length > 0
+      ? db.prepare(`
+          SELECT os.*, oss.price as service_price, oss.quantity as service_quantity, s.name as service_name, s.price as service_base_price
+          FROM operation_shoes os
+          LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
+          LEFT JOIN services s ON oss.service_id = s.id
+          WHERE os.operation_id IN (${placeholders})
+        `).all(...operationIds)
+      : Promise.resolve([]);
 
-    if (operationIds.length > 0) {
-      const placeholders = operationIds.map(() => '?').join(',');
-      const allShoes = await db.prepare(`
-        SELECT os.*, oss.price as service_price, oss.quantity as service_quantity, s.name as service_name, s.price as service_base_price
-        FROM operation_shoes os
-        LEFT JOIN operation_services oss ON os.id = oss.operation_shoe_id
-        LEFT JOIN services s ON oss.service_id = s.id
-        WHERE os.operation_id IN (${placeholders})
-      `).all(...operationIds);
+    const [retailItemsMap, allShoes] = await Promise.all([retailItemsPromise, shoesPromise]);
 
-      // Group shoes by operation_id
-      for (const shoe of allShoes) {
-        if (!shoesMap.has(shoe.operation_id)) {
-          shoesMap.set(shoe.operation_id, []);
-        }
-        shoesMap.get(shoe.operation_id)!.push(shoe);
+    // Group shoes by operation_id
+    for (const shoe of allShoes) {
+      if (!shoesMap.has(shoe.operation_id)) {
+        shoesMap.set(shoe.operation_id, []);
       }
+      shoesMap.get(shoe.operation_id)!.push(shoe);
     }
 
     // Build operations with shoes

@@ -1,6 +1,45 @@
 import { Customer, Order, Service } from '../types';
 
 const API_URL = '/api';
+const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+const cachedJson = async <T>(url: string, ttlMs = 15000): Promise<T> => {
+  const now = Date.now();
+  const cached = responseCache.get(url);
+  if (cached && cached.expiresAt > now) {
+    return cached.value as T;
+  }
+
+  const inFlight = inFlightRequests.get(url);
+  if (inFlight) {
+    return inFlight as Promise<T>;
+  }
+
+  const request = fetch(url)
+    .then(async response => {
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}`);
+      }
+      const value = await response.json();
+      responseCache.set(url, { expiresAt: Date.now() + ttlMs, value });
+      return value;
+    })
+    .finally(() => {
+      inFlightRequests.delete(url);
+    });
+
+  inFlightRequests.set(url, request);
+  return request as Promise<T>;
+};
+
+const clearApiCache = (prefix: string) => {
+  for (const key of responseCache.keys()) {
+    if (key.startsWith(prefix)) {
+      responseCache.delete(key);
+    }
+  }
+};
 
 const transformServiceRecord = (service: any): Service => ({
   id: service.id,
@@ -32,9 +71,8 @@ export const api = {
       if (params?.offset) searchParams.set('offset', String(params.offset));
       if (params?.search) searchParams.set('search', params.search);
 
-      const response = await fetch(`${API_URL}/customers?${searchParams}`);
-      if (!response.ok) throw new Error('Failed to fetch customers');
-      const result = await response.json();
+      const url = `${API_URL}/customers?${searchParams}`;
+      const result = await cachedJson<{ data: any[]; pagination: { total: number; hasMore: boolean } }>(url, 10000);
 
       // Transform snake_case to camelCase, capitalize first letter of name
       return {
@@ -70,6 +108,7 @@ export const api = {
         body: JSON.stringify(capitalizedCustomer),
       });
       if (!response.ok) throw new Error('Failed to create customer');
+      clearApiCache(`${API_URL}/customers`);
       const created: any = await response.json();
       // Transform snake_case from API to camelCase for frontend
       return {
@@ -97,6 +136,7 @@ export const api = {
         body: JSON.stringify(customer),
       });
       if (!response.ok) throw new Error('Failed to update customer');
+      clearApiCache(`${API_URL}/customers`);
       return response.json();
     },
 
@@ -105,6 +145,7 @@ export const api = {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete customer');
+      clearApiCache(`${API_URL}/customers`);
     },
   },
 
@@ -142,9 +183,7 @@ export const api = {
   // Service endpoints
   services: {
     getAll: async (): Promise<Service[]> => {
-      const response = await fetch(`${API_URL}/services`);
-      if (!response.ok) throw new Error('Failed to fetch services');
-      const services = await response.json();
+      const services = await cachedJson<any[]>(`${API_URL}/services`, 30000);
       return Array.isArray(services) ? services.map(transformServiceRecord) : [];
     },
 
@@ -157,6 +196,7 @@ export const api = {
         body: JSON.stringify(service),
       });
       if (!response.ok) throw new Error('Failed to create service');
+      clearApiCache(`${API_URL}/services`);
       return transformServiceRecord(await response.json());
     },
 
@@ -169,6 +209,7 @@ export const api = {
         body: JSON.stringify(service),
       });
       if (!response.ok) throw new Error('Failed to update service');
+      clearApiCache(`${API_URL}/services`);
       return transformServiceRecord(await response.json());
     },
 
@@ -177,6 +218,7 @@ export const api = {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete service');
+      clearApiCache(`${API_URL}/services`);
     },
   },
 

@@ -4,6 +4,7 @@ export async function createSchema(pool: Pool): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
 
     // ============================================
     // CUSTOMERS TABLE
@@ -570,12 +571,18 @@ export async function createSchema(pool: Pool): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_name_order ON customers(name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_name_trgm ON customers USING gin (LOWER(name) gin_trgm_ops)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_phone_trgm ON customers USING gin (phone gin_trgm_ops)`);
 
     // Operations indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_customer ON operations(customer_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_status ON operations(status)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_created_by ON operations(created_by)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_created_at ON operations(created_at)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_created_at_desc ON operations(created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_status_created_at_desc ON operations(status, created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_created_by_created_at_desc ON operations(created_by, created_at DESC)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_promised_date ON operations(promised_date)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_is_no_charge ON operations(is_no_charge) WHERE is_no_charge = true`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operations_is_do_over ON operations(is_do_over) WHERE is_do_over = true`);
@@ -612,6 +619,9 @@ export async function createSchema(pool: Pool): Promise<void> {
     // Services indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_services_category ON services(category)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_services_status ON services(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_services_name_order ON services(name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_services_active_name ON services(status, name)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_services_name_trgm ON services USING gin (LOWER(name) gin_trgm_ops)`);
 
     // Products indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)`);

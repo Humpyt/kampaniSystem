@@ -3,6 +3,7 @@ import { createSchema } from './db/postgres-schema';
 import { seedAll } from './db/postgres-seeds';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { v4 as uuidv4 } from 'uuid';
 import db from './database';
 import operationsRouter from './operations';
@@ -104,6 +105,7 @@ const normalizeServicePayload = (body: any) => {
 };
 
 app.use(cors());
+app.use(compression());
 app.use(express.json());
 
 // Add error handling middleware
@@ -153,27 +155,32 @@ app.get('/api/customers', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 5000, 10000);
     const offset = parseInt(req.query.offset as string) || 0;
-    const search = req.query.search as string;
+    const search = String(req.query.search || '').trim();
 
-    let query = `SELECT * FROM customers`;
+    let query = `
+      SELECT id, name, phone, email, address, notes, status, total_orders,
+             total_spent, account_balance, last_visit, loyalty_points,
+             created_at, updated_at
+      FROM customers
+    `;
     const params: any[] = [];
 
     if (search) {
-      query += ` WHERE name LIKE ? OR phone LIKE ?`;
+      query += ` WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ?`;
       params.push(`%${search}%`, `%${search}%`);
     }
 
     query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
+    const dataParams = [...params, limit, offset];
 
-    const customers = await db.prepare(query).all(...params);
-
-    // Get total count for pagination
     const countQuery = search
-      ? `SELECT COUNT(*) as total FROM customers WHERE name LIKE ? OR phone LIKE ?`
+      ? `SELECT COUNT(*) as total FROM customers WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ?`
       : `SELECT COUNT(*) as total FROM customers`;
-    const countParams = search ? [`%${search}%`, `%${search}%`] : [];
-    const { total } = await db.prepare(countQuery).get(...countParams);
+    const [customers, countResult] = await Promise.all([
+      db.prepare(query).all(...dataParams),
+      db.prepare(countQuery).get(...params),
+    ]);
+    const total = Number(countResult?.total || 0);
 
     res.json({
       data: customers,
@@ -333,7 +340,14 @@ app.post('/api/orders', async (req, res) => {
 // Services endpoints
 app.get('/api/services', async (req, res) => {
   try {
-    const services = await db.prepare('SELECT * FROM services ORDER BY name ASC').all();
+    res.set('Cache-Control', 'private, max-age=30');
+    const services = await db.prepare(`
+      SELECT id, name, description, price, pricing_mode, min_price, max_price,
+             unit_label, price_note, estimated_days, category, status,
+             created_at, updated_at
+      FROM services
+      ORDER BY name ASC
+    `).all();
     res.json(services.map(transformService));
   } catch (error) {
     console.error('Error fetching services:', error);
