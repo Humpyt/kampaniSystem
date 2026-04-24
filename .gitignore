@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Runtime/generated files
+storage/
+
+# Local backup snapshots
+.codex-backups/
+*.bak
+*.bak-*
+*.bak[0-9]*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
