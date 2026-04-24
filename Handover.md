@@ -319,7 +319,7 @@ psql -U postgres -d kampani < backup_file.sql
 
 ## Notes
 
-- The app uses a **SQLite-compatible wrapper** over PostgreSQL (`server/database.ts`). Always use `db.run()`, `db.get()`, `db.all()` methods — not raw `pool.query()`.
+- The app uses a PostgreSQL wrapper (`server/database.ts`). Always use `db.run()`, `db.get()`, `db.all()` methods — not raw `pool.query()`.
 - Currency is **UGX** (0 decimal places). See `src/config/currency.ts`.
 - Authentication is **local** (Zustand store + localStorage), not Firebase.
 - Image uploads are stored as **base64** in the database (no cloud storage).

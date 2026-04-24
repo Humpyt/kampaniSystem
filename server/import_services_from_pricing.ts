@@ -212,8 +212,14 @@ async function importServices() {
 
       // Insert or replace service
       await db.run(
-        `INSERT OR REPLACE INTO services (id, name, price, estimated_days, category, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        `INSERT INTO services (id, name, price, estimated_days, category, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           price = EXCLUDED.price,
+           estimated_days = EXCLUDED.estimated_days,
+           category = EXCLUDED.category,
+           updated_at = CURRENT_TIMESTAMP`,
         [id, name, price, estimatedDays, category]
       );
 

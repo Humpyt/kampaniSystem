@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Package, ShoppingBag, ArrowDownToLine, FileText } from 'lucide-react';
+import { LogOut, Package, ArrowDownToLine } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { CustomIcons } from './Icons';
 
@@ -9,11 +9,10 @@ const QuickActionButtons = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
   };
 
   return (
-    <div className="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4">
+    <div className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4">
       {/* Drop Button */}
       <button
         onClick={() => navigate('/drop')}
@@ -47,7 +46,7 @@ const QuickActionButtons = () => {
         className="bg-red-600 hover:bg-red-700 text-white p-4 rounded-lg flex flex-col items-center gap-2 transition-colors mt-auto"
       >
         <LogOut size={24} />
-        <span className="text-sm">Logout</span>
+        <span className="text-sm">Exit</span>
       </button>
     </div>
   );

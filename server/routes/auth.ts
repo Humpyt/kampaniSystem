@@ -166,7 +166,7 @@ router.post('/login', async (req, res) => {
 
     // Get user permissions
     const permissions = await db.all(
-      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
+      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = true',
       [user.id]
     );
 
@@ -204,7 +204,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     // Get user permissions
     const permissions = await db.all(
-      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
+      'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = true',
       [user.id]
     );
 
@@ -237,7 +237,7 @@ router.get('/users', authenticateToken, requireRole('admin', 'manager'), async (
     const usersWithPermissions = await Promise.all(
       users.map(async (user: any) => {
         const permissions = await db.all(
-          'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = 1',
+          'SELECT permission FROM user_permissions WHERE user_id = ? AND granted = true',
           [user.id]
         );
 

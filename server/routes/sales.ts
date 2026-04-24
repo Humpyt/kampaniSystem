@@ -55,12 +55,11 @@ router.get('/', async (req, res) => {
       } else if (sale.sale_type === 'retail') {
         details = await db.prepare(`
           SELECT 
-            si.name,
-            si.price,
-            oi.quantity
-          FROM order_items oi
-          JOIN sales_items si ON si.id = oi.item_id
-          WHERE oi.order_id = ?
+            product_name as name,
+            unit_price as price,
+            quantity
+          FROM operation_retail_items
+          WHERE operation_id = ?
         `).all(sale.reference_id);
       }
 

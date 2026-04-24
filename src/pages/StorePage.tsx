@@ -352,20 +352,6 @@ export default function StorePage() {
       color: 'from-red-500 to-rose-600',
     },
     {
-      label: 'Ready pick today',
-      icon: faCheckCircle,
-      path: '/ready-to-pick',
-      count: 8,
-      color: 'from-emerald-500 to-green-600',
-    },
-    {
-      label: 'Low stock',
-      icon: faBoxesStacked,
-      path: '/supplies',
-      count: 5,
-      color: 'from-orange-500 to-amber-600',
-    },
-    {
       label: 'Expenses',
       icon: faMoneyBillTransfer,
       path: '/expenses',
@@ -378,13 +364,6 @@ export default function StorePage() {
       path: '/business-targets',
       count: 4,
       color: 'from-purple-500 to-fuchsia-600',
-    },
-    {
-      label: 'Commissions',
-      icon: faCoins,
-      path: '/business-targets',
-      count: 2,
-      color: 'from-yellow-500 to-orange-600',
     },
   ];
 

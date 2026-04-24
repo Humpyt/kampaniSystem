@@ -5,8 +5,8 @@ async function addDiscountColumn() {
     console.log('🔄 Adding discount column to operations table...\n');
 
     // Check if column already exists
-    const columns = await db.all('PRAGMA table_info(operations)');
-    const hasDiscount = columns.some((col: any) => col.name === 'discount');
+    const columns = await db.all('SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'operations' ORDER BY ordinal_position');
+    const hasDiscount = columns.some((col: any) => col.column_name === 'discount');
 
     if (hasDiscount) {
       console.log('✅ Discount column already exists!\n');
@@ -22,8 +22,8 @@ async function addDiscountColumn() {
     console.log('✅ Successfully added discount column to operations table!\n');
 
     // Verify the change
-    const updatedColumns = await db.all('PRAGMA table_info(operations)');
-    const discountCol = updatedColumns.find((col: any) => col.name === 'discount');
+    const updatedColumns = await db.all('SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'operations' ORDER BY ordinal_position');
+    const discountCol = updatedColumns.find((col: any) => col.column_name === 'discount');
 
     if (discountCol) {
       console.log('📋 New column details:');

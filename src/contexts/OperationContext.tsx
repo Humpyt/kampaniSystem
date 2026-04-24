@@ -20,6 +20,7 @@ interface ShoeItem {
 
 interface Operation {
   id: string;
+  ticketNumber?: string | null;
   customer: Customer | null;
   shoes: ShoeItem[];
   status: 'pending' | 'in_progress' | 'completed' | 'held' | 'cancelled';

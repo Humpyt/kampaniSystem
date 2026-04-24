@@ -5,6 +5,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { PaymentModal } from '../components/PaymentModal';
 import { useAuthStore } from '../store/authStore';
+import { buildPaymentReceiptPayload, printerService } from '../services/printer';
 
 interface BalanceRecord {
   id: string;
@@ -463,6 +464,12 @@ export default function BalancesPage() {
               if (!response.ok) {
                 throw new Error('Payment failed');
               }
+
+              const paymentResult = await response.json();
+              await printerService.printPaymentReceipt(
+                buildPaymentReceiptPayload(paymentResult, payments)
+              );
+
               setPaymentModalOpen(false);
               setSelectedBalance(null);
               // Refresh operations to update the balance list

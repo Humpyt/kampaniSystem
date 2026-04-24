@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
     const colors = await db.prepare(`
       SELECT id, name, hex_code, display_order
       FROM colors
-      WHERE is_active = 1
+      WHERE is_active = true
       ORDER BY display_order ASC, name ASC
     `).all();
 

@@ -1,3 +1,6 @@
+import { pool } from './database';
+import { createSchema } from './db/postgres-schema';
+import { seedAll } from './db/postgres-seeds';
 import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,10 +22,86 @@ import invoicesRouter from './routes/invoices';
 import analyticsRouter from './routes/analytics';
 import retailProductsRouter from './routes/retailProducts';
 import expensesRouter from './routes/expenses';
+import { previewNextTicketNumber } from './helpers/tickets';
 import { transformCustomer, transformOperation, transformService } from './utils';
 
 const app = express();
 const port = 3000;
+
+const normalizeServicePricingMode = (value: any) => {
+  const normalized = String(value || 'fixed').trim().toLowerCase();
+  if (normalized === 'range' || normalized === 'per_unit') {
+    return normalized;
+  }
+  return 'fixed';
+};
+
+const toNullableNumber = (value: any) => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const validateServicePricing = (payload: {
+  pricingMode: string;
+  price: number | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  unitLabel: string | null;
+}) => {
+  if (payload.pricingMode === 'fixed') {
+    if (payload.price === null || payload.price < 0) {
+      return 'Fixed services require a valid price.';
+    }
+    return null;
+  }
+
+  if (payload.pricingMode === 'range') {
+    if (payload.minPrice === null || payload.maxPrice === null) {
+      return 'Range-priced services require both minimum and maximum prices.';
+    }
+    if (payload.minPrice < 0 || payload.maxPrice < 0 || payload.maxPrice < payload.minPrice) {
+      return 'Range-priced services must have a valid minimum and maximum price.';
+    }
+    return null;
+  }
+
+  if (payload.pricingMode === 'per_unit') {
+    if (payload.price === null || payload.price < 0) {
+      return 'Per-unit services require a valid unit price.';
+    }
+    if (!payload.unitLabel) {
+      return 'Per-unit services require a unit label such as wheel or piece.';
+    }
+  }
+
+  return null;
+};
+
+const normalizeServicePayload = (body: any) => {
+  const pricingMode = normalizeServicePricingMode(body.pricingMode ?? body.pricing_mode);
+  const price = toNullableNumber(body.price);
+  const minPrice = toNullableNumber(body.minPrice ?? body.min_price);
+  const maxPrice = toNullableNumber(body.maxPrice ?? body.max_price);
+  const unitLabel = String(body.unitLabel ?? body.unit_label ?? '').trim() || null;
+  const priceNote = String(body.priceNote ?? body.price_note ?? '').trim() || null;
+  const normalized = {
+    name: String(body.name || '').trim(),
+    description: String(body.description || '').trim() || null,
+    price: pricingMode === 'range'
+      ? (price ?? minPrice ?? 0)
+      : (price ?? 0),
+    pricingMode,
+    minPrice: pricingMode === 'range' ? minPrice : null,
+    maxPrice: pricingMode === 'range' ? maxPrice : null,
+    unitLabel,
+    priceNote,
+    estimatedDays: body.estimated_days ?? body.estimatedDays ?? null,
+    category: String(body.category || '').trim() || null,
+    status: String(body.status || 'active').trim() || 'active',
+  };
+  return normalized;
+};
 
 app.use(cors());
 app.use(express.json());
@@ -57,17 +136,7 @@ app.use('/api/invoices', invoicesRouter);
 // Ticket next number
 app.get('/api/ticket/next', async (req, res) => {
   try {
-    const dbModule = await import('./database.js');
-    const db = dbModule.default;
-    const result = db.prepare('SELECT ticket_number FROM operations ORDER BY id DESC LIMIT 1').get();
-    let nextNum = 1;
-    if (result && result.ticket_number) {
-      const parts = result.ticket_number.split('-');
-      if (parts.length === 2) {
-        nextNum = parseInt(parts[1], 10) + 1;
-      }
-    }
-    const ticket_number = `01-${String(nextNum).padStart(6, '0')}`;
+    const ticket_number = await previewNextTicketNumber(db);
     res.json({ ticket_number });
   } catch (err) {
     console.error('Error generating ticket number:', err);
@@ -265,7 +334,7 @@ app.post('/api/orders', async (req, res) => {
 app.get('/api/services', async (req, res) => {
   try {
     const services = await db.prepare('SELECT * FROM services ORDER BY name ASC').all();
-    res.json(services);
+    res.json(services.map(transformService));
   } catch (error) {
     console.error('Error fetching services:', error);
     res.status(500).json({ error: 'Failed to fetch services' });
@@ -274,17 +343,45 @@ app.get('/api/services', async (req, res) => {
 
 app.post('/api/services', async (req, res) => {
   try {
-    const { name, description, price, estimated_days, category } = req.body;
+    const normalized = normalizeServicePayload(req.body);
+    const pricingError = validateServicePricing({
+      pricingMode: normalized.pricingMode,
+      price: normalized.price,
+      minPrice: normalized.minPrice,
+      maxPrice: normalized.maxPrice,
+      unitLabel: normalized.unitLabel,
+    });
+    if (pricingError) {
+      return res.status(400).json({ error: pricingError });
+    }
+
     const id = uuidv4();
     const now = new Date().toISOString();
 
     const result = await db.prepare(`
-      INSERT INTO services (id, name, description, price, estimated_days, category, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, description || null, price, estimated_days || null, category || null, now, now);
+      INSERT INTO services (
+        id, name, description, price, pricing_mode, min_price, max_price, unit_label, price_note,
+        estimated_days, category, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      normalized.name,
+      normalized.description,
+      normalized.price,
+      normalized.pricingMode,
+      normalized.minPrice,
+      normalized.maxPrice,
+      normalized.unitLabel,
+      normalized.priceNote,
+      normalized.estimatedDays,
+      normalized.category,
+      normalized.status,
+      now,
+      now
+    );
 
     const service = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
-    res.status(201).json(service);
+    res.status(201).json(transformService(service));
   } catch (error) {
     console.error('Error creating service:', error);
     res.status(500).json({ error: 'Failed to create service' });
@@ -294,20 +391,45 @@ app.post('/api/services', async (req, res) => {
 app.patch('/api/services/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, estimated_days, category } = req.body;
+    const normalized = normalizeServicePayload(req.body);
+    const pricingError = validateServicePricing({
+      pricingMode: normalized.pricingMode,
+      price: normalized.price,
+      minPrice: normalized.minPrice,
+      maxPrice: normalized.maxPrice,
+      unitLabel: normalized.unitLabel,
+    });
+    if (pricingError) {
+      return res.status(400).json({ error: pricingError });
+    }
     const now = new Date().toISOString();
 
     await db.prepare(`
       UPDATE services
-      SET name = ?, description = ?, price = ?, estimated_days = ?, category = ?, updated_at = ?
+      SET name = ?, description = ?, price = ?, pricing_mode = ?, min_price = ?, max_price = ?, unit_label = ?,
+          price_note = ?, estimated_days = ?, category = ?, status = ?, updated_at = ?
       WHERE id = ?
-    `).run(name, description || null, price, estimated_days || null, category || null, now, id);
+    `).run(
+      normalized.name,
+      normalized.description,
+      normalized.price,
+      normalized.pricingMode,
+      normalized.minPrice,
+      normalized.maxPrice,
+      normalized.unitLabel,
+      normalized.priceNote,
+      normalized.estimatedDays,
+      normalized.category,
+      normalized.status,
+      now,
+      id
+    );
 
     const service = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
     if (!service) {
       return res.status(404).json({ error: 'Service not found' });
     }
-    res.json(service);
+    res.json(transformService(service));
   } catch (error) {
     console.error('Error updating service:', error);
     res.status(500).json({ error: 'Failed to update service' });
@@ -374,14 +496,23 @@ app.get('/api/sales-items/category/:categoryId', async (req, res) => {
 // Start server
 app.listen(port, async () => {
   console.log(`Server is running on http://localhost:${port}`);
-  console.log('Database file:', (db as any).name);
+
+  // Initialize PostgreSQL schema and seed data
+  try {
+    await createSchema(pool);
+    console.log("Database schema initialized");
+    await seedAll(pool);
+    console.log("Database seeds completed");
+  } catch (error) {
+    console.error("Database initialization error:", error);
+  }
 
   // Test database connection
   try {
-    const customerCount = await db.prepare('SELECT COUNT(*) as count FROM customers').get();
-    console.log('Connected to database. Customer count:', customerCount?.count || 0);
+    const customerCount = await db.prepare("SELECT COUNT(*) as count FROM customers").get();
+    console.log("Connected to database. Customer count:", customerCount?.count || 0);
   } catch (error) {
-    console.error('Database connection error:', error);
+    console.error("Database connection error:", error);
   }
 });
 

@@ -2,6 +2,27 @@ import { Customer, Order, Service } from '../types';
 
 const API_URL = '/api';
 
+const transformServiceRecord = (service: any): Service => ({
+  id: service.id,
+  name: service.name,
+  description: service.description || '',
+  price: Number(service.price) || 0,
+  pricingMode: service.pricingMode || service.pricing_mode || 'fixed',
+  minPrice: service.minPrice !== undefined
+    ? service.minPrice
+    : (service.min_price !== undefined ? Number(service.min_price) : null),
+  maxPrice: service.maxPrice !== undefined
+    ? service.maxPrice
+    : (service.max_price !== undefined ? Number(service.max_price) : null),
+  unitLabel: service.unitLabel || service.unit_label || '',
+  priceNote: service.priceNote || service.price_note || '',
+  estimatedDays: service.estimatedDays || service.estimated_days || 1,
+  category: service.category || '',
+  status: service.status || 'active',
+  createdAt: service.createdAt || service.created_at,
+  updatedAt: service.updatedAt || service.updated_at,
+} as Service);
+
 export const api = {
   // Customer endpoints
   customers: {
@@ -123,7 +144,8 @@ export const api = {
     getAll: async (): Promise<Service[]> => {
       const response = await fetch(`${API_URL}/services`);
       if (!response.ok) throw new Error('Failed to fetch services');
-      return response.json();
+      const services = await response.json();
+      return Array.isArray(services) ? services.map(transformServiceRecord) : [];
     },
 
     create: async (service: Omit<Service, 'id'>): Promise<Service> => {
@@ -135,7 +157,26 @@ export const api = {
         body: JSON.stringify(service),
       });
       if (!response.ok) throw new Error('Failed to create service');
-      return response.json();
+      return transformServiceRecord(await response.json());
+    },
+
+    update: async (id: string, service: Partial<Service>): Promise<Service> => {
+      const response = await fetch(`${API_URL}/services/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(service),
+      });
+      if (!response.ok) throw new Error('Failed to update service');
+      return transformServiceRecord(await response.json());
+    },
+
+    delete: async (id: string): Promise<void> => {
+      const response = await fetch(`${API_URL}/services/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete service');
     },
   },
 
@@ -152,7 +193,6 @@ export const api = {
   // Operation endpoints
   operations: {
     create: async (data: {
-      ticket_number: string;
       customer_id?: string;
       items: Array<{
         category: string;

@@ -20,7 +20,7 @@ const connectionString = process.env.DATABASE_URL;
 export const pool = new Pool(
   connectionString
     ? { connectionString, max: 20, idleTimeoutMillis: 30000 }
-    : { host: 'localhost', port: 5432, database: 'cavemo-repair', user: 'postgres', password: 'postgres123', max: 20, idleTimeoutMillis: 30000 }
+    : { host: 'localhost', port: 5432, database: 'kampani', user: 'postgres', password: 'postgres123', max: 20, idleTimeoutMillis: 30000 }
 );
 ```
 

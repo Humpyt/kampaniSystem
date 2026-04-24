@@ -1,5 +1,4 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Routes, Route, Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import StorePage from './pages/StorePage';
@@ -53,6 +52,7 @@ const CustomerRankingsPage = lazy(() => import('./pages/CustomerRankingsPage'));
 const MostPerformingPage = lazy(() => import('./pages/MostPerformingPage'));
 const CreditListPage = lazy(() => import('./pages/CreditListPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
+const ServicesPage = lazy(() => import('./pages/ServicesPage'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -61,29 +61,76 @@ const PageLoader = () => (
   </div>
 );
 
+const pageTitleFromPath = (path: string) => {
+  const cleanPath = path.split('/').filter(Boolean)[0] || 'store';
+  const titles: Record<string, string> = {
+    store: 'Dashboard',
+    customers: 'Customers',
+    drop: 'Drop',
+    pickup: 'Pickup',
+    balances: 'Balances',
+    operation: 'Operations',
+    expenses: 'Expenses',
+    sales: 'Sales',
+    'sales-items': 'Sale Items',
+    services: 'Services',
+    reports: 'Reports',
+    'business-targets': 'Business Targets',
+    notifications: 'Notifications',
+    admin: 'Admin',
+    'no-charge-do-over': 'No Charge / Do Over',
+    'ticket-search': 'Ticket Search',
+    assembly: 'Assembly',
+    racking: 'Racking',
+    'pickup-order': 'Pickup Order',
+    deliveries: 'Deliveries',
+    'cod-payment': 'COD Payment',
+    policy: 'Company Policies',
+    'ready-to-pick': 'Ready to Pick',
+    discounts: 'Discounts',
+    'new-customers': 'New Customers',
+    'stock-levels': 'Stock Levels',
+    'customer-rankings': 'Customer Rankings',
+    'most-performing': 'Most Performing',
+    'credit-list': 'Credit List',
+    receipts: 'Receipts',
+  };
+  return titles[cleanPath] || 'Repair System';
+};
+
 const Layout = ({ isSidebarCollapsed, toggleSidebar }: { isSidebarCollapsed: boolean; toggleSidebar: () => void }) => {
+  const location = useLocation();
+  const title = pageTitleFromPath(location.pathname);
+  const user = useAuthStore(state => state.user);
+
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-slate-950 text-white">
       {/* Sidebar */}
       <div
-        className={`bg-gray-900 text-white transition-all duration-300 ease-in-out ${
-          isSidebarCollapsed ? 'w-16' : 'w-64'
+        className={`border-r border-white/10 bg-slate-900/95 transition-all duration-300 ease-in-out ${
+          isSidebarCollapsed ? 'w-14' : 'w-52'
         }`}
       >
-        <MainMenu isCollapsed={isSidebarCollapsed} />
+        <MainMenu isCollapsed={isSidebarCollapsed} onToggleCollapse={toggleSidebar} />
       </div>
 
-      {/* Toggle button */}
-      <button
-        onClick={toggleSidebar}
-        className="fixed left-0 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white p-2 rounded-r-md hover:bg-gray-700 focus:outline-none z-50"
-      >
-        {isSidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-      </button>
-
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden pr-[80px]">
-        <div className="flex-1 overflow-auto">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 items-center justify-between border-b border-white/10 bg-slate-900/70 px-5 backdrop-blur-xl">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Kampanis Shoes & Bags Clinic</div>
+            <h1 className="truncate text-lg font-semibold text-white">{title}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
+              Live
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+              {user?.name || 'User'}
+            </div>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto pr-24 lg:pr-28">
           <Outlet />
         </div>
         <QuickActionButtons />
@@ -173,7 +220,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-800 text-white">
+      <div className="min-h-screen bg-slate-950 text-white">
         <CustomerProvider>
           <OperationProvider>
             <AdminProvider>
@@ -212,9 +259,9 @@ function App() {
                     <Route
                       path="/*"
                       element={
-                        <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
-                      }
-                    >
+                      <Layout isSidebarCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
+                        }
+                      >
                       <Route path="store" element={<StorePage />} />
                       <Route path="customers" element={
                         <ProtectedRoute permission="view_customers">
@@ -269,6 +316,13 @@ function App() {
                         <ProtectedRoute permission="view_sales">
                           <Suspense fallback={<PageLoader />}>
                             <SalesItems />
+                          </Suspense>
+                        </ProtectedRoute>
+                      } />
+                      <Route path="services" element={
+                        <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
+                          <Suspense fallback={<PageLoader />}>
+                            <ServicesPage />
                           </Suspense>
                         </ProtectedRoute>
                       } />
@@ -375,13 +429,14 @@ function App() {
                           <CreditListPage />
                         </Suspense>
                       } />
-                      <Route path="invoices" element={
-                        <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                      <Route path="receipts" element={
+                        <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
                           <Suspense fallback={<PageLoader />}>
                             <InvoicesPage />
                           </Suspense>
                         </ProtectedRoute>
                       } />
+                      <Route path="invoices" element={<Navigate to="/receipts" replace />} />
                     </Route>
                       </Routes>
                         </ExpenseProvider>

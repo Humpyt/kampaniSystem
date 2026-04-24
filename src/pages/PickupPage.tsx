@@ -6,6 +6,7 @@ import { PaymentModal } from '../components/PaymentModal';
 import { CollectorInfoModal } from '../components/CollectorInfoModal';
 import { Link } from 'react-router-dom';
 import { Search, Package, DollarSign, CreditCard, CheckSquare, X, Clock, User, Gift, Minus, CheckCircle, ArrowRight, ShoppingCart, Sparkles } from 'lucide-react';
+import { buildPaymentReceiptPayload, printerService } from '../services/printer';
 
 interface PickupTicket {
   id: string;
@@ -226,6 +227,11 @@ export default function PickupPage() {
       if (!response.ok) {
         throw new Error('Payment failed');
       }
+
+      const paymentResult = await response.json();
+      await printerService.printPaymentReceipt(
+        buildPaymentReceiptPayload(paymentResult, payments)
+      );
 
       await refreshOperations();
       setSelectedTicket(null);

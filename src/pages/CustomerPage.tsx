@@ -455,6 +455,8 @@ export default function CustomerPage() {
         throw new Error(error.error || 'Payment failed');
       }
 
+      await response.json();
+
       // Refresh unpaid operations
       const unpaidResponse = await fetch(API_ENDPOINTS.operations);
       if (unpaidResponse.ok) {

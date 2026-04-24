@@ -26,7 +26,7 @@ router.post('/orders', (req, res) => {
 
     // Create order items
     const insertOrderItem = db.prepare(`
-      INSERT INTO order_items (
+      INSERT INTO operation_services (
         id, order_id, item_id, quantity, price,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)

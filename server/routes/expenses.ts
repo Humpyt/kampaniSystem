@@ -149,6 +149,7 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
 
     // Build WHERE clause for staff filtering
     const staffWhere = isStaff ? ' AND created_by = ?' : '';
+    const joinedStaffWhere = isStaff ? ' AND e.created_by = ?' : '';
     const staffParams = isStaff ? [userId] : [];
 
     // Total expenses this month
@@ -195,20 +196,20 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
     // Weekly trends (last 7 days)
     const weeklyTrendsResult = await db.prepare(`
       SELECT
-        strftime('%w', date) as dayNum,
-        CASE strftime('%w', date)
-          WHEN '0' THEN 'Sun'
-          WHEN '1' THEN 'Mon'
-          WHEN '2' THEN 'Tue'
-          WHEN '3' THEN 'Wed'
-          WHEN '4' THEN 'Thu'
-          WHEN '5' THEN 'Fri'
-          WHEN '6' THEN 'Sat'
+        EXTRACT(DOW FROM date)::int as dayNum,
+        CASE EXTRACT(DOW FROM date)::int
+          WHEN 0 THEN 'Sun'
+          WHEN 1 THEN 'Mon'
+          WHEN 2 THEN 'Tue'
+          WHEN 3 THEN 'Wed'
+          WHEN 4 THEN 'Thu'
+          WHEN 5 THEN 'Fri'
+          WHEN 6 THEN 'Sat'
         END as day,
         SUM(amount) as amount
       FROM expenses
-      WHERE date >= date('now', '-7 days')${staffWhere}
-      GROUP BY day
+      WHERE date >= CURRENT_DATE - INTERVAL '7 days'${staffWhere}
+      GROUP BY EXTRACT(DOW FROM date)
       ORDER BY dayNum ASC
     `).all(...staffParams) as any[];
 
@@ -222,10 +223,10 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
     // Monthly trends (last 6 months)
     const monthlyTrendsResult = await db.prepare(`
       SELECT
-        strftime('%Y-%m', date) as month,
+        TO_CHAR(date, 'YYYY-MM') as month,
         SUM(amount) as amount
       FROM expenses
-      WHERE date >= date('now', '-6 months')${staffWhere}
+      WHERE date >= CURRENT_DATE - INTERVAL '6 months'${staffWhere}
       GROUP BY month
       ORDER BY month ASC
     `).all(...staffParams) as any[];
@@ -235,7 +236,7 @@ router.get('/analytics', authenticateToken, async (req: any, res: any) => {
       SELECT e.*, u.name as creator_name
       FROM expenses e
       LEFT JOIN users u ON e.created_by = u.id
-      WHERE 1=1${staffWhere}
+      WHERE 1=1${joinedStaffWhere}
       ORDER BY e.date DESC, e.created_at DESC
       LIMIT 5
     `).all(...staffParams);

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A full-stack Point of Sale (POS) system for shoe repair businesses. Built with React + TypeScript (Vite) frontend and Express + PostgreSQL backend with a SQLite-compatible wrapper layer. Currency is Ugandan Shilling (UGX, 0 decimal places).
+A full-stack Point of Sale (POS) system for shoe repair businesses. Built with React + TypeScript (Vite) frontend and Express + PostgreSQL backend. Currency is Ugandan Shilling (UGX, 0 decimal places).
 
-**Important:** The database uses PostgreSQL via `pg` Pool, but a compatibility layer (`server/database.ts`) wraps it to provide SQLite-like `db.run()`, `db.get()`, `db.all()` methods. Always use this wrapper, not raw `pool.query()` directly.
+**Important:** The database uses PostgreSQL via `pg` Pool, with convenience methods (`db.run()`, `db.get()`, `db.all()`, `db.prepare()`) in `server/database.ts`. Always use this wrapper, not raw `pool.query()` directly.
 
 ## Development Commands
 
@@ -33,10 +33,11 @@ npm run lint     # ESLint with TypeScript rules
 npm run preview  # Preview production build locally
 ```
 
-**Database seeding (via tsx):**
+**Database operations (via tsx):**
 ```bash
 tsx server/reset_database.ts     # Reset and reinitialize database
-tsx server/add_services.ts      # Add sample service data
+tsx server/init_supplies_table.ts # Initialize supplies table
+tsx server/add_dummy_supplies.ts  # Add sample supplies data
 ```
 
 **Import services from pricing.txt:**
@@ -52,7 +53,7 @@ npm run cleanup:services   # Remove duplicate services
 **Entry point:** `server/index.ts` (port 3000)
 
 **Database:** PostgreSQL via `pg` Pool (`server/database.ts`)
-- Connection: `cavemo-repair` database on localhost:5432
+- Connection: 'kampani' database on localhost:5432
 - Schema: `server/db/postgres-schema.ts`
 - Seeds: `server/db/postgres-seeds.ts` (auto-runs on startup)
 - Uses `withTransaction()` helper for multi-step operations
@@ -76,8 +77,10 @@ npm run cleanup:services   # Remove duplicate services
 - `staff-messages` - Staff messaging
 - `ticket` - Ticket-specific endpoints
 - `colors` - Color/swatch management
+- `orders` - Order-specific endpoints
+- `credits` - Customer credits
 
-**Key tables:** `customers`, `operations`, `operation_shoes`, `operation_services`, `services`, `products`, `categories`, `supplies`, `inventory_items`, `sales`, `sales_items`, `sales_categories`
+**Key tables:** `customers`, `operations`, `operation_shoes`, `operation_services`, `services`, `products`, `categories`, `supplies`, `inventory_items`, `sales`, `sales_items`, `sales_categories`, `expenses`, `invoices`, `users`, `user_permissions`, `staff_targets`, `colors`, `customer_credits`, `commission_archives`, `daily_balance_archives`, `operation_payments`, `operation_retail_items`, `qrcodes`, `retail_products`, `staff_conversations`, `staff_messages`
 
 ### Frontend (React + Vite)
 
@@ -149,6 +152,9 @@ operation_shoes (1) ----< (many) operation_services
 services (1) ----< (many) operation_services
 categories (1) ----< (many) products
 sales_categories (1) ----< (many) sales_items
+users (1) ----< (many) user_permissions
+users (1) ----< (many) staff_targets
+users (1) ----< (many) staff_conversations
 ```
 
 ## Development Guidelines

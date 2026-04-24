@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, X, User, Pencil, Check, ShoppingBag } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Plus, X, User, ShoppingBag } from 'lucide-react';
 import { useOperation } from '../contexts/OperationContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useServices } from '../contexts/ServiceContext';
-import { useRetailProducts, type RetailProduct } from '../contexts/RetailProductContext';
 import { useAuthStore } from '../store/authStore';
+import type { RetailProduct } from '../contexts/RetailProductContext';
 import type { Customer, CartItem, DropFormState } from '../types';
 import PillChip from '../components/drop/PillChip';
 import StepSection from '../components/drop/StepSection';
@@ -79,25 +79,6 @@ const MEMOS = [
   "ASAP", "Rush", "Special Attention"
 ];
 
-const SERVICES = [
-  { name: "Elastic", estimatedPrice: 15000 },
-  { name: "Glue", estimatedPrice: 10000 },
-  { name: "Hardware", estimatedPrice: 20000 },
-  { name: "Heel", estimatedPrice: 25000 },
-  { name: "Heel Fix", estimatedPrice: 30000 },
-  { name: "Insoles", estimatedPrice: 20000 },
-  { name: "Misc", estimatedPrice: 15000 },
-  { name: "Pad", estimatedPrice: 12000 },
-  { name: "Patches", estimatedPrice: 25000 },
-  { name: "Rips", estimatedPrice: 20000 },
-  { name: "Sling", estimatedPrice: 15000 },
-  { name: "Stitch", estimatedPrice: 20000 },
-  { name: "Straps", estimatedPrice: 18000 },
-  { name: "Stretch", estimatedPrice: 20000 },
-  { name: "Tassels", estimatedPrice: 15000 },
-  { name: "Zipper", estimatedPrice: 25000 }
-];
-
 const SERVICE_VARIATIONS = [
   "New Left", "New Pair", "New Right", "Shorten Left", "Shorten Pair", "Shorten Right"
 ];
@@ -107,6 +88,31 @@ const SHOE_CATEGORY_NAMES = new Set(
 );
 
 const SHOE_SIZES = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45'];
+
+  const formatServicePrice = (service: any) => {
+    if (!service) return 'Set in catalog';
+  const mode = service.pricingMode || 'fixed';
+  const price = Number(service.price) || 0;
+  const minPrice = service.minPrice !== null && service.minPrice !== undefined ? Number(service.minPrice) : null;
+  const maxPrice = service.maxPrice !== null && service.maxPrice !== undefined ? Number(service.maxPrice) : null;
+  if (mode === 'range' && minPrice !== null && maxPrice !== null) {
+    return `UGX ${minPrice.toLocaleString('en-US')} - ${maxPrice.toLocaleString('en-US')}`;
+  }
+  if (mode === 'per_unit') {
+    return `UGX ${price.toLocaleString('en-US')} / ${service.unitLabel || 'unit'}`;
+  }
+  return `UGX ${price.toLocaleString('en-US')}`;
+};
+
+const getServicePriceValue = (service: any) => {
+  if (!service) return 0;
+  const mode = service.pricingMode || 'fixed';
+  if (mode === 'range') {
+    const minPrice = Number(service.minPrice);
+    return Number.isFinite(minPrice) && minPrice > 0 ? minPrice : Number(service.price) || 0;
+  }
+  return Number(service.price) || 0;
+};
 
 type StepName = 'customer' | 'category' | 'size' | 'color' | 'brand' | 'material' | 'description' | 'memos' | 'service' | 'variation' | 'readyBy';
 
@@ -144,45 +150,54 @@ export default function DropPage() {
   const [activeStep, setActiveStep] = useState<StepName>('customer');
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
   const [customCategory, setCustomCategory] = useState('');
-  const [showProducts, setShowProducts] = useState(false);
   const [brandSearchTerm, setBrandSearchTerm] = useState('');
   const [brandPage, setBrandPage] = useState(0);
   const [customBrand, setCustomBrand] = useState('');
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+  const [showProducts, setShowProducts] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [serviceIdMap, setServiceIdMap] = useState<Map<string, string>>(new Map());
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const requiresShoeSize = SHOE_CATEGORY_NAMES.has(form.category);
+  const liveServices = useMemo(
+    () =>
+      services
+        .filter(service => service.status !== 'inactive')
+        .slice()
+        .sort((a, b) => {
+          const categoryCompare = (a.category || '').localeCompare(b.category || '');
+          if (categoryCompare !== 0) return categoryCompare;
+          return a.name.localeCompare(b.name);
+        }),
+    [services]
+  );
+  const filteredServices = useMemo(() => {
+    const query = serviceSearchTerm.trim().toLowerCase();
+    if (!query) return liveServices;
 
-  // Product handlers
-  const handleProductSelect = (product: RetailProduct, customPrice?: number) => {
-    const item: CartItem = {
-      id: crypto.randomUUID(),
-      category: 'Product',
-      size: '',
-      color: '',
-      brand: product.category,
-      material: '',
-      shortDescription: product.name,
-      memos: [],
-      services: [],
-      price: customPrice || product.price,
-    };
-    addToCart(item);
-    toast.success(`Added ${product.name} to cart`);
-  };
+    return liveServices.filter(service => {
+      const searchable = [
+        service.name,
+        service.category,
+        service.pricingMode,
+        service.unitLabel,
+        formatServicePrice(service),
+      ]
+        .map(value => String(value || '').toLowerCase())
+        .join(' ');
 
-  const handleEditProduct = (product: RetailProduct) => {
-    toast.info('Product editing coming soon');
-  };
-
-  const handleDeleteProduct = (id: string) => {
-    toast.info('Product deletion coming soon');
-  };
-
-  const handleAddProduct = () => {
-    toast.info('Product creation coming soon');
-  };
+      return searchable.includes(query);
+    });
+  }, [liveServices, serviceSearchTerm]);
+  const displayedServices = useMemo(() => {
+    if (!form.service) return filteredServices;
+    const selectedService = liveServices.find(service => service.name === form.service);
+    if (!selectedService || filteredServices.some(service => service.id === selectedService.id)) {
+      return filteredServices;
+    }
+    return [selectedService, ...filteredServices];
+  }, [filteredServices, form.service, liveServices]);
 
   // Fetch ticket number and colors on mount
   useEffect(() => {
@@ -235,10 +250,6 @@ export default function DropPage() {
     price: parseInt(form.price, 10) || 0,
       readyByDate: form.readyByDate || undefined,
   } : null;
-
-  const handlePreviewPriceChange = (price: number) => {
-    setForm(prev => ({ ...prev, price: price.toString() }));
-  };
 
   const handlePreviewDone = (item: CartItem) => {
     const finalItem: CartItem = {
@@ -324,8 +335,12 @@ export default function DropPage() {
     advanceStep('memos');
   };
 
-  const handleServiceSelect = (service: string) => {
-    setForm(prev => ({ ...prev, service }));
+  const handleServiceSelect = (service: string, price?: number) => {
+    setForm(prev => ({
+      ...prev,
+      service,
+      price: Number.isFinite(price ?? NaN) && Number(price) > 0 ? String(price) : prev.price,
+    }));
     advanceStep('service');
   };
 
@@ -397,6 +412,37 @@ export default function DropPage() {
     toast.success('Item added to cart');
   };
 
+  const handleProductSelect = (product: RetailProduct, customPrice?: number) => {
+    const price = customPrice ?? product.default_price ?? 0;
+    const item: CartItem = {
+      id: crypto.randomUUID(),
+      category: 'Product',
+      size: '',
+      color: '',
+      brand: product.category || '',
+      material: '',
+      shortDescription: product.name,
+      memos: [],
+      services: [],
+      price,
+    };
+
+    addToCart(item);
+    toast.success(`Added ${product.name} to cart`);
+  };
+
+  const handleEditProduct = (_product: RetailProduct) => {
+    toast.info('Product editing coming soon');
+  };
+
+  const handleDeleteProduct = (_id: string) => {
+    toast.info('Product deletion coming soon');
+  };
+
+  const handleAddProduct = () => {
+    toast.info('Product creation coming soon');
+  };
+
   const handleEditCartItem = (item: CartItem) => {
     setEditingItem(item);
   };
@@ -409,13 +455,6 @@ export default function DropPage() {
   const handleDeleteCartItem = (id: string) => {
     removeFromCart(id);
     setEditingItem(null);
-  };
-
-  const handleCartItemPriceChange = (id: string, price: number) => {
-    const item = cartItems.find(i => i.id === id);
-    if (item) {
-      updateCartItem?.(id, { ...item, price });
-    }
   };
 
   const handleComplete = async (data: { payments: Array<{ method: 'cash' | 'mobile_money' | 'bank_card' | 'store_credit'; amount: number }>; discount: number }) => {
@@ -446,6 +485,7 @@ export default function DropPage() {
                                '';
               return {
                 service_id: serviceId,
+                service: s.service,
                 quantity: 1,
                 price: s.price || item.price / (item.services.length || 1),
                 notes: s.variation || null,
@@ -485,10 +525,10 @@ export default function DropPage() {
         isPickup: false,
         notes: '',
         promisedDate: cartItems[0]?.readyByDate || null,
-        ticket_number: ticketNumber,
       };
 
       const newOperation = await addOperation(operationData);
+      const operationTicketNumber = newOperation.ticketNumber || ticketNumber;
 
       // If payments were made, record them via the payments endpoint
       // This populates operation_payments (for receipts/analytics),
@@ -618,15 +658,14 @@ export default function DropPage() {
       toast.success('Drop completed!');
       // Auto-print receipt and policy slip after successful drop
       try {
-        // Print receipt
         await printerService.printReceipt({
-          orderNumber: ticketNumber,
+          orderNumber: operationTicketNumber,
           customerName: selectedCustomer?.name || 'N/A',
           customerPhone: selectedCustomer?.phone || undefined,
         });
         // Print policy slip
         await printerService.printPolicy({
-          ticketNumber: ticketNumber,
+          ticketNumber: operationTicketNumber,
           date: new Date().toLocaleDateString(),
           customerNumber: selectedCustomer?.id || 'N/A',
           customerName: selectedCustomer?.name || 'N/A',
@@ -640,6 +679,7 @@ export default function DropPage() {
       setNewCustomerPhone('');
       setSelectedCustomer(null);
       setForm(getInitialFormState());
+      setServiceSearchTerm('');
       setActiveStep('customer');
       fetchTicketNumber();
     } catch (error) {
@@ -1096,25 +1136,78 @@ export default function DropPage() {
           </div>
         );
 
-      case 'service':
-        return (
-          <div className="grid grid-cols-2 gap-2">
-            {SERVICES.map(svc => (
-              <button
-                key={svc.name}
-                onClick={() => handleServiceSelect(svc.name)}
-                className={`p-4 rounded-xl text-sm font-medium transition-all flex flex-col items-start ${
-                  form.service === svc.name
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                }`}
-              >
-                <span>{svc.name}</span>
-                <span className="text-xs opacity-70">USh 0</span>
-              </button>
-            ))}
-          </div>
-        );
+        case 'service':
+          return (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input
+                    type="text"
+                    value={serviceSearchTerm}
+                    onChange={(event) => setServiceSearchTerm(event.target.value)}
+                    placeholder="Search services by name, category, or price..."
+                    className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/80 pl-10 pr-10 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-violet-500/70 focus:bg-slate-950"
+                    autoFocus
+                  />
+                  {serviceSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceSearchTerm('')}
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                      aria-label="Clear service search"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>
+                    {filteredServices.length} of {liveServices.length} services
+                  </span>
+                  {form.service && (
+                    <span className="truncate text-violet-300">
+                      Selected: {form.service}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+                {displayedServices.map(service => (
+                  <button
+                    key={service.id}
+                    onClick={() => handleServiceSelect(service.name, getServicePriceValue(service))}
+                    className={`rounded-xl border p-4 text-left text-sm font-medium transition-all ${
+                      form.service === service.name
+                        ? 'border-violet-500 bg-violet-600 text-white'
+                        : 'border-gray-700 bg-gray-800 text-gray-200 hover:border-gray-600 hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="block text-base">{service.name}</span>
+                    <span className="mt-1 block text-xs opacity-80">{formatServicePrice(service)}</span>
+                    {service.category && (
+                      <span className="mt-1 block text-[11px] uppercase tracking-[0.2em] opacity-60">
+                        {service.category}
+                      </span>
+                    )}
+                    <span className="mt-2 block text-[11px] uppercase tracking-[0.2em] opacity-50">
+                      {service.pricingMode === 'range'
+                        ? 'Range price'
+                        : service.pricingMode === 'per_unit'
+                          ? 'Per unit'
+                          : 'Fixed price'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {displayedServices.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 p-6 text-center">
+                  <div className="text-sm font-medium text-slate-300">No services found</div>
+                  <div className="mt-1 text-xs text-slate-500">Try a shorter name, category, or price.</div>
+                </div>
+              )}
+            </div>
+          );
 
       case 'variation':
         return (
@@ -1143,17 +1236,102 @@ export default function DropPage() {
           </div>
         );
 
-      case 'readyBy':
+      case 'readyBy': {
+        // Helper to get date at specific time
+        const setTime = (baseDate: Date, hours: number, mins: number = 0) => {
+          const d = new Date(baseDate);
+          d.setHours(hours, mins, 0, 0);
+          return d;
+        };
+
+        // Quick date presets
+        const today = new Date();
+        today.setHours(17, 0, 0, 0); // Default to end of today
+        const presets = [
+          { label: 'Today', date: setTime(new Date(), 17, 0) },
+          { label: 'Tomorrow', date: setTime(new Date(Date.now() + 86400000), 10, 0) },
+          { label: '+2 days', date: setTime(new Date(Date.now() + 172800000), 10, 0) },
+          { label: '+3 days', date: setTime(new Date(Date.now() + 259200000), 10, 0) },
+          { label: '+1 week', date: setTime(new Date(Date.now() + 604800000), 10, 0) },
+        ];
+
+        // Time presets for selected day
+        const selectedDate = form.readyByDate ? new Date(form.readyByDate) : null;
+        const timePresets = selectedDate ? [
+          { label: '10:00', date: setTime(selectedDate, 10, 0) },
+          { label: '12:00', date: setTime(selectedDate, 12, 0) },
+          { label: '14:00', date: setTime(selectedDate, 14, 0) },
+          { label: '17:00', date: setTime(selectedDate, 17, 0) },
+        ] : [];
+
         return (
           <div className="space-y-4">
             <div className="text-sm text-gray-400 mb-2">When should this be ready?</div>
+            
+            {/* Quick date presets */}
+            <div className="grid grid-cols-5 gap-2">
+              {presets.map(p => {
+                const iso = p.date.toISOString().slice(0, 16);
+                const isSelected = form.readyByDate?.slice(0, 16) === iso;
+                return (
+                  <button
+                    key={p.label}
+                    onClick={() => handleReadyByDateChange(iso)}
+                    className={`px-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Time presets */}
+            {selectedDate && (
+              <div className="flex gap-2 flex-wrap">
+                {timePresets.map(t => {
+                  const iso = t.date.toISOString().slice(0, 16);
+                  const isSelected = form.readyByDate?.slice(0, 16) === iso;
+                  return (
+                    <button
+                      key={t.label}
+                      onClick={() => handleReadyByDateChange(iso)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        isSelected
+                          ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Manual datetime picker (fallback) */}
             <input
               type="datetime-local"
               value={form.readyByDate}
               onChange={e => handleReadyByDateChange(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-lg"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               min={new Date().toISOString().slice(0, 16)}
             />
+
+            {/* Clear button */}
+            {form.readyByDate && (
+              <button
+                onClick={() => handleReadyByDateChange('')}
+                className="w-full py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                Clear date
+              </button>
+            )}
+
+            {/* Preview */}
             {form.readyByDate && (() => {
               const d = new Date(form.readyByDate);
               const dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -1166,6 +1344,7 @@ export default function DropPage() {
             })()}
           </div>
         );
+      }
 
       default:
         return null;
@@ -1253,10 +1432,10 @@ export default function DropPage() {
           <div className="flex-shrink-0">
             <button
               onClick={() => setShowProducts(!showProducts)}
-              className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-2 transition-colors"
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/25 transition-all active:scale-95"
             >
               <ShoppingBag className="w-4 h-4" />
-              {showProducts ? 'Hide Products' : 'Show Products'}
+              {showProducts ? 'HIDE PRODUCTS' : 'QUICK SALE'}
             </button>
 
             {showProducts && (
@@ -1271,70 +1450,6 @@ export default function DropPage() {
               </div>
             )}
           </div>
-
-          {/* Service shortcuts - fixed at bottom */}
-          {activeStep !== 'customer' && !showProducts && (
-            <div className="flex-shrink-0 py-3 space-y-2 border-t border-gray-700">
-              <div className="grid grid-cols-4 gap-2">
-                {['Clean', 'Dye', 'Waterproof', 'Shine'].map(service => (
-                  <button
-                    key={service}
-                    onClick={() => {
-                      setForm(prev => ({
-                        ...prev,
-                        service,
-                        variation: 'New Pair',
-                      }));
-                      // Navigate to fill required fields in order: category → size → color → brand → price
-                      if (!form.category) {
-                        setActiveStep('category');
-                      } else if (requiresShoeSize && !form.size) {
-                        setActiveStep('size');
-                      } else if (!form.color) {
-                        setActiveStep('color');
-                      } else if (!form.brand) {
-                        setActiveStep('brand');
-                      } else {
-                        setActiveStep('variation');
-                      }
-                    }}
-                    className="px-3 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
-                    {service}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {['Heels', 'Half Soles', 'Sole Guard', 'Others'].map(service => (
-                  <button
-                    key={service}
-                    onClick={() => {
-                      setForm(prev => ({
-                        ...prev,
-                        service,
-                        variation: 'New Pair',
-                      }));
-                      // Navigate to fill required fields in order: category → size → color → brand → price
-                      if (!form.category) {
-                        setActiveStep('category');
-                      } else if (requiresShoeSize && !form.size) {
-                        setActiveStep('size');
-                      } else if (!form.color) {
-                        setActiveStep('color');
-                      } else if (!form.brand) {
-                        setActiveStep('brand');
-                      } else {
-                        setActiveStep('variation');
-                      }
-                    }}
-                    className="px-3 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
-                    {service}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right sidebar - Cart Summary */}
@@ -1346,9 +1461,7 @@ export default function DropPage() {
             onComplete={handleComplete}
             disabled={isCompleting || cartItems.length === 0 || !selectedCustomer}
             previewItem={previewItem}
-            onPriceChange={handlePreviewPriceChange}
             onDone={handlePreviewDone}
-            onCartItemPriceChange={handleCartItemPriceChange}
             discount={discount}
             onDiscountChange={setDiscount}
             customer={selectedCustomer}

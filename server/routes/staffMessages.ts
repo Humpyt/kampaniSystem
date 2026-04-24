@@ -22,7 +22,7 @@ router.get('/conversations', authenticateToken, async (req: any, res: any) => {
         ) as last_message,
         (
           SELECT COUNT(*) FROM staff_messages
-          WHERE conversation_id = sc.id AND sender_id != ? AND is_read = 0
+          WHERE conversation_id = sc.id AND sender_id != ? AND is_read = false
         ) as unread_count
       FROM staff_conversations sc
       JOIN users u1 ON sc.participant1_id = u1.id
@@ -79,8 +79,8 @@ router.get('/conversations/:id', authenticateToken, async (req: any, res: any) =
 
     // Mark messages as read
     await db.run(`
-      UPDATE staff_messages SET is_read = 1
-      WHERE conversation_id = ? AND sender_id != ? AND is_read = 0
+      UPDATE staff_messages SET is_read = true
+      WHERE conversation_id = ? AND sender_id != ? AND is_read = false
     `, [id, userId]);
 
     res.json(messages);
@@ -190,7 +190,7 @@ router.get('/unread-count', authenticateToken, async (req: any, res: any) => {
       JOIN staff_conversations sc ON sm.conversation_id = sc.id
       WHERE (sc.participant1_id = ? OR sc.participant2_id = ?)
         AND sm.sender_id != ?
-        AND sm.is_read = 0
+        AND sm.is_read = false
     `, [userId, userId, userId]);
 
     res.json({ count: result?.count || 0 });

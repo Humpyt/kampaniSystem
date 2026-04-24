@@ -1,4 +1,7 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import db from '../database';
 import { formatCurrency } from '../utils/formatCurrency';
 
@@ -33,6 +36,140 @@ async function loadPrinterModules() {
   };
 }
 
+import bwipjs from 'bwip-js';
+
+const compact = (value: string | null | undefined) => String(value || '').replace(/\s+/g, ' ').trim();
+
+const joinSegments = (segments: Array<string | null | undefined>, separator = ' | ') =>
+  segments.map(compact).filter(Boolean).join(separator);
+
+const limitText = (value: string, max = 80) =>
+  value.length > max ? value.slice(0, max - 3).trimEnd() + '...' : value;
+
+const BRAND = {
+  ink: '#000000',
+  muted: '#000000',
+  line: '#000000',
+};
+
+const STORE_INFO = {
+  brand: 'KAMPANIS',
+  fullName: 'KAMPANIS SHOES & BAGS CLINIC',
+  tagline: 'Shoes & Bags Clinic',
+  location: 'Forest Mall, Kololo, Kampala, Uganda',
+  phone: '+256 789 183784',
+  footerLine1: 'Thank you for your business.',
+  footerLine2: 'Items not collected after 30 days attract storage fees.',
+  footerLine3: 'After 60 days, uncollected items may be disposed of.',
+};
+
+const RECEIPT_BRAND_IMAGE_CANDIDATES = [
+  path.join(process.cwd(), 'public', 'receipt-branding.png'),
+  path.join(process.cwd(), 'public', 'ChatGPT Image Apr 23, 2026, 01_14_31 PM.png'),
+];
+
+function resolveReceiptBrandImage(): string | null {
+  for (const candidate of RECEIPT_BRAND_IMAGE_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function generateReceiptArchiveNumber(): string {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `RCP-${timestamp}-${random}`;
+}
+
+function getReceiptArchiveStorageDir(): string {
+  return path.join(process.cwd(), 'storage', 'receipts');
+}
+
+function getReceiptArchiveFileName(invoiceNumber: string, invoiceId: string): string {
+  const safeBase = String(invoiceNumber || invoiceId).replace(/[^a-zA-Z0-9._-]+/g, '_');
+  return `${safeBase}.pdf`;
+}
+
+async function archiveIssuedReceipt(params: {
+  operationId?: string | null;
+  ticketNumber?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  subtotal?: number;
+  total?: number;
+  amountPaid?: number;
+  paymentMethod?: string | null;
+  notes?: string | null;
+  generatedAt?: string;
+  pdfBuffer: Buffer;
+}): Promise<string | null> {
+  const reference = compact(params.operationId || params.ticketNumber);
+  if (!reference) {
+    return null;
+  }
+
+  const operation = params.operationId
+    ? await db.get(`
+        SELECT o.id, o.ticket_number, o.notes, o.promised_date, c.name AS customer_name, c.phone AS customer_phone
+        FROM operations o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        WHERE o.id = $1
+      `, [params.operationId])
+    : await db.get(`
+        SELECT o.id, o.ticket_number, o.notes, o.promised_date, c.name AS customer_name, c.phone AS customer_phone
+        FROM operations o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        WHERE o.ticket_number = $1
+      `, [reference]);
+
+  if (!operation?.id) {
+    return null;
+  }
+
+  const subtotal = Number(params.subtotal) || Number(params.total) || 0;
+  const total = Number(params.total) || subtotal;
+  const amountPaid = Number(params.amountPaid) || 0;
+  const discount = Math.max(0, subtotal - total);
+  const invoiceId = uuidv4();
+  const invoiceNumber = generateReceiptArchiveNumber();
+  const createdAt = params.generatedAt || new Date().toISOString();
+
+  await db.prepare(`
+    INSERT INTO invoices (
+      id, operation_id, type, invoice_number, customer_name, customer_phone,
+      subtotal, discount, total, amount_paid, payment_method, notes,
+      promised_date, generated_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    invoiceId,
+    operation.id,
+    'receipt',
+    invoiceNumber,
+    compact(params.customerName || operation.customer_name || 'Walk-in Customer'),
+    compact(params.customerPhone || operation.customer_phone || ''),
+    subtotal,
+    discount,
+    total,
+    amountPaid,
+    compact(params.paymentMethod || ''),
+    compact(params.notes || operation.notes || ''),
+    operation.promised_date || null,
+    null,
+    createdAt,
+    createdAt
+  );
+
+  const storageDir = getReceiptArchiveStorageDir();
+  fs.mkdirSync(storageDir, { recursive: true });
+  const fileName = getReceiptArchiveFileName(invoiceNumber, invoiceId);
+  const filePath = path.join(storageDir, fileName);
+  fs.writeFileSync(filePath, params.pdfBuffer);
+
+  return invoiceId;
+}
+
 async function generateReceiptPDF(data: {
   title?: string;
   ticketId?: string;
@@ -47,228 +184,432 @@ async function generateReceiptPDF(data: {
   promisedTime?: string;
   items: { description: string; price: number; quantity?: number }[];
   subtotal: number;
+  discount?: number;
   total: number;
   amountPaid?: number;
   balance?: number;
   paymentMethod?: string;
+  tax?: number;
   notes?: string;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
-  // 8cm wide receipt (226.8pt)
   const PW = 226.8;
-  const ML = 12; const MR = 12;
-  const CW = PW - ML - MR;  // content width = 202.8
-  const doc = new PDFDocument({ margin: 0, size: [PW, 700], layout: 'portrait' });
+  const ML = 4;
+  const MR = 4;
+  const CW = PW - ML - MR;
+  const fmt = (n: number) => (n || 0).toLocaleString('en-US');
+  const fmtUGX = (n: number) => 'UGX ' + fmt(n);
+  const recNo = data.ticketNumber || data.ticketId || '';
+  const receiptTitle = compact(data.title || 'Receipt').toUpperCase();
+  const cname = (data.customerName || 'WALK-IN CUSTOMER').toUpperCase();
+  const cphone = compact(data.customerPhone || 'N/A');
+  const caddr = compact(data.customerAddress || '');
+  const cacct = compact(data.customerAccount || '');
+  const dateStr = compact(data.date || '');
+  const timeStr = compact(data.time || '');
+  const readyText = compact([data.promisedDate, data.promisedTime].filter(Boolean).join(' '));
+  const totalQty = data.items.reduce((s, i) => s + (i.quantity || 1), 0);
+  const brandImagePath = resolveReceiptBrandImage();
+  const itemsForLayout = data.items.map(item => {
+    const qty = item.quantity || 1;
+    const amount = item.price * qty;
+    const [line1Raw, line2Raw] = String(item.description || 'Service').split('\n');
+    return {
+      qty,
+      amount,
+      line1: limitText(compact(line1Raw || 'Service'), 30),
+      line2: limitText(compact(line2Raw || ''), 38),
+    };
+  });
+
+  const totalRows: Array<{ label: string; value: string; strong?: boolean }> = [
+    { label: 'Subtotal', value: fmtUGX(data.subtotal) },
+  ];
+  const discountAmount = Math.max(
+    0,
+    Number(data.discount) || (Number(data.subtotal) - Number(data.total))
+  );
+  if (discountAmount > 0) {
+    totalRows.push({ label: 'Discount', value: '-' + fmtUGX(discountAmount) });
+  }
+  if (data.tax) {
+    totalRows.push({ label: 'Tax', value: fmtUGX(data.tax) });
+  }
+  totalRows.push({ label: 'Total', value: fmtUGX(data.total), strong: true });
+  if (data.amountPaid !== undefined) {
+    totalRows.push({ label: 'Paid', value: fmtUGX(data.amountPaid) });
+    if (data.balance !== undefined && data.balance !== 0) {
+      totalRows.push({
+        label: data.balance > 0 ? 'Balance' : 'Change',
+        value: fmtUGX(Math.abs(data.balance)),
+        strong: true,
+      });
+    }
+  }
+
+  const itemHeights = itemsForLayout.map(item => (item.line2 ? 44 : 32));
+  const metaRowCount = 2 + (data.paymentMethod ? 1 : 0) + (cacct ? 1 : 0) + (readyText ? 1 : 0) + (caddr ? 1 : 0);
+  const metaHeight = 18 + metaRowCount * 16;
+  const totalsHeight = 16 + totalRows.length * 14;
+  const notesHeight = data.notes ? 30 : 0;
+  const footerHeight = 42;
+  const barcodeHeight = recNo ? 58 : 0;
+  const pageHeight =
+    18 +
+    (brandImagePath ? 84 : 42) +
+    30 +
+    26 +
+    metaHeight +
+    20 +
+    itemHeights.reduce((sum, height) => sum + height, 0) +
+    8 +
+    totalsHeight +
+    notesHeight +
+    footerHeight +
+    barcodeHeight +
+    18;
+
+  const doc = new PDFDocument({ margin: 0, size: [PW, Math.max(pageHeight, 260)], layout: 'portrait' });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
-  const fmt = (n: number) => (n || 0).toLocaleString('en-US');
-  const fmtUGX = (n: number) => 'UGX ' + fmt(n);
-
-  // Helper: draw a horizontal rule
-  const rule = (y: number, color = '#cccccc') => {
-    doc.moveTo(ML, y).lineTo(PW - MR, y).strokeColor(color).stroke();
+  const rule = (y: number, color = '#000000') => {
+    doc.moveTo(ML, y).lineTo(PW - MR, y).strokeColor(color).lineWidth(0.8).stroke();
   };
 
-  let y = 12;
+  let y = 6;
 
-  // ── Header ──────────────────────────────────────────────────────────────
-  doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
-  doc.text('Kampanis Shoes and Bags Clinic', ML, y, { align: 'center', width: CW });
-  y += 15;
-  doc.fontSize(8).font('Helvetica').fillColor('#555555');
-  doc.text('Forest Mall, Kampala', ML, y, { align: 'center', width: CW });
-  y += 10;
-  doc.text('+256 789 183784', ML, y, { align: 'center', width: CW });
-  y += 8;
-  // CUSTOMER COPY badge
-  doc.setFillColor('#000000').roundedRect(ML + CW / 2 - 35, y, 70, 14, 4).fill();
-  doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
-  doc.text('CUSTOMER COPY', ML + CW / 2 - 35, y + 3, { align: 'center', width: 70 });
-  y += 20;
-
-  rule(y, '#bbbbbb'); y += 8;
-
-  // ── Receipt No (large centered) ─────────────────────────────────────────
-  const recNo = data.ticketNumber || data.ticketId || '';
-  doc.fillColor('#000000').fontSize(18).font('Helvetica-Bold');
-  doc.text(recNo, ML, y, { align: 'center', width: CW });
-  y += 22;
-
-  rule(y, '#dddddd'); y += 8;
-
-  // ── Customer block ─────────────────────────────────────────────────────
-  const cname = (data.customerName || 'WALK-IN CUSTOMER').toUpperCase();
-  const cphone = data.customerPhone || '';
-  const caddr = data.customerAddress || '';
-  const cacct = data.customerAccount || '';
-
-  doc.setFillColor('#f5f5f5').roundedRect(ML, y, CW, 42, 4).fill();
-  const cbY = y + 6;
-  doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-  doc.text(cname, ML + 6, cbY, { width: CW - 12 });
-  doc.fontSize(8).font('Helvetica').fillColor('#555555');
-  doc.text(caddr || 'Kampala', ML + 6, cbY + 12, { width: CW - 12 });
-  doc.text(cphone, ML + 6, cbY + 23, { width: CW - 12 });
-  // Acct line
-  if (cacct) {
-    doc.text('Acct: ' + cacct, ML + 6, cbY + 34, { width: 80 });
+  if (brandImagePath) {
+    doc.image(brandImagePath, ML + CW / 2 - 28, y, { fit: [56, 56], align: 'center', valign: 'center' });
+    y += 60;
   }
-  y += 48;
 
-  rule(y, '#cccccc'); y += 8;
-
-  // ── Date / Time ─────────────────────────────────────────────────────────
-  const dateStr = data.date || '';
-  const timeStr = data.time || '';
-  doc.fontSize(9).font('Helvetica').fillColor('#333333');
-  doc.text(dateStr, ML, y, { width: CW / 2 });
-  doc.text(timeStr, ML + CW / 2, y, { align: 'right', width: CW / 2 });
-  y += 14;
-
-  rule(y); y += 8;
-
-  // ── Items table header ──────────────────────────────────────────────────
-  doc.setFillColor('#000000');
-  doc.rect(ML, y, CW, 16).fill();
-  doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
-  doc.text('Q', ML + 2, y + 4, { width: 14 });
-  doc.text('Item', ML + 18, y + 4, { width: 100 });
-  doc.text('P', ML + 120, y + 4, { width: 36, align: 'right' });
-  doc.text('T', ML + 158, y + 4, { width: 36, align: 'right' });
+  doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(13.5);
+  doc.text(STORE_INFO.fullName, ML, y, { align: 'center', width: CW });
   y += 16;
+  doc.font('Helvetica-Bold').fontSize(8.8);
+  doc.text(STORE_INFO.location, ML, y, { align: 'center', width: CW });
+  y += 10;
+  doc.text(STORE_INFO.phone, ML, y, { align: 'center', width: CW });
+  y += 12;
 
-  // ── Line items ──────────────────────────────────────────────────────────
-  const itemLines: string[] = [];
-  for (const item of data.items) {
-    const lines = (item.description || 'Service').split('\n');
-    for (const ln of lines) itemLines.push(ln);
-  }
-
-  const DESC_X = ML + 18;
-  const AMT_X = ML + 158;
-  const LINE_H = 12;
-
-  for (const item of data.items) {
-    const qty = item.quantity || 1;
-    const total = item.price * qty;
-    const descLines = (item.description || 'Service').split('\n');
-    const maxLines = Math.max(descLines.length, 1);
-
-    // Draw qty
-    doc.fontSize(8).font('Helvetica').fillColor('#222222');
-    doc.text(String(qty), ML + 2, y + 2, { width: 14 });
-    doc.text('P', ML + 122, y + 2, { width: 34, align: 'right' });
-    doc.text('T', ML + 158, y + 2, { width: 34, align: 'right' });
-
-    // Draw description lines
-    let dy = y + 2;
-    for (const ln of descLines) {
-      doc.text(ln, DESC_X, dy, { width: 100 });
-      dy += LINE_H;
-    }
-
-    // Draw prices on first desc line only
-    doc.text(fmtUGX(item.price), ML + 122, y + 2, { width: 34, align: 'right' });
-    doc.text(fmtUGX(total), ML + 158, y + 2, { width: 34, align: 'right' });
-
-    // Separator
-    rule(y + maxLines * LINE_H + 2, '#cccccc');
-    y += maxLines * LINE_H + 4;
-  }
-
-  y += 4;
-
-  // ── Piece count summary ────────────────────────────────────────────────
-  const totalQty = data.items.reduce((s, i) => s + (i.quantity || 1), 0);
-  doc.setFillColor('#f5f5f5').roundedRect(ML + CW / 2 - 40, y, 80, 18, 4).fill();
-  doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
-  doc.text(totalQty + ' PIECE' + (totalQty !== 1 ? 'S' : ''), ML, y + 4, { align: 'center', width: CW });
+  doc.roundedRect(ML + 28, y, CW - 56, 18, 3).lineWidth(1.1).strokeColor(BRAND.ink).stroke();
+  doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(9.3);
+  doc.text(receiptTitle, ML + 28, y + 5, { align: 'center', width: CW - 56 });
   y += 26;
 
-  // ── Totals ──────────────────────────────────────────────────────────────
-  const totals: [string, string, boolean][] = [
-    ['Sub:', fmtUGX(data.subtotal), false],
-    ['Total:', fmtUGX(data.total), true],
+  doc.font('Helvetica-Bold').fontSize(17);
+  doc.text(recNo, ML, y, { align: 'center', width: CW });
+  y += 20;
+  rule(y);
+  y += 8;
+
+  const metaPairs: Array<[string, string]> = [
+    ['Customer', cname],
+    ['Phone', cphone],
+    ['Date', [dateStr, timeStr].filter(Boolean).join(' ') || '-'],
+    ['Pieces', String(totalQty || 0)],
   ];
-  if (data.amountPaid !== undefined) {
-    totals.push(['Paid:', fmtUGX(data.amountPaid), false]);
-    if (data.balance !== undefined && data.balance !== 0) {
-      totals.push([data.balance > 0 ? 'Bal:' : 'Change:', fmtUGX(Math.abs(data.balance)), true]);
+  if (data.paymentMethod) metaPairs.push(['Payment', data.paymentMethod]);
+  if (cacct) metaPairs.push(['Account', cacct]);
+  if (readyText) metaPairs.push(['Ready', readyText]);
+  if (caddr) metaPairs.push(['Address', limitText(caddr, 54)]);
+
+  for (const [label, value] of metaPairs) {
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(BRAND.ink);
+    doc.text(label.toUpperCase(), ML, y, { width: 58 });
+    doc.text(value || '-', ML + 60, y, { width: CW - 60 });
+    y += 15;
+  }
+
+  y += 2;
+  rule(y);
+  y += 8;
+
+  doc.rect(ML, y, CW, 16).fill(BRAND.ink);
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8.5);
+  doc.text('QTY', ML + 4, y + 4, { width: 22 });
+  doc.text('ITEM DETAILS', ML + 30, y + 4, { width: 124 });
+  doc.text('AMOUNT', ML + 156, y + 4, { width: CW - 160, align: 'right' });
+  y += 20;
+
+  for (const item of itemsForLayout) {
+    doc.font('Helvetica-Bold').fontSize(9.2).fillColor(BRAND.ink);
+    doc.text(String(item.qty), ML + 5, y + 5, { width: 18, align: 'center' });
+    doc.text(item.line1, ML + 30, y + 3, { width: 122 });
+    if (item.line2) {
+      doc.font('Helvetica-Bold').fontSize(7.8);
+      doc.text(item.line2, ML + 30, y + 16, { width: 122 });
     }
+    doc.font('Helvetica-Bold').fontSize(8.6);
+    doc.text(fmtUGX(item.amount), ML + 156, y + 8, { width: CW - 160, align: 'right' });
+    y += item.line2 ? 34 : 24;
   }
 
-  for (const [label, value, bold] of totals) {
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 9);
-    doc.fillColor(bold ? '#000000' : '#555555');
-    doc.text(label, ML, y, { width: 100 });
-    doc.fillColor('#000000');
-    doc.text(value, ML + 100, y, { align: 'right', width: 94 });
-    y += bold ? 14 : 12;
+  y += 2;
+  rule(y);
+  y += 8;
+
+  for (const row of totalRows) {
+    doc.font('Helvetica-Bold').fontSize(row.strong ? 10.5 : 8.8).fillColor(BRAND.ink);
+    doc.text(row.label.toUpperCase(), ML, y, { width: 80 });
+    doc.text(row.value, ML + 82, y, { width: CW - 82, align: 'right' });
+    y += row.strong ? 15 : 12;
   }
 
-  y += 6;
-  rule(y); y += 8;
-
-  // ── Ready by ────────────────────────────────────────────────────────────
-  if (data.promisedDate || data.promisedTime) {
-    doc.fillColor('#555555').fontSize(9).font('Helvetica');
-    doc.text('Ready:', ML, y);
-    y += 12;
-    if (data.promisedDate) {
-      doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
-      doc.text(data.promisedDate, ML, y, { width: CW });
-      y += 14;
-    }
-    if (data.promisedTime) {
-      doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold');
-      doc.text(data.promisedTime, ML, y, { width: CW });
-      y += 14;
-    }
-    y += 4;
-    rule(y); y += 8;
+  if (data.notes) {
+    y += 2;
+    rule(y);
+    y += 7;
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(BRAND.ink);
+    doc.text('NOTES', ML, y, { width: CW });
+    y += 10;
+    doc.font('Helvetica-Bold').fontSize(8);
+    doc.text(limitText(compact(data.notes), 110), ML, y, { width: CW });
+    y += 18;
   }
 
-  // ── Barcode & REG/PICKUP ─────────────────────────────────────────────
-  if (data.ticketNumber || data.ticketId) {
-    try {
-      const https = await import('https');
-      const barcodeData = data.ticketNumber || data.ticketId || '';
-      const url = 'https://barcode.tec-it.com/barcode.ashx?data=' + encodeURIComponent(barcodeData) + '&code=Code128&dpi=96';
-      const imgBuf = await new Promise<Buffer>((resolve, reject) => {
-        https.get(url, (res: any) => {
-          const chunks: Buffer[] = [];
-          res.on('data', (c: Buffer) => chunks.push(c));
-          res.on('end', () => resolve(Buffer.concat(chunks)));
-          res.on('error', reject);
-        }).on('error', reject);
-      });
-      if (imgBuf && imgBuf.length > 0) {
-        const bW = 160; const bH = 44;
-        const bX = ML + (CW - bW) / 2;
-        doc.image(imgBuf, bX, y, { width: bW, height: bH });
-        y += bH + 4;
-      }
-    } catch (_e) { /* barcode unavailable */ }
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-    doc.text('REG/PICKUP', ML, y, { align: 'center', width: CW });
-    y += 14;
-  }
+  rule(y);
+  y += 8;
+  doc.font('Helvetica-Bold').fontSize(7.8).fillColor(BRAND.ink);
+  doc.text(STORE_INFO.footerLine2, ML, y, { align: 'center', width: CW });
+  y += 10;
+  doc.text(STORE_INFO.footerLine3, ML, y, { align: 'center', width: CW });
+  y += 12;
 
-  // ── Footer ─────────────────────────────────────────────────────────────
-  if (y < 580) {
-    rule(y, '#bbbbbb'); y += 8;
-    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
-    doc.text('Thank You!', ML, y, { align: 'center', width: CW });
-    y += 11;
-    doc.fontSize(7.5).font('Helvetica').fillColor('#888888');
-    doc.text('Mon–Fri: 8AM–6:30PM', ML, y, { align: 'center', width: CW });
-    y += 9;
-    doc.text('Sat: 8:30AM–5PM', ML, y, { align: 'center', width: CW });
+  if (recNo) {
+    const barcodeBuffer = await bwipjs.toBuffer({
+      bcid: 'code128',
+      text: recNo,
+      scale: 2,
+      height: 9,
+      includetext: true,
+      textxalign: 'center',
+      textsize: 8,
+      backgroundcolor: 0xffffff,
+    });
+    doc.image(barcodeBuffer, ML + CW / 2 - 56, y, { width: 112 });
+    y += 46;
   }
 
   await new Promise<void>((resolve) => { doc.on('end', resolve); doc.end(); });
   return Buffer.concat(chunks);
+}
+
+function escapeHtml(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function generateOrderPrintHtml(data: {
+  orderId: string;
+  ticketNumber: string;
+  customerName?: string;
+  customerPhone?: string;
+  createdAt: string;
+  promisedDate?: string;
+  items: Array<{ description: string; price: number; quantity?: number }>;
+  subtotal: number;
+  discount?: number;
+  total: number;
+  paidAmount?: number;
+  notes?: string;
+  autoPrint?: boolean;
+}): string {
+  const createdAt = new Date(data.createdAt);
+  const createdLabel = createdAt.toLocaleString('en-UG', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const promisedLabel = data.promisedDate
+    ? new Date(data.promisedDate).toLocaleString('en-UG', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+  const paidAmount = Number(data.paidAmount) || 0;
+  const discountAmount = Math.max(0, Number(data.discount) || (Number(data.subtotal) - Number(data.total)));
+  const balance = Math.max(0, (Number(data.total) || 0) - paidAmount);
+  const itemRows = data.items.length > 0
+    ? data.items.map((item) => {
+        const [mainLine, ...rest] = String(item.description || '').split('\n');
+        const detailLine = rest.join(' | ');
+        return `
+          <div class="line-item">
+            <div class="item-desc">
+              <div class="item-main">${escapeHtml(mainLine)}</div>
+              ${detailLine ? `<div class="item-sub">${escapeHtml(detailLine)}</div>` : ''}
+            </div>
+            <div class="item-amount">${escapeHtml(formatCurrency(item.price || 0))}</div>
+          </div>
+        `;
+      }).join('')
+    : `
+        <div class="line-item">
+          <div class="item-desc">
+            <div class="item-main">No line items</div>
+          </div>
+          <div class="item-amount">${escapeHtml(formatCurrency(0))}</div>
+        </div>
+      `;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order ${escapeHtml(data.ticketNumber)}</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #000000;
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      body { padding: 6pt 4pt 4pt; }
+      .receipt {
+        width: 80mm;
+        margin: 0 auto;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.32;
+      }
+      .center { text-align: center; }
+      .brand {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      .subtle {
+        font-size: 12px;
+        font-weight: 700;
+        color: #000000;
+      }
+      .title {
+        border: 2px solid #000000;
+        text-align: center;
+        font-weight: 700;
+        padding: 7px 8px;
+        margin: 10px 18px;
+      }
+      .ticket {
+        font-size: 21px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 8px;
+      }
+      .divider {
+        border-top: 1px dashed #000000;
+        margin: 10px 0;
+      }
+      .meta-row,
+      .line-item,
+      .total-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .meta-row { margin-bottom: 4px; }
+      .meta-label {
+        width: 82px;
+        text-transform: uppercase;
+        font-weight: 700;
+        font-size: 11px;
+      }
+      .meta-value {
+        flex: 1;
+        text-align: right;
+        font-weight: 700;
+      }
+      .table-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        border-top: 1px solid #000000;
+        border-bottom: 1px solid #000000;
+        padding: 5px 0;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .items { margin-top: 6px; }
+      .line-item { margin-bottom: 8px; }
+      .item-desc { flex: 1; }
+      .item-main { font-weight: 600; }
+      .item-sub { font-size: 11px; color: #000000; font-weight: 700; margin-top: 2px; }
+      .item-amount { min-width: 78px; text-align: right; white-space: nowrap; }
+      .total-row { margin-bottom: 4px; }
+      .total-row.strong { font-size: 14px; font-weight: 700; }
+      .footer {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 700;
+        margin-top: 12px;
+      }
+      @page {
+        size: 80mm auto;
+        margin: 6pt 4pt 4pt;
+      }
+      @media print {
+        body { padding: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="receipt">
+      <div class="center">
+        <div class="brand">${escapeHtml(STORE_INFO.brand)}</div>
+        <div>${escapeHtml(STORE_INFO.tagline)}</div>
+        <div class="subtle">${escapeHtml(STORE_INFO.location)}</div>
+        <div class="subtle">${escapeHtml(STORE_INFO.phone)}</div>
+      </div>
+      <div class="title">ORDER TICKET</div>
+      <div class="ticket">${escapeHtml(data.ticketNumber)}</div>
+      <div class="divider"></div>
+      <div class="meta-row"><div class="meta-label">Customer</div><div class="meta-value">${escapeHtml(data.customerName || 'Walk-in Customer')}</div></div>
+      <div class="meta-row"><div class="meta-label">Phone</div><div class="meta-value">${escapeHtml(data.customerPhone || '-')}</div></div>
+      <div class="meta-row"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(createdLabel)}</div></div>
+      ${promisedLabel ? `<div class="meta-row"><div class="meta-label">Ready</div><div class="meta-value">${escapeHtml(promisedLabel)}</div></div>` : ''}
+      <div class="divider"></div>
+      <div class="table-head"><span>Item</span><span>Amount</span></div>
+      <section class="items">${itemRows}</section>
+      <div class="divider"></div>
+      <div class="total-row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(data.subtotal || 0))}</span></div>
+      ${discountAmount > 0 ? `<div class="total-row"><span>Discount</span><span>-${escapeHtml(formatCurrency(discountAmount))}</span></div>` : ''}
+      <div class="total-row strong"><span>Total</span><span>${escapeHtml(formatCurrency(data.total || 0))}</span></div>
+      ${paidAmount > 0 ? `<div class="total-row"><span>Paid</span><span>${escapeHtml(formatCurrency(paidAmount))}</span></div>` : ''}
+      ${balance > 0 ? `<div class="total-row strong"><span>Balance</span><span>${escapeHtml(formatCurrency(balance))}</span></div>` : ''}
+      ${data.notes ? `<div class="divider"></div><div>${escapeHtml(data.notes)}</div>` : ''}
+      <div class="footer">
+        <div>${escapeHtml(STORE_INFO.footerLine1)}</div>
+        <div>${escapeHtml(STORE_INFO.footerLine2)}</div>
+        <div>${escapeHtml(STORE_INFO.footerLine3)}</div>
+      </div>
+    </main>
+    ${data.autoPrint ? `
+      <script>
+        window.addEventListener('load', () => {
+          window.setTimeout(() => window.print(), 250);
+        });
+        window.addEventListener('afterprint', () => {
+          window.setTimeout(() => window.close(), 250);
+        });
+      </script>
+    ` : ''}
+  </body>
+</html>`;
 }
 
 
@@ -292,7 +633,14 @@ async function tryPrintZPL(zpl: string): Promise<void> {
       const ep = iface.endpoints.find((e: any) => e.direction === 'out');
       if (!ep) return;
       const buf = Buffer.from(zpl + '\n', 'utf8');
-      for (let i = 0; i < buf.length; i += 64) ep.transfer(buf.subarray(i, i + 64));
+      for (let i = 0; i < buf.length; i += 64) {
+        await new Promise<void>((resolve, reject) => {
+          ep.transfer(buf.subarray(i, i + 64), (err: Error | undefined) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
     } finally { device.close(); }
   } catch (_) { /* non-fatal */ }
 }
@@ -328,7 +676,16 @@ router.get("/print/order/:id", async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   const shoeRows = await db.all(`
-    SELECT os.id, os.category, os.shoe_size, os.color, os.notes, os_s.price, s.name as service_name
+    SELECT
+      os.id,
+      os.category,
+      os.shoe_size,
+      os.color,
+      os.notes as shoe_notes,
+      os_s.price,
+      os_s.quantity,
+      os_s.notes as service_notes,
+      s.name as service_name
     FROM operation_shoes os
     LEFT JOIN operation_services os_s ON os.id = os_s.operation_shoe_id
     LEFT JOIN services s ON os_s.service_id = s.id
@@ -338,33 +695,89 @@ router.get("/print/order/:id", async (req, res) => {
 
   const shoeMap: Record<string, any> = {};
   for (const row of shoeRows) {
-    if (!shoeMap[row.id]) shoeMap[row.id] = { category: row.category, services: [] };
-    if (row.service_name) shoeMap[row.id].services.push({ name: row.service_name, price: Number(row.price) || 0 });
+    if (!shoeMap[row.id]) {
+      shoeMap[row.id] = {
+        category: row.category,
+        shoe_size: row.shoe_size,
+        color: row.color,
+        notes: row.shoe_notes,
+        services: [],
+      };
+    }
+    if (row.service_name) {
+      shoeMap[row.id].services.push({
+        name: row.service_name,
+        price: Number(row.price) || 0,
+        quantity: Number(row.quantity) || 1,
+        notes: row.service_notes || '',
+      });
+    }
   }
 
-  // Build multiline detail description for each line item:
-  //   Women's High Heel          ← category (repeated per shoe)
-  //   Women's High Heel          ← repeat for visual emphasis
-  //   Size 36                    ← shoe size
-  //   Green                      ← color
-  //   New Right                  ← service name
-  const lineItems: { description: string; price: number }[] = [];
+  const retailRows = await db.all(`
+    SELECT product_name, unit_price, quantity, total_price
+    FROM operation_retail_items
+    WHERE operation_id = $1
+    ORDER BY created_at
+  `, [order.id]);
+
+  const lineItems: Array<{ description: string; price: number; quantity?: number }> = [];
   let subtotal = 0;
+  let pieceCount = 0;
+  let shoeIndex = 1;
+
   for (const [, shoe] of Object.entries(shoeMap)) {
     const svcs = (shoe as any).services;
     if (svcs.length > 0) {
       for (const svc of svcs) {
-        const cat  = (shoe as any).category   || '';
-        const size = (shoe as any).shoe_size ? 'Size ' + (shoe as any).shoe_size : '';
-        const col  = (shoe as any).color     || '';
-        const detail = [cat, cat, size, col, svc.name].filter(Boolean).join('\n');
-        lineItems.push({ description: detail, price: svc.price });
-        subtotal += svc.price;
+        const header = joinSegments([
+          `#${shoeIndex}`,
+          (shoe as any).category,
+          (shoe as any).shoe_size ? `Sz ${(shoe as any).shoe_size}` : '',
+          (shoe as any).color,
+        ]);
+        const detail = joinSegments([
+          svc.name,
+          svc.notes,
+          (shoe as any).notes,
+        ]);
+        const amount = (Number(svc.price) || 0) * (Number(svc.quantity) || 1);
+        lineItems.push({
+          description: limitText([header, detail].filter(Boolean).join('\n')),
+          price: amount,
+          quantity: Number(svc.quantity) || 1,
+        } as any);
+        subtotal += amount;
       }
     } else {
-      const cat = (shoe as any).category || '';
-      lineItems.push({ description: [cat, cat, '(no service)'].join('\n'), price: 0 });
+      const header = joinSegments([
+        `#${shoeIndex}`,
+        (shoe as any).category,
+        (shoe as any).shoe_size ? `Sz ${(shoe as any).shoe_size}` : '',
+        (shoe as any).color,
+      ]);
+      const detail = joinSegments([(shoe as any).notes, 'No service']);
+      lineItems.push({ description: [header, detail].filter(Boolean).join('\n'), price: 0, quantity: 1 } as any);
     }
+    pieceCount += 1;
+    shoeIndex += 1;
+  }
+
+  for (const item of retailRows) {
+    const qty = Number(item.quantity) || 1;
+    const amount = Number(item.total_price) || (Number(item.unit_price) || 0) * qty;
+    const header = joinSegments(['Product', item.product_name]);
+    const detail = joinSegments([
+      qty > 1 ? `Qty ${qty}` : '',
+      Number(item.unit_price) ? `@ UGX ${Number(item.unit_price).toLocaleString('en-US')}` : '',
+    ]);
+    lineItems.push({
+      description: [limitText(header, 72), detail].filter(Boolean).join('\n'),
+      price: amount,
+      quantity: qty,
+    });
+    subtotal += amount;
+    pieceCount += qty;
   }
 
   const orderTotal = Number(order.total_amount) || subtotal;
@@ -372,7 +785,7 @@ router.get("/print/order/:id", async (req, res) => {
   // Build minimal ZPL for USB printer (silent)
   const safe = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/\^/g, '\\^').replace(/_/g, '\\_');
   const W = 812, LM = 20, RX = 620, LH = 20;
-  let y = 10;
+  let y = 6;
   const fo = (x: number, yn: number) => '^FO' + x + ',' + yn;
   const fd = (t: string) => '^FD' + safe(t) + '^FS';
   const fb = (w: number, l: number, m: number, t: number, j: string) => '^FB' + w + ',' + l + ',' + m + ',' + t + ',' + j;
@@ -380,18 +793,19 @@ router.get("/print/order/:id", async (req, res) => {
   const vl = (yy: number, th: number) => fo(LM, yy) + '^GB' + (W - 2*LM) + ',' + th + ',' + th + '^FS';
   const fmt = (n: number) => 'UGX ' + (n || 0).toLocaleString('en-US');
   const rl = (label: string, amt: number, yy: number) =>
-    fo(LM, yy) + font(20,20) + ' ' + fd(label) + ':' + fo(RX, yy) + font(20,20) + ' ' + fd(fmt(amt));
+    fo(LM, yy) + font(23,23) + ' ' + fd(label) + ':' + fo(RX, yy) + font(23,23) + ' ' + fd(fmt(amt));
 
   const zl: string[] = [];
   zl.push('^XA','^CI28');
   // Header
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(45,45)+' '+fd('Kampanis Shoes and Bags Clinic')); y+=50;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('Forest Mall, Kampala')); y+=26;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('+256 789 183784')); y+=26;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd(' CUSTOMER COPY ')); y+=24;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(52,52)+' '+fd(STORE_INFO.fullName)); y+=58;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.location)); y+=30;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.phone)); y+=30;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(21,21)+' '+fd(' CUSTOMER COPY ')); y+=27;
   zl.push(vl(y,3)); y+=12;
   // Receipt number (large centered)
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(50,50)+' '+fd(order.ticket_number || order.id)); y+=55;
+  const orderCode = order.ticket_number || order.id;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(50,50)+' '+fd(orderCode)); y+=55;
   zl.push(vl(y,2)); y+=15;
   // Customer block
   const cname = (order.customer_name || 'WALK-IN CUSTOMER').toUpperCase();
@@ -419,13 +833,25 @@ router.get("/print/order/:id", async (req, res) => {
   y+=5; zl.push(vl(y,2)); y+=12;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(22,22)+' ^B1 '+fd('ITEMS TO WORK ON')); y+=8;
   zl.push(vl(y,2)); y+=12;
-  zl.push(fo(LM,y)+font(18,18)+' '+fd('Q ')); zl.push(fo(LM+30,y)+font(18,18)+' '+fd('Item')); zl.push(fo(RX,y)+font(18,18)+' '+fd('P ')); zl.push(fo(RX+50,y)+font(18,18)+' '+fd('T ')); y+=8;
+  zl.push(fo(LM,y)+font(18,18)+' '+fd('Q ')); zl.push(fo(LM+30,y)+font(18,18)+' '+fd('Details')); zl.push(fo(RX,y)+font(18,18)+' '+fd('Amt')); y+=8;
   zl.push(vl(y,1)); y+=10;
   if (lineItems.length > 0) {
-    for (const item of lineItems) { zl.push(fo(LM,y)+font(20,20)+' '+fd(item.description.substring(0,35))); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(item.price))); y+=LH+3; }
+    for (const item of lineItems) {
+      const qty = (item as any).quantity || 1;
+      const lines = String(item.description || '').split('\n').slice(0, 2);
+      zl.push(fo(LM,y)+font(23,23)+' '+fd(String(qty)));
+      zl.push(fo(LM + 30,y)+font(23,23)+' '+fd(limitText(lines[0] || '', 31)));
+      zl.push(fo(RX,y)+font(23,23)+' '+fd(fmt(item.price)));
+      y+=LH+1;
+      if (lines[1]) {
+        zl.push(fo(LM + 30,y)+font(19,19)+' '+fd(limitText(lines[1], 38)));
+        y+=LH;
+      }
+      y+=3;
+    }
   } else { zl.push(fo(LM,y)+font(20,20)+' '+fd('No charge')); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(0))); y+=LH+3; }
   y+=5; zl.push(vl(y,1)); y+=10;
-  const totalQty = lineItems.reduce((s: number, i: any) => s + (i.quantity || 1), 0);
+  const totalQty = pieceCount || lineItems.reduce((s: number, i: any) => s + (i.quantity || 1), 0);
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(22,22)+' '+fd(totalQty+' PIECE'+(totalQty!==1?'S':''))); y+=28;
   zl.push(vl(y,2)); y+=10;
   zl.push(rl('Subtotal', subtotal, y)); y+=LH+2;
@@ -440,13 +866,38 @@ router.get("/print/order/:id", async (req, res) => {
     y+=5;
   }
   zl.push(vl(y,3)); y+=12;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd('Thank you for your business!')); y+=25;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd('Items not collected after 30 days attract storage fees.')); y+=20;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd('After 60 days items may be disposed of.')); y+=20;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd(STORE_INFO.footerLine1)); y+=25;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd(STORE_INFO.footerLine2)); y+=20;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd(STORE_INFO.footerLine3)); y+=20;
+  zl.push('^FO236,' + y + '^BY2,2,50^BCN,50,Y,N,N^FD' + safe(orderCode) + '^FS'); y+=72;
   zl.push('^XZ');
 
   // Fire-and-forget USB print (non-blocking)
   tryPrintZPL(zl.join('\n')).catch(() => {});
+
+  if (req.query.format === 'html') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(generateOrderPrintHtml({
+      orderId: order.id,
+      ticketNumber: order.ticket_number || order.id,
+      customerName: order.customer_name || undefined,
+      customerPhone: order.customer_phone || undefined,
+      createdAt: order.created_at,
+      promisedDate: order.promised_date || undefined,
+      items: lineItems.map((item) => ({
+        description: item.description,
+        price: item.price,
+        quantity: item.quantity || 1,
+      })),
+      subtotal,
+      discount: Number(order.discount) || Math.max(0, subtotal - orderTotal),
+      total: orderTotal,
+      paidAmount: Number(order.paid_amount) || 0,
+      notes: order.notes || undefined,
+      autoPrint: req.query.autoprint === '1',
+    }));
+    return;
+  }
 
   // Always return PDF to browser
   try {
@@ -463,6 +914,7 @@ router.get("/print/order/:id", async (req, res) => {
       customerAddress: order.customer_address || undefined,
       items: lineItems.map(i => ({ ...i, quantity: i.quantity || 1 })),
       subtotal,
+      discount: Number(order.discount) || Math.max(0, subtotal - orderTotal),
       total: orderTotal,
       amountPaid: Number(order.paid_amount) || undefined,
       balance: (Number(order.paid_amount) || 0) !== orderTotal ? (orderTotal - (Number(order.paid_amount) || 0)) : undefined,
@@ -497,13 +949,23 @@ function estimateH(text: string, cpl: number = 50): number {
 async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
 
-  const W = 196, boxX = 15;
+  const PAGE_W = 226;
+  const W = 194;
+  const boxX = 16;
+  const showReferenceBlock = Boolean(
+    compact(data.ticketNumber && data.ticketNumber !== 'STORE-POLICY' ? data.ticketNumber : '') ||
+    compact(data.date) ||
+    compact(data.customerNumber) ||
+    compact(data.customerName)
+  );
   let totalH = 0;
   const add = (h: number) => { totalH += h; };
 
-  add(14 + 10 + 10 + 14);          // header + clinic info
-  add(12 + 10);                    // title + separator
-  add(4 * 11 + 10);                // 4 ticket info rows + gap
+  add(18 + 10 + 10 + 16);          // title + clinic info
+  add(18 + 18);                    // policies badge + intro
+  if (showReferenceBlock) {
+    add(18 + 4 * 11 + 12);         // reference card
+  }
 
   const cleaningBullets = [
     'May cause all material types to become tender, stiff, brittle and may cause some buckling and peeling.',
@@ -515,9 +977,9 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
     'May cause bleeding on all material types, which in turn, causes change of color.',
     'May cause hardware pieces to bleed onto all material types and may stain material.',
   ];
-  add(13);
+  add(18);
   for (const b of cleaningBullets) add(estimateH(b));
-  add(4 + 14);
+  add(8 + 16);
 
   const dyeingBullets = [
     'We cannot guarantee that the color will match the given swatch 100%.',
@@ -525,13 +987,13 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
     'The dyed color will look different when viewed in different types of lighting.',
     'If shoes are worn in the rain or come in contact with water the color may come off and/or bleed onto a material.',
   ];
-  add(13);
+  add(18);
   for (const b of dyeingBullets) add(estimateH(b));
-  add(4);
+  add(8);
 
-  add(13);
+  add(18);
   add(estimateH("We cannot guarantee that all shoe repair/handbag repair/alterations requests will meet the product's original condition but we will do our best."));
-  add(4);
+  add(8);
 
   const stretchBullets = [
     'May cause some wrinkling, buckling and peeling.',
@@ -539,75 +1001,94 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
     'Stretching the width may or may not give you more room in the length.',
     'Stretching may cause some finished imperfections on the innersole and/or lining.',
   ];
-  add(13);
+  add(18);
   for (const b of stretchBullets) add(estimateH(b));
-  add(4);
+  add(8);
 
   const storageBullets = [
     'After one month from the date received items are sent to storage, fee of $5 per month.',
     'After six months from the date received items are disposed of at our own discretion.',
   ];
-  add(13);
+  add(18);
   for (const b of storageBullets) add(estimateH(b));
-  add(4);
+  add(8);
 
-  add(10 + 14 + 30);
+  add(12 + 24 + 22 + 18);
 
   const PAGE_H = Math.ceil(totalH) + 24;
 
-  const doc = new PDFDocument({ margin: 0, size: [226, PAGE_H], layout: 'portrait' });
+  const doc = new PDFDocument({ margin: 0, size: [PAGE_W, PAGE_H], layout: 'portrait' });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
   let y = 12;
 
-  const dashedLine = (yy: number) => {
-    doc.moveTo(boxX, yy).lineTo(boxX + W, yy).strokeColor('#bbbbbb').lineWidth(0.5).stroke();
+  const rule = (yy: number, color = '#d1d5db', width = 0.8) => {
+    doc.moveTo(boxX, yy).lineTo(boxX + W, yy).strokeColor(color).lineWidth(width).stroke();
+  };
+
+  const sectionHeader = (title: string) => {
+    doc.roundedRect(boxX, y, W, 15, 3).fill('#111111');
+    doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
+    doc.text(title.toUpperCase(), boxX + 8, y + 5, { width: W - 16 });
+    y += 20;
   };
 
   doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold');
-  doc.text('Kampa\u0161kis Shoes & Bags Clinic', 0, y, { align: 'center', width: 226 });
-  y += 14;
-  doc.fontSize(7.5).font('Helvetica').fillColor('#555555');
-  doc.text('Forest Mall, Kampala', 0, y, { align: 'center', width: 226 });
+  doc.text('Kampanis Shoes & Bags Clinic', 0, y, { align: 'center', width: PAGE_W });
+  y += 16;
+  doc.fontSize(7.5).font('Helvetica').fillColor('#4b5563');
+  doc.text('Forest Mall, Kampala', 0, y, { align: 'center', width: PAGE_W });
   y += 10;
-  doc.text('+256 789 183784', 0, y, { align: 'center', width: 226 });
-  y += 14;
+  doc.text('+256 789 183784', 0, y, { align: 'center', width: PAGE_W });
+  y += 16;
 
-  doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-  doc.text('Store Policies', 0, y, { align: 'center', width: 226 });
-  y += 12;
-  dashedLine(y); y += 10;
+  doc.roundedRect(boxX + 42, y, W - 84, 17, 4).lineWidth(1).strokeColor('#111111').stroke();
+  doc.fillColor('#000000').fontSize(8.5).font('Helvetica-Bold');
+  doc.text('COMPANY POLICIES', boxX + 42, y + 5, { align: 'center', width: W - 84 });
+  y += 24;
+
+  doc.fontSize(7.2).font('Helvetica').fillColor('#4b5563');
+  doc.text(
+    'Please review these terms before cleaning, dyeing, repairing, stretching, or storing items with us.',
+    boxX,
+    y,
+    { align: 'center', width: W }
+  );
+  y += 18;
 
   const infoRow = (label: string, value: string) => {
-    doc.fontSize(8).font('Helvetica').fillColor('#555555');
-    doc.text(label, boxX, y, { width: 72 });
+    doc.fontSize(7.4).font('Helvetica').fillColor('#6b7280');
+    doc.text(label, boxX + 8, y, { width: 60 });
     doc.fillColor('#000000').font('Helvetica-Bold');
-    doc.text(value, boxX + 72, y, { width: 124 });
+    doc.text(value, boxX + 68, y, { width: W - 76 });
     y += 11;
   };
-  infoRow('Ticket No :', data.ticketNumber || '01-000000');
-  infoRow('Date      :', data.date || '');
-  infoRow('Cust No   :', data.customerNumber || '0');
-  infoRow('Name      :', (data.customerName || 'WALK-IN').toUpperCase());
-  dashedLine(y); y += 10;
+
+  if (showReferenceBlock) {
+    doc.roundedRect(boxX, y, W, 60, 6).lineWidth(0.8).strokeColor('#d1d5db').stroke();
+    y += 8;
+    infoRow('Ticket', compact(data.ticketNumber || 'STORE-POLICY'));
+    infoRow('Date', compact(data.date || ''));
+    infoRow('Customer No', compact(data.customerNumber || '-'));
+    infoRow('Name', compact((data.customerName || 'Walk-in').toUpperCase()));
+    y += 4;
+  }
 
   const policySection = (title: string, items: string[]) => {
-    doc.fillColor('#000000').fontSize(8.5).font('Helvetica-Bold');
-    doc.text(title, boxX, y, { width: W });
-    y += 13;
-    doc.fontSize(7.5).font('Helvetica').fillColor('#333333');
+    sectionHeader(title);
+    doc.fontSize(7.4).font('Helvetica').fillColor('#222222');
     for (const item of items) {
-      doc.text('\u2022  ' + item, boxX + 4, y, { width: W - 8 });
+      doc.text('\u2022  ' + item, boxX + 6, y, { width: W - 12 });
       y += estimateH(item);
     }
-    y += 4;
+    y += 6;
   };
 
   policySection('Cleaning:', cleaningBullets);
-  doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#555555');
-  doc.text("We cannot guarantee that all cleaning requests will meet the product's original condition but we will do our best.", boxX, y, { align: 'center', width: W });
-  y += 14;
+  doc.fontSize(7.2).font('Helvetica-Oblique').fillColor('#4b5563');
+  doc.text("We cannot guarantee that all cleaning requests will meet the product's original condition, but we will do our best.", boxX + 6, y, { width: W - 12 });
+  y += 16;
 
   policySection('Dyeing:', dyeingBullets);
   policySection('Repairs/Alterations:', [
@@ -616,12 +1097,21 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
   policySection('Shoe Stretching:', stretchBullets);
   policySection('Storage:', storageBullets);
 
-  dashedLine(y); y += 10;
-  doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#555555');
-  doc.text("I have read the policies and understand that you will carefully service my item(s) to the best of your ability.", boxX, y, { align: 'center', width: W });
-  y += 14;
+  rule(y); y += 12;
+  doc.fontSize(7.2).font('Helvetica-Oblique').fillColor('#4b5563');
+  doc.text(
+    'I have read and understood these policies. Kampanis Shoes & Bags Clinic will handle my item(s) with due care and professional attention.',
+    boxX,
+    y,
+    { align: 'center', width: W }
+  );
+  y += 24;
   doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
-  doc.text('Signature: _______________________', boxX, y, { width: W });
+  doc.text('Signature', boxX, y, { width: 52 });
+  doc.moveTo(boxX + 52, y + 10).lineTo(boxX + W, y + 10).strokeColor('#9ca3af').lineWidth(0.8).stroke();
+  y += 18;
+  doc.fontSize(6.8).font('Helvetica').fillColor('#6b7280');
+  doc.text('Thank you for choosing Kampanis Shoes & Bags Clinic.', boxX, y, { align: 'center', width: W });
 
   await new Promise<void>((resolve) => { doc.on('end', resolve); doc.end(); });
   return Buffer.concat(chunks);
@@ -630,13 +1120,15 @@ async function generatePolicyPDF(data: PolicyPrintData): Promise<Buffer> {
 router.get('/print/policy', async (req, res) => {
   try {
     const { ticketNumber, date, customerNumber, customerName } = req.query as any;
-    if (!ticketNumber) {
-      res.status(400).json({ error: 'Missing required fields: ticketNumber' });
-      return;
-    }
-    const pdfBuf = await generatePolicyPDF({ ticketNumber, date: date || '', customerNumber: customerNumber || '', customerName: customerName || '' });
+    const resolvedTicketNumber = compact(ticketNumber || 'STORE-POLICY');
+    const pdfBuf = await generatePolicyPDF({
+      ticketNumber: resolvedTicketNumber,
+      date: date || '',
+      customerNumber: customerNumber || '',
+      customerName: customerName || '',
+    });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="policies-' + (ticketNumber || 'receipt') + '.pdf"');
+    res.setHeader('Content-Disposition', 'inline; filename="policies-' + resolvedTicketNumber + '.pdf"');
     res.setHeader('Content-Length', pdfBuf.length);
     res.end(pdfBuf);
   } catch (err: any) {
@@ -660,15 +1152,25 @@ router.post('/print/quotation/:id', async (req: Request, res: Response) => {
 // Payment receipt — returns PDF to browser, optionally prints USB
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/print/payment-receipt', async (req, res) => {
-  const { ticketId, ticketNumber, customerName, customerPhone, items, subtotal, tax, total, amountPaid, balance, paymentMethod, date } = req.body;
+  const { ticketId, ticketNumber, customerName, customerPhone, items, subtotal, discount, tax, total, amountPaid, balance, paymentMethod, date } = req.body;
 
   const flatRows: { description: string; price: number }[] = [];
   if (items && items.length > 0) {
     for (const item of items) {
       if (item.services && item.services.length > 0) {
-        for (const svc of item.services) {
-          flatRows.push({ description: svc.name || item.description || 'Service', price: Number(svc.price) || 0 });
-        }
+        const itemLabel = compact(item.description || 'Service Item');
+        const serviceNames = item.services
+          .map((svc: any) => compact(svc.name || 'Service'))
+          .filter(Boolean)
+          .join(' | ');
+        const totalServicePrice = item.services.reduce(
+          (sum: number, svc: any) => sum + (Number(svc.price) || 0),
+          0
+        );
+        flatRows.push({
+          description: serviceNames ? `${itemLabel}\n${serviceNames}` : itemLabel,
+          price: totalServicePrice,
+        });
       } else {
         flatRows.push({ description: item.description || 'Service', price: Number(item.price || item.amount) || 0 });
       }
@@ -676,11 +1178,12 @@ router.post('/print/payment-receipt', async (req, res) => {
   }
 
   const remaining = (balance !== undefined && balance !== null) ? balance : ((total || 0) - (amountPaid || 0));
+  const discountAmount = Math.max(0, Number(discount) || (Number(subtotal || 0) - Number(total || 0)));
 
   // Fire-and-forget ZPL to USB printer
   const safe = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/\^/g, '\\^').replace(/_/g, '\\_');
   const W = 812, LM = 20, RX = 620, LH = 20;
-  let y = 10;
+  let y = 6;
   const fo = (x: number, yn: number) => '^FO' + x + ',' + yn;
   const fd = (t: string) => '^FD' + safe(t) + '^FS';
   const fb = (w: number, l: number, m: number, t: number, j: string) => '^FB' + w + ',' + l + ',' + m + ',' + t + ',' + j;
@@ -688,14 +1191,15 @@ router.post('/print/payment-receipt', async (req, res) => {
   const vl = (yy: number, th: number) => fo(LM, yy) + '^GB' + (W - 2*LM) + ',' + th + ',' + th + '^FS';
   const fmt = (n: number) => 'UGX ' + (n || 0).toLocaleString('en-US');
   const rl = (label: string, amt: number, yy: number) =>
-    fo(LM, yy) + font(20,20) + ' ' + fd(label) + ':' + fo(RX, yy) + font(20,20) + ' ' + fd(fmt(amt));
+    fo(LM, yy) + font(23,23) + ' ' + fd(label) + ':' + fo(RX, yy) + font(23,23) + ' ' + fd(fmt(amt));
   const col1X = LM, col2X = LM + 120;
 
   const zl: string[] = [];
   zl.push('^XA','^CI28');
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(60,60)+' '+fd('KAMPANIS')); y+=65;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(28,28)+' '+fd('Shoes & Bags Clinic')); y+=35;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(20,20)+' '+fd('FORESET MALL, KOLOLO, KAMPALA, UGANDA')); y+=30;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(66,66)+' '+fd(STORE_INFO.brand)); y+=70;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(32,32)+' '+fd(STORE_INFO.tagline)); y+=39;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.location)); y+=32;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.phone)); y+=30;
   zl.push(vl(y,3)); y+=12;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(30,30)+' '+fd('PAYMENT RECEIPT')); y+=10;
   zl.push(vl(y,2)); y+=15;
@@ -712,10 +1216,16 @@ router.post('/print/payment-receipt', async (req, res) => {
   zl.push(fo(LM,y)+font(18,18)+' '+fd('Service')); zl.push(fo(RX,y)+font(18,18)+' '+fd('Amount')); y+=8;
   zl.push(vl(y,1)); y+=10;
   if (flatRows.length > 0) {
-    for (const row of flatRows) { zl.push(fo(LM,y)+font(20,20)+' '+fd(row.description.substring(0,35))); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(row.price))); y+=LH+3; }
+    for (const row of flatRows) {
+      const zplDescription = row.description.replace(/\s*\n\s*/g, ' / ');
+      zl.push(fo(LM,y)+font(23,23)+' '+fd(zplDescription.substring(0,31)));
+      zl.push(fo(RX,y)+font(23,23)+' '+fd(fmt(row.price)));
+      y+=LH+3;
+    }
   } else { zl.push(fo(LM,y)+font(20,20)+' '+fd('Payment')); zl.push(fo(RX,y)+font(20,20)+' '+fd(fmt(total||0))); y+=LH+3; }
   y+=5; zl.push(vl(y,1)); y+=10;
   zl.push(rl('Subtotal', subtotal||total||0, y)); y+=LH+2;
+  if (discountAmount > 0) { zl.push(rl('Discount', -discountAmount, y)); y+=LH+2; }
   if (tax) { zl.push(rl('Tax', tax, y)); y+=LH+2; }
   zl.push(vl(y,2)); y+=8;
   zl.push(fo(col1X,y)+font(24,24)+'^B1 '+fd('TOTAL')+':'+fo(RX,y)+font(24,24)+'^B1 '+fd(fmt(total||0))); y+=LH+6;
@@ -723,9 +1233,11 @@ router.post('/print/payment-receipt', async (req, res) => {
   if (remaining > 0) { zl.push(fo(col1X,y)+font(20,20)+' '+fd('Balance:')+fo(RX,y)+font(20,20)+' '+fd(fmt(remaining))); }
   else { zl.push(fo(col1X,y)+font(20,20)+' '+fd('Change:')+fo(RX,y)+font(20,20)+' '+fd(fmt(Math.abs(remaining)))); }
   y+=15; zl.push(vl(y,3)); y+=12;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd('Thank you for your business!')); y+=25;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd('Items not collected after 30 days attract storage fees.')); y+=20;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd('After 60 days items may be disposed of.')); y+=20;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(18,18)+' '+fd(STORE_INFO.footerLine1)); y+=25;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd(STORE_INFO.footerLine2)); y+=20;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(16,16)+' '+fd(STORE_INFO.footerLine3)); y+=20;
+  const paymentCode = ticketNumber || ('TKT-' + (ticketId || '').slice(-6).toUpperCase());
+  zl.push('^FO236,' + y + '^BY2,2,50^BCN,50,Y,N,N^FD' + safe(paymentCode) + '^FS'); y+=72;
   zl.push('^XZ');
 
   tryPrintZPL(zl.join('\n')).catch(() => {});
@@ -737,12 +1249,31 @@ router.post('/print/payment-receipt', async (req, res) => {
       ticketId, ticketNumber, customerName, customerPhone, date,
       items: flatRows,
       subtotal: subtotal || total || 0,
+      discount: discountAmount,
       tax: tax || undefined,
       total: total || 0,
       amountPaid: amountPaid || 0,
       balance: remaining,
       paymentMethod: paymentMethod || 'Cash',
     });
+
+    try {
+      await archiveIssuedReceipt({
+        operationId: ticketId || null,
+        ticketNumber: ticketNumber || null,
+        customerName: customerName || null,
+        customerPhone: customerPhone || null,
+        subtotal: subtotal || total || 0,
+        total: total || 0,
+        amountPaid: amountPaid || 0,
+        paymentMethod: paymentMethod || 'Cash',
+        generatedAt: new Date().toISOString(),
+        pdfBuffer: pdfBuf,
+      });
+    } catch (archiveError) {
+      console.error('Failed to archive payment receipt:', archiveError);
+    }
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="receipt-' + (ticketNumber || ticketId || 'payment') + '.pdf"');
     res.setHeader('Content-Length', pdfBuf.length);

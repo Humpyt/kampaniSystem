@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import {
   ShoppingBag,
@@ -79,12 +78,10 @@ const NavItem = ({ icon, label, onClick, isActive, isCollapsed, variant = 'defau
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse, onNavigate, currentView }) => {
-  const navigate = useNavigate();
   const logout = useAuthStore(state => state.logout);
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
   };
 
   const navGroups = [

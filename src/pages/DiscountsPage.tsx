@@ -408,7 +408,7 @@ const DiscountsPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-semibold">
-                          {item.discountPercent.toFixed(1)}%
+                          {(item.discountPercent ?? 0).toFixed(1)}%
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-400 text-sm">

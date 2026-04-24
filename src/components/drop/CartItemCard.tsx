@@ -11,6 +11,7 @@ interface CartItemCardProps {
 }
 
 export const CartItemCard: React.FC<CartItemCardProps> = ({ item, onEdit, onRemove, onPriceChange }) => {
+  const canEditPrice = Boolean(onPriceChange);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editedPrice, setEditedPrice] = useState(item.price);
 
@@ -69,12 +70,14 @@ export const CartItemCard: React.FC<CartItemCardProps> = ({ item, onEdit, onRemo
           ) : (
             <>
               <span className="text-gray-800 font-bold text-sm">{formatCurrency(item.price)}</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsEditingPrice(true); setEditedPrice(item.price); }}
-                className="p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
-              </button>
+              {canEditPrice && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsEditingPrice(true); setEditedPrice(item.price); }}
+                  className="p-1 rounded hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
                 className="p-1 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"

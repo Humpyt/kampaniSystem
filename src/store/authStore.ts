@@ -99,6 +99,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Clear localStorage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
+
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.replace('/login');
+    }
   },
 
   checkAuth: async () => {

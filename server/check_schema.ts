@@ -1,24 +1,22 @@
-import db from './database';
+import db from "./database";
 
 async function checkSchema() {
   try {
-    const columns = await db.all('PRAGMA table_info(operations)');
-    console.log('\n📋 Operations Table Columns:\n');
+    const columns = await db.all(
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position",
+      ["operations"]
+    );
+    console.log("\n📋 Operations Table Columns:\n");
     columns.forEach((col: any) => {
-      console.log(`  - ${col.name} (${col.type})`);
+      console.log(`  - ${col.column_name} (${col.data_type})`);
     });
 
-    // Check if discount column exists
-    const hasDiscount = columns.some((col: any) => col.name === 'discount');
-    console.log(`\n${hasDiscount ? '✅' : '❌'} Discount column: ${hasDiscount ? 'EXISTS' : 'NOT FOUND'}\n`);
-
-    if (!hasDiscount) {
-      console.log('⚠️  Need to add discount column to operations table\n');
-    }
+    const hasDiscount = columns.some((col: any) => col.column_name === "discount");
+    console.log(`\n${hasDiscount ? "✅" : "❌"} Discount column: ${hasDiscount ? "EXISTS" : "NOT FOUND"}\n`);
 
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error("❌ Error:", error);
     process.exit(1);
   }
 }

@@ -42,7 +42,7 @@ router.get('/discounts', async (req, res) => {
         COUNT(*) as count
       FROM operations
       WHERE discount > 0
-        AND created_at >= DATE('now', '-30 days')
+        AND created_at >= CURRENT_DATE - INTERVAL '30 day'
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `).all() as any[];
@@ -122,7 +122,7 @@ router.get('/new-customers', async (req, res) => {
         DATE(created_at) as date,
         COUNT(*) as count
       FROM customers
-      WHERE created_at >= DATE('now', '-30 days')
+      WHERE created_at >= CURRENT_DATE - INTERVAL '30 day'
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `).all() as any[];
@@ -340,7 +340,7 @@ router.get('/unpaid-balances', async (req, res) => {
         COALESCE(SUM(total_amount - paid_amount), 0) as totalUnpaid,
         COUNT(CASE WHEN (total_amount - paid_amount) > 0 THEN 1 END) as partialPaymentCount,
         COUNT(CASE WHEN (total_amount - paid_amount) = total_amount
-                   AND created_at < DATE('now', '-30 days') THEN 1 END) as overdueCount
+                   AND created_at < CURRENT_DATE - INTERVAL '30 day' THEN 1 END) as overdueCount
       FROM operations
       WHERE total_amount > paid_amount
     `).get() as any;
@@ -348,21 +348,21 @@ router.get('/unpaid-balances', async (req, res) => {
     // Get aging analysis
     const agingResult = await db.prepare(`
       SELECT
-        COUNT(CASE WHEN created_at >= DATE('now', '-30 days') THEN 1 END) as currentCount,
-        COALESCE(SUM(CASE WHEN created_at >= DATE('now', '-30 days')
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 day' THEN 1 END) as currentCount,
+        COALESCE(SUM(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 day'
                           THEN total_amount - paid_amount ELSE 0 END), 0) as currentBalance,
-        COUNT(CASE WHEN created_at >= DATE('now', '-60 days')
-                   AND created_at < DATE('now', '-30 days') THEN 1 END) as aging30Count,
-        COALESCE(SUM(CASE WHEN created_at >= DATE('now', '-60 days')
-                          AND created_at < DATE('now', '-30 days')
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '60 day'
+                   AND created_at < CURRENT_DATE - INTERVAL '30 day' THEN 1 END) as aging30Count,
+        COALESCE(SUM(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '60 day'
+                          AND created_at < CURRENT_DATE - INTERVAL '30 day'
                           THEN total_amount - paid_amount ELSE 0 END), 0) as aging30Balance,
-        COUNT(CASE WHEN created_at >= DATE('now', '-90 days')
-                   AND created_at < DATE('now', '-60 days') THEN 1 END) as aging60Count,
-        COALESCE(SUM(CASE WHEN created_at >= DATE('now', '-90 days')
-                          AND created_at < DATE('now', '-60 days')
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '90 day'
+                   AND created_at < CURRENT_DATE - INTERVAL '60 day' THEN 1 END) as aging60Count,
+        COALESCE(SUM(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '90 day'
+                          AND created_at < CURRENT_DATE - INTERVAL '60 day'
                           THEN total_amount - paid_amount ELSE 0 END), 0) as aging60Balance,
-        COUNT(CASE WHEN created_at < DATE('now', '-90 days') THEN 1 END) as overdueCount,
-        COALESCE(SUM(CASE WHEN created_at < DATE('now', '-90 days')
+        COUNT(CASE WHEN created_at < CURRENT_DATE - INTERVAL '90 day' THEN 1 END) as overdueCount,
+        COALESCE(SUM(CASE WHEN created_at < CURRENT_DATE - INTERVAL '90 day'
                           THEN total_amount - paid_amount ELSE 0 END), 0) as overdueBalance
       FROM operations
       WHERE total_amount > paid_amount
@@ -510,21 +510,21 @@ router.get('/profit-summary', async (req, res) => {
     // Get monthly breakdown for last 6 months
     const monthlyBreakdownResult = await db.prepare(`
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        TO_CHAR(created_at, 'YYYY-MM') as month,
         SUM(total_amount) as sales
       FROM operations
-      WHERE created_at >= date('now', '-6 months')
-      GROUP BY strftime('%Y-%m', created_at)
+      WHERE created_at >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(created_at, 'YYYY-MM')
       ORDER BY month ASC
     `).all() as any[];
 
     const monthlyExpenseResult = await db.prepare(`
       SELECT
-        strftime('%Y-%m', date) as month,
+        TO_CHAR(date, 'YYYY-MM') as month,
         SUM(amount) as expenses
       FROM expenses
-      WHERE date >= date('now', '-6 months')
-      GROUP BY strftime('%Y-%m', date)
+      WHERE date >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(date, 'YYYY-MM')
       ORDER BY month ASC
     `).all() as any[];
 
@@ -581,7 +581,7 @@ router.get('/daily-balance', async (req, res) => {
         COALESCE(op.payment_method, 'Cash') as paymentMethod,
         COALESCE(SUM(op.amount), 0) as total
       FROM operation_payments op
-      WHERE date(op.created_at) = date(?)
+      WHERE op.created_at::date = ?::date
       GROUP BY op.payment_method
     `).all(targetDate) as any[];
 

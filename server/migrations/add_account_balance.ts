@@ -5,8 +5,8 @@ async function addAccountBalance() {
     console.log('🔄 Adding account_balance column to customers table...\n');
 
     // Check if column exists
-    const columns = await db.all('PRAGMA table_info(customers)');
-    const hasBalance = columns.some((col: any) => col.name === 'account_balance');
+    const columns = await db.all('SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'customers' ORDER BY ordinal_position');
+    const hasBalance = columns.some((col: any) => col.column_name === 'account_balance');
 
     if (hasBalance) {
       console.log('✅ account_balance column already exists!\n');
