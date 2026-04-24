@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type { Customer } from '../types';
 import { api } from '../services/api';
 
 interface CustomerContextType {
   customers: Customer[];
+  fetchCustomers: (params?: { limit?: number; offset?: number; search?: string }) => Promise<void>;
   addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
   updateCustomer: (id: string, customerData: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -15,14 +16,14 @@ const CustomerContext = createContext<CustomerContextType | undefined>(undefined
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCustomers = useCallback(async () => {
+  const fetchCustomers = useCallback(async (params?: { limit?: number; offset?: number; search?: string }) => {
     try {
       setLoading(true);
       setError(null);
-      const result = await api.customers.getAll();
+      const result = await api.customers.getAll(params);
       setCustomers(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch customers');
@@ -30,11 +31,6 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
-
-  // Fetch customers on mount
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id'>): Promise<Customer> => {
     try {

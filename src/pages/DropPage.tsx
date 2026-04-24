@@ -136,7 +136,7 @@ const getInitialFormState = (): DropFormState => ({
 
 export default function DropPage() {
   const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation, updateOperation, refreshOperations } = useOperation();
-  const { customers, addCustomer } = useCustomer();
+  const { customers, fetchCustomers, addCustomer } = useCustomer();
   const { services } = useServices();
 
   const [form, setForm] = useState<DropFormState>(getInitialFormState());
@@ -220,6 +220,11 @@ export default function DropPage() {
     };
     fetchColors();
   }, []);
+
+  useEffect(() => {
+    if (!showCustomerSearch || customers.length > 0) return;
+    fetchCustomers({ limit: 10000 });
+  }, [showCustomerSearch, customers.length, fetchCustomers]);
 
   // Build service name-to-ID map
   useEffect(() => {

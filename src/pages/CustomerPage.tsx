@@ -92,6 +92,10 @@ export default function CustomerPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    fetchCustomers({ limit: 10000 });
+  }, [fetchCustomers]);
+
   const validateForm = (data: CustomerFormData) => {
     const errors: { name?: string; phone?: string } = {};
     

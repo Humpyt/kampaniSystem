@@ -5,6 +5,7 @@ import { allocateNextTicketNumber } from './helpers/tickets';
 import { transformOperation } from './utils';
 
 const router = express.Router();
+const DEBUG_OPERATIONS = process.env.DEBUG_OPERATIONS === '1';
 
 const mapRetailItem = (item: any) => ({
   id: item.id,
@@ -335,7 +336,9 @@ router.get('/:id/payments', async (req, res) => {
 
 // Create new operation
 router.post('/', async (req, res) => {
-  console.log('Received operation request:', JSON.stringify(req.body, null, 2));
+  if (DEBUG_OPERATIONS) {
+    console.log('Received operation request:', JSON.stringify(req.body, null, 2));
+  }
   const {
     customer,
     shoes = [],
@@ -415,8 +418,10 @@ router.post('/', async (req, res) => {
       // Insert the operation
       const operationId = uuidv4();
       const ticketNumber = await allocateNextTicketNumber(tx);
-      console.log('Creating operation with ID:', operationId);
-      if (clientTicketNumber) {
+      if (DEBUG_OPERATIONS) {
+        console.log('Creating operation with ID:', operationId);
+      }
+      if (DEBUG_OPERATIONS && clientTicketNumber) {
         console.warn('Ignoring client-supplied ticket number during operation creation:', clientTicketNumber);
       }
 
@@ -459,7 +464,9 @@ router.post('/', async (req, res) => {
       // Insert each shoe
       for (let index = 0; index < normalizedShoes.length; index++) {
         const shoe = normalizedShoes[index];
-        console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2));
+        if (DEBUG_OPERATIONS) {
+          console.log(`Processing shoe ${index + 1}:`, JSON.stringify(shoe, null, 2));
+        }
         const shoeId = uuidv4();
 
         await tx.prepare(`
@@ -482,7 +489,9 @@ router.post('/', async (req, res) => {
         if (Array.isArray(shoe.services)) {
           for (let sIndex = 0; sIndex < shoe.services.length; sIndex++) {
             const service = shoe.services[sIndex];
-            console.log(`Processing service ${sIndex + 1} for shoe ${index + 1}:`, JSON.stringify(service, null, 2));
+            if (DEBUG_OPERATIONS) {
+              console.log(`Processing service ${sIndex + 1} for shoe ${index + 1}:`, JSON.stringify(service, null, 2));
+            }
 
             const resolvedServiceId = await getOrCreateServiceId(tx, servicesCache, service, now);
             if (!resolvedServiceId) {
