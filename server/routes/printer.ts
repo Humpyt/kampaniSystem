@@ -83,6 +83,26 @@ function generateReceiptArchiveNumber(): string {
   return `RCP-${timestamp}-${random}`;
 }
 
+async function generateBarcodeDataUri(text: string): Promise<string | null> {
+  const value = compact(text);
+  if (!value) {
+    return null;
+  }
+
+  const buffer = await bwipjs.toBuffer({
+    bcid: 'code128',
+    text: value,
+    scale: 2,
+    height: 10,
+    includetext: true,
+    textxalign: 'center',
+    textsize: 9,
+    backgroundcolor: 0xffffff,
+  });
+
+  return `data:image/png;base64,${buffer.toString('base64')}`;
+}
+
 function getReceiptArchiveStorageDir(): string {
   return path.join(process.cwd(), 'storage', 'receipts');
 }
@@ -405,7 +425,7 @@ function escapeHtml(value: string | null | undefined): string {
     .replace(/'/g, '&#39;');
 }
 
-function generateOrderPrintHtml(data: {
+async function generateOrderPrintHtml(data: {
   orderId: string;
   ticketNumber: string;
   customerName?: string;
@@ -419,7 +439,7 @@ function generateOrderPrintHtml(data: {
   paidAmount?: number;
   notes?: string;
   autoPrint?: boolean;
-}): string {
+}): Promise<string> {
   const createdAt = new Date(data.createdAt);
   const createdLabel = createdAt.toLocaleString('en-UG', {
     year: 'numeric',
@@ -440,6 +460,7 @@ function generateOrderPrintHtml(data: {
   const paidAmount = Number(data.paidAmount) || 0;
   const discountAmount = Math.max(0, Number(data.discount) || (Number(data.subtotal) - Number(data.total)));
   const balance = Math.max(0, (Number(data.total) || 0) - paidAmount);
+  const barcodeDataUri = await generateBarcodeDataUri(data.ticketNumber || data.orderId);
   const itemRows = data.items.length > 0
     ? data.items.map((item) => {
         const [mainLine, ...rest] = String(item.description || '').split('\n');
@@ -558,6 +579,18 @@ function generateOrderPrintHtml(data: {
         font-weight: 700;
         margin-top: 12px;
       }
+      .barcode {
+        margin-top: 12px;
+        text-align: center;
+        page-break-inside: avoid;
+      }
+      .barcode img {
+        display: block;
+        width: 58mm;
+        max-width: 100%;
+        height: auto;
+        margin: 0 auto;
+      }
       @page {
         size: 80mm auto;
         margin: 6pt 4pt 4pt;
@@ -597,6 +630,11 @@ function generateOrderPrintHtml(data: {
         <div>${escapeHtml(STORE_INFO.footerLine2)}</div>
         <div>${escapeHtml(STORE_INFO.footerLine3)}</div>
       </div>
+      ${barcodeDataUri ? `
+        <div class="barcode">
+          <img src="${barcodeDataUri}" alt="Barcode ${escapeHtml(data.ticketNumber || data.orderId)}" />
+        </div>
+      ` : ''}
     </main>
     ${data.autoPrint ? `
       <script>
@@ -877,7 +915,7 @@ router.get("/print/order/:id", async (req, res) => {
 
   if (req.query.format === 'html') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(generateOrderPrintHtml({
+    res.send(await generateOrderPrintHtml({
       orderId: order.id,
       ticketNumber: order.ticket_number || order.id,
       customerName: order.customer_name || undefined,
