@@ -1,6 +1,14 @@
-import { useState, useEffect } from 'react';
-import { X, DollarSign, Calendar, Tag, FileText, User, CreditCard } from 'lucide-react';
-import { Expense, CreateExpenseInput, UpdateExpenseInput, EXPENSE_CATEGORIES, EXPENSE_STATUSES, PAYMENT_METHODS } from '../../types/expense';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronsUpDown, Plus, Trash2, X } from 'lucide-react';
+import {
+  CreateExpenseInput,
+  Expense,
+  ExpenseLineItemInput,
+  EXPENSE_CATEGORIES,
+  EXPENSE_STATUSES,
+  PAYMENT_METHODS,
+  UpdateExpenseInput
+} from '../../types/expense';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 interface ExpenseModalProps {
@@ -11,286 +19,378 @@ interface ExpenseModalProps {
   mode?: 'create' | 'edit';
 }
 
-export function ExpenseModal({ isOpen, onClose, onSave, expense, mode = 'create' }: ExpenseModalProps) {
-  const [formData, setFormData] = useState({
-    title: '',
-    category: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    status: 'pending' as 'paid' | 'pending' | 'overdue',
-    paymentMethod: '',
-    vendor: '',
-    notes: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+interface ExpenseFormState {
+  title: string;
+  date: string;
+  status: 'paid' | 'pending' | 'overdue';
+  paymentMethod: string;
+  vendor: string;
+  notes: string;
+  lineItems: ExpenseLineItemInput[];
+}
+
+const createEmptyLineItem = (): ExpenseLineItemInput => ({
+  title: '',
+  category: EXPENSE_CATEGORIES[0],
+  amount: 0,
+  notes: ''
+});
+
+const toToday = () => new Date().toISOString().split('T')[0];
+
+const getInitialState = (expense?: Expense | null): ExpenseFormState => {
+  if (!expense) {
+    return {
+      title: '',
+      date: toToday(),
+      status: 'pending',
+      paymentMethod: '',
+      vendor: '',
+      notes: '',
+      lineItems: [createEmptyLineItem()]
+    };
+  }
+
+  return {
+    title: expense.title || '',
+    date: expense.date ? expense.date.split('T')[0] : toToday(),
+    status: expense.status || 'pending',
+    paymentMethod: expense.paymentMethod || '',
+    vendor: expense.vendor || '',
+    notes: expense.notes || '',
+    lineItems: expense.lineItems?.length
+      ? expense.lineItems.map((item) => ({
+          id: item.id,
+          title: item.title || '',
+          category: item.category || EXPENSE_CATEGORIES[0],
+          amount: Number(item.amount) || 0,
+          notes: item.notes || ''
+        }))
+      : [
+          {
+            title: expense.title || '',
+            category: expense.category || EXPENSE_CATEGORIES[0],
+            amount: Number(expense.amount) || 0,
+            notes: expense.notes || ''
+          }
+        ]
+  };
+};
+
+export function ExpenseModal({
+  isOpen,
+  onClose,
+  onSave,
+  expense = null,
+  mode = 'create'
+}: ExpenseModalProps) {
+  const [form, setForm] = useState<ExpenseFormState>(() => getInitialState(expense));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
-    if (expense && mode === 'edit') {
-      setFormData({
-        title: expense.title,
-        category: expense.category,
-        amount: expense.amount.toString(),
-        date: expense.date,
-        status: expense.status,
-        paymentMethod: expense.paymentMethod || '',
-        vendor: expense.vendor || '',
-        notes: expense.notes || ''
-      });
-    } else {
-      setFormData({
-        title: '',
-        category: '',
-        amount: '',
-        date: new Date().toISOString().split('T')[0],
-        status: 'pending',
-        paymentMethod: '',
-        vendor: '',
-        notes: ''
-      });
+    if (!isOpen) {
+      return;
     }
-    setErrors({});
-  }, [expense, mode, isOpen]);
+    setForm(getInitialState(expense));
+    setSaving(false);
+    setError(null);
+    setShowDetails(Boolean(expense?.vendor || expense?.paymentMethod || expense?.notes));
+  }, [expense, isOpen]);
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.title.trim()) {
-      newErrors.title = 'Title is required';
-    }
-
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
-    }
-
-    if (!formData.amount) {
-      newErrors.amount = 'Amount is required';
-    } else if (isNaN(parseFloat(formData.amount)) || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = 'Amount must be a positive number';
-    }
-
-    if (!formData.date) {
-      newErrors.date = 'Date is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const updateField = <K extends keyof ExpenseFormState>(field: K, value: ExpenseFormState[K]) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const updateLineItem = (index: number, patch: Partial<ExpenseLineItemInput>) => {
+    setForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) => (i === index ? { ...item, ...patch } : item))
+    }));
+  };
 
-    if (!validateForm()) return;
+  const addLineItem = () => {
+    setForm((prev) => ({
+      ...prev,
+      lineItems: [...prev.lineItems, createEmptyLineItem()]
+    }));
+  };
 
-    setLoading(true);
+  const removeLineItem = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.filter((_, i) => i !== index)
+    }));
+  };
+
+  const totalAmount = useMemo(
+    () => form.lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+    [form.lineItems]
+  );
+
+  const usedCategories = useMemo(() => {
+    const seen = new Set<string>();
+    return form.lineItems
+      .map((item) => item.category)
+      .filter((category) => {
+        if (!category || seen.has(category)) return false;
+        seen.add(category);
+        return true;
+      });
+  }, [form.lineItems]);
+
+  const applyQuickCategory = (category: string) => {
+    setForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, index) =>
+        index === prev.lineItems.length - 1 ? { ...item, category } : item
+      )
+    }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const cleanedLineItems = form.lineItems
+      .map((item) => ({
+        id: item.id,
+        title: item.title.trim(),
+        category: item.category,
+        amount: Number(item.amount),
+        notes: item.notes?.trim() || undefined
+      }))
+      .filter((item) => item.title || item.amount || item.notes);
+
+    if (cleanedLineItems.length === 0) {
+      setError('Add at least one line item.');
+      return;
+    }
+
+    const invalidItem = cleanedLineItems.find(
+      (item) => !item.title || !item.category || !Number.isFinite(item.amount) || item.amount <= 0
+    );
+
+    if (invalidItem) {
+      setError('Each line item needs a title, category, and amount greater than 0.');
+      return;
+    }
+
+    const fallbackTitle = cleanedLineItems.length === 1
+      ? cleanedLineItems[0].title
+      : `${cleanedLineItems.length} expense items`;
+
+    const payload: CreateExpenseInput | UpdateExpenseInput = {
+      title: form.title.trim() || fallbackTitle,
+      date: form.date || toToday(),
+      status: form.status,
+      paymentMethod: form.paymentMethod || undefined,
+      vendor: form.vendor.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      lineItems: cleanedLineItems
+    };
+
     try {
-      const data = {
-        title: formData.title.trim(),
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        date: formData.date,
-        status: formData.status,
-        paymentMethod: formData.paymentMethod || undefined,
-        vendor: formData.vendor || undefined,
-        notes: formData.notes || undefined
-      };
-      await onSave(data);
+      setSaving(true);
+      setError(null);
+      await onSave(payload);
       onClose();
-    } catch (error) {
-      console.error('Error saving expense:', error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save expense');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setSaving(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-xl w-full max-w-lg p-6 border border-gray-700">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">
-            {mode === 'edit' ? 'Edit Expense' : 'Add New Expense'}
-          </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-3 backdrop-blur-sm">
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3 md:px-5">
+          <div>
+            <h2 className="text-lg font-semibold text-white">{mode === 'edit' ? 'Edit expense' : 'Quick add expense'}</h2>
+            <p className="text-xs text-gray-400">Start with items first. Everything else is optional.</p>
+          </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-white"
           >
-            <X className="h-5 w-5" />
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Title <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => handleInputChange('title', e.target.value)}
-                placeholder="e.g., Office supplies purchase"
-                className={`w-full bg-gray-700 border ${errors.title ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none`}
-              />
+        <form onSubmit={handleSubmit} className="max-h-[88vh] overflow-y-auto">
+          <div className="sticky top-0 z-10 border-b border-gray-700 bg-gray-900/95 px-4 py-3 backdrop-blur md:px-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300">
+                <Check size={13} />
+                {form.lineItems.length} {form.lineItems.length === 1 ? 'item' : 'items'}
+              </div>
+              <p className="text-xl font-semibold text-white">{formatCurrency(totalAmount)}</p>
             </div>
-            {errors.title && <p className="mt-1 text-sm text-red-400">{errors.title}</p>}
           </div>
 
-          {/* Category */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Category <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <select
-                value={formData.category}
-                onChange={(e) => handleInputChange('category', e.target.value)}
-                className={`w-full bg-gray-700 border ${errors.category ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none`}
-              >
-                <option value="">Select category</option>
-                {EXPENSE_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+          <div className="space-y-4 px-4 py-4 md:px-5">
+            <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Quick categories</p>
+                <span className="text-[11px] text-gray-500">Applies to last row</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[...usedCategories, ...EXPENSE_CATEGORIES].slice(0, 8).map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => applyQuickCategory(category)}
+                    className="rounded-full border border-gray-600 px-3 py-1.5 text-xs text-gray-300 transition hover:border-indigo-400 hover:text-white"
+                  >
+                    {category}
+                  </button>
                 ))}
-              </select>
-            </div>
-            {errors.category && <p className="mt-1 text-sm text-red-400">{errors.category}</p>}
-          </div>
-
-          {/* Amount and Date */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Amount <span className="text-red-400">*</span>
-              </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => handleInputChange('amount', e.target.value)}
-                  placeholder="0"
-                  min="0"
-                  step="100"
-                  className={`w-full bg-gray-700 border ${errors.amount ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none`}
-                />
               </div>
-              {errors.amount && <p className="mt-1 text-sm text-red-400">{errors.amount}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Date <span className="text-red-400">*</span>
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => handleInputChange('date', e.target.value)}
-                  className={`w-full bg-gray-700 border ${errors.date ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none`}
-                />
-              </div>
-              {errors.date && <p className="mt-1 text-sm text-red-400">{errors.date}</p>}
-            </div>
-          </div>
+            <div className="space-y-2">
+              {form.lineItems.map((item, index) => (
+                <div key={item.id || index} className="rounded-xl border border-gray-700 bg-gray-800/50 p-3">
+                  <div className="grid gap-2 md:grid-cols-[1.4fr_1fr_0.8fr_auto]">
+                    <input
+                      value={item.title}
+                      onChange={(e) => updateLineItem(index, { title: e.target.value })}
+                      placeholder="What did you pay for?"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                    />
+                    <select
+                      value={item.category}
+                      onChange={(e) => updateLineItem(index, { category: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                    >
+                      {EXPENSE_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.amount || ''}
+                      onChange={(e) => updateLineItem(index, { amount: Number(e.target.value) })}
+                      placeholder="Amount"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLineItem(index)}
+                      disabled={form.lineItems.length === 1}
+                      className="rounded-lg border border-gray-700 px-2.5 py-2 text-gray-400 transition hover:border-rose-400/50 hover:text-rose-300 disabled:opacity-35"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
 
-          {/* Status and Payment Method */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Status
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) => handleInputChange('status', e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none"
+              <button
+                type="button"
+                onClick={addLineItem}
+                className="mt-1 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
               >
-                {EXPENSE_STATUSES.map(status => (
-                  <option key={status} value={status}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </option>
-                ))}
-              </select>
+                <Plus size={14} />
+                Add another item
+              </button>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Payment Method
-              </label>
-              <div className="relative">
-                <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <select
-                  value={formData.paymentMethod}
-                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none"
-                >
-                  <option value="">Select method</option>
-                  {PAYMENT_METHODS.map(method => (
-                    <option key={method} value={method}>{method}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Vendor */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Vendor
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                value={formData.vendor}
-                onChange={(e) => handleInputChange('vendor', e.target.value)}
-                placeholder="e.g., Office Depot, Utility Company"
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Notes
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => handleInputChange('notes', e.target.value)}
-              placeholder="Additional notes..."
-              rows={3}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+              onClick={() => setShowDetails((prev) => !prev)}
+              className="inline-flex items-center gap-2 text-sm text-gray-300 transition hover:text-white"
             >
-              Cancel
+              <ChevronsUpDown size={14} />
+              {showDetails ? 'Hide extra details' : 'Add extra details'}
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Saving...' : mode === 'edit' ? 'Update Expense' : 'Add Expense'}
-            </button>
+
+            {showDetails && (
+              <div className="grid gap-3 rounded-xl border border-gray-700 bg-gray-800/50 p-3 md:grid-cols-2">
+                <input
+                  value={form.title}
+                  onChange={(e) => updateField('title', e.target.value)}
+                  placeholder="Optional summary title"
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                />
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => updateField('date', e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                />
+                <select
+                  value={form.status}
+                  onChange={(e) => updateField('status', e.target.value as ExpenseFormState['status'])}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                >
+                  {EXPENSE_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={form.paymentMethod}
+                  onChange={(e) => updateField('paymentMethod', e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500"
+                >
+                  <option value="">Payment method</option>
+                  {PAYMENT_METHODS.map((method) => (
+                    <option key={method} value={method}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={form.vendor}
+                  onChange={(e) => updateField('vendor', e.target.value)}
+                  placeholder="Vendor (optional)"
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500 md:col-span-2"
+                />
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => updateField('notes', e.target.value)}
+                  rows={2}
+                  placeholder="Notes (optional)"
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition focus:border-indigo-500 md:col-span-2"
+                />
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                {error}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-700 px-4 py-3 md:px-5">
+            <p className="text-xs text-gray-500">Total: {formatCurrency(totalAmount)}</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:bg-gray-800 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {saving ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Save expense'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

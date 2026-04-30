@@ -12,3 +12,37 @@ export interface Customer {
   loyaltyPoints: number;
   accountBalance?: number;
 }
+
+export interface ServiceSelection {
+  service: string;
+  variation: string;
+}
+
+export interface CartItem {
+  id: string;
+  category: string;
+  size?: string;
+  color: string;
+  brand: string;
+  material: string;
+  shortDescription: string;
+  memos: string[];
+  services: ServiceSelection[];
+  price: number;
+  readyByDate?: string;
+}
+
+export interface DropFormState {
+  customerId: string;
+  category: string;
+  size: string;
+  color: string;
+  brand: string;
+  material: string;
+  shortDescription: string;
+  memos: string[];
+  service: string;
+  variation: string;
+  price: string;
+  readyByDate: string;
+}

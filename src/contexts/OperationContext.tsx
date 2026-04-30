@@ -14,8 +14,27 @@ interface ShoeService {
 interface ShoeItem {
   id: string;
   category: string;
+  size?: string | null;
   color: string;
+  colorDescription?: string;
+  notes?: string | null;
+  pickupStatus?: 'pending' | 'picked_up';
+  pickedUpAt?: string | null;
+  pickupEventId?: string | null;
   services: ShoeService[];
+}
+
+interface PickupEvent {
+  id: string;
+  collectorName?: string | null;
+  collectorPhone?: string | null;
+  pickedUpAt?: string | null;
+  shoes: {
+    id: string;
+    category: string;
+    color?: string;
+    description?: string;
+  }[];
 }
 
 interface Operation {
@@ -39,6 +58,7 @@ interface Operation {
   created_by?: string;
   createdAt: string;
   updatedAt: string;
+  pickupEvents?: PickupEvent[];
   paymentRecords?: any[];
 }
 
@@ -64,9 +84,17 @@ const OperationContext = createContext<OperationContextType | undefined>(undefin
 const normalizeOperation = (operation: any): Operation => ({
   ...operation,
   customer: operation.customer || null,
-  shoes: Array.isArray(operation.shoes) ? operation.shoes : [],
+  shoes: Array.isArray(operation.shoes)
+    ? operation.shoes.map((shoe: any) => ({
+        ...shoe,
+        pickupStatus: shoe.pickupStatus || 'pending',
+        pickedUpAt: shoe.pickedUpAt || null,
+        pickupEventId: shoe.pickupEventId || null,
+      }))
+    : [],
   workflowStatus: operation.workflowStatus || 'pending',
   paymentStatus: operation.paymentStatus || 'unpaid',
+  pickupEvents: Array.isArray(operation.pickupEvents) ? operation.pickupEvents : [],
   paidAmount: Number(operation.paidAmount) || 0,
   totalAmount: Number(operation.totalAmount) || 0,
   discount: Number(operation.discount) || 0,

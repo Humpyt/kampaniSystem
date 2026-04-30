@@ -212,10 +212,56 @@ export async function createSchema(pool: Pool): Promise<void> {
         color TEXT,
         color_description TEXT,
         notes TEXT,
+        pickup_status TEXT NOT NULL DEFAULT 'pending',
+        picked_up_at TIMESTAMPTZ,
+        pickup_event_id TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         FOREIGN KEY (operation_id) REFERENCES operations(id) ON DELETE CASCADE
       )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS operation_pickup_events (
+        id TEXT PRIMARY KEY,
+        operation_id TEXT NOT NULL,
+        collector_name VARCHAR(255),
+        collector_phone VARCHAR(50),
+        picked_up_at TIMESTAMPTZ NOT NULL,
+        created_by TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        FOREIGN KEY (operation_id) REFERENCES operations(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `);
+
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operation_shoes' AND column_name = 'pickup_status') THEN
+          ALTER TABLE operation_shoes ADD COLUMN pickup_status TEXT NOT NULL DEFAULT 'pending';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operation_shoes' AND column_name = 'picked_up_at') THEN
+          ALTER TABLE operation_shoes ADD COLUMN picked_up_at TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'operation_shoes' AND column_name = 'pickup_event_id') THEN
+          ALTER TABLE operation_shoes ADD COLUMN pickup_event_id TEXT;
+        END IF;
+      END $$
+    `);
+
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE table_name = 'operation_shoes' AND constraint_name = 'operation_shoes_pickup_event_id_fkey'
+        ) THEN
+          ALTER TABLE operation_shoes
+          ADD CONSTRAINT operation_shoes_pickup_event_id_fkey
+          FOREIGN KEY (pickup_event_id) REFERENCES operation_pickup_events(id) ON DELETE SET NULL;
+        END IF;
+      END $$
     `);
 
     // ============================================
@@ -525,6 +571,21 @@ export async function createSchema(pool: Pool): Promise<void> {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS expense_items (
+        id TEXT PRIMARY KEY,
+        expense_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        notes TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE
+      )
+    `);
+
     // ============================================
     // DAILY_BALANCE_ARCHIVES TABLE
     // ============================================
@@ -658,6 +719,8 @@ export async function createSchema(pool: Pool): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_expense_items_expense_id ON expense_items(expense_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_expense_items_category ON expense_items(category)`);
 
     // Commission archives indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_commission_archives_user ON commission_archives(user_id)`);

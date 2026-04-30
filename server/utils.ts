@@ -46,11 +46,21 @@ export const transformOperation = (operation: any) => ({
     customer: operation.customer_id ? {
         id: operation.customer_id,
         name: operation.customer_name,
-        phone: operation.customer_phone
+        phone: operation.customer_phone,
+        accountBalance: Number(operation.account_balance) || 0,
     } : null,
     createdBy: operation.created_by || null,
     staffName: operation.staff_name || null,
     shoes: operation.shoes || [],
+    pickupEvents: Array.isArray(operation.pickupEvents)
+        ? operation.pickupEvents.map((event: any) => ({
+            id: event.id,
+            collectorName: event.collector_name || null,
+            collectorPhone: event.collector_phone || null,
+            pickedUpAt: event.picked_up_at || null,
+            shoes: Array.isArray(event.shoes) ? event.shoes : [],
+        }))
+        : [],
     retailItems: operation.retailItems || [],
     paymentRecords: operation.paymentRecords || [],
     generatedDocumentId: operation.generatedDocumentId || null,

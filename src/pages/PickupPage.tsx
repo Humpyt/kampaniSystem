@@ -1,36 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, CheckCircle, CheckSquare, Clock, CreditCard, DollarSign, Gift, Package, Search, ShoppingCart } from 'lucide-react';
 import { API_ENDPOINTS } from '../config/api';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
 import { PaymentModal } from '../components/PaymentModal';
 import { CollectorInfoModal } from '../components/CollectorInfoModal';
-import { Link } from 'react-router-dom';
-import { Search, Package, DollarSign, CreditCard, CheckSquare, X, Clock, User, Gift, Minus, CheckCircle, ArrowRight, ShoppingCart, Sparkles } from 'lucide-react';
 import { buildPaymentReceiptPayload, printerService } from '../services/printer';
+
+interface PickupEvent {
+  id: string;
+  collectorName?: string | null;
+  collectorPhone?: string | null;
+  pickedUpAt?: string | null;
+  shoes: {
+    id: string;
+    category: string;
+    color?: string;
+    description?: string;
+  }[];
+}
 
 interface PickupTicket {
   id: string;
   customerName: string;
   customerPhone: string;
   customerId?: string;
-  customerBalance?: number;
+  customerBalance: number;
   date: string;
   pieces: number;
-  rackNo?: string;
   total: number;
   originalTotal: number;
   discount: number;
   paidAmount: number;
-  status: 'pending' | 'ready' | 'completed';
+  status: 'ready' | 'completed';
   workflowStatus: 'pending' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overpaid';
   promisedDate?: string;
+  pickupEvents: PickupEvent[];
   items: {
     id: string;
     category: string;
     size?: string;
     color: string;
     description: string;
+    pickupStatus: 'pending' | 'picked_up';
+    pickedUpAt?: string | null;
     services: {
       name: string;
       price: number;
@@ -45,18 +60,19 @@ interface PickupTicket {
   }[];
 }
 
+const ticketLabel = (id: string) => `TKT-${id.slice(-6).toUpperCase()}`;
+
 export default function PickupPage() {
-  const { operations, refreshOperations, updateOperation } = useOperation();
+  const { operations, refreshOperations } = useOperation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [payingTicketId, setPayingTicketId] = useState<string | null>(null); // Track ticket being paid
   const [filter, setFilter] = useState<'all' | 'needs_payment' | 'ready'>('all');
   const [showCollectorModal, setShowCollectorModal] = useState(false);
   const [pendingPickupId, setPendingPickupId] = useState<string | null>(null);
   const [isSubmittingPickup, setIsSubmittingPickup] = useState(false);
+  const [selectedShoeIds, setSelectedShoeIds] = useState<string[]>([]);
 
-  // Listen for drop-completed event to refresh data
   useEffect(() => {
     const handleDropCompleted = () => {
       refreshOperations();
@@ -65,10 +81,10 @@ export default function PickupPage() {
     return () => window.removeEventListener('drop-completed', handleDropCompleted);
   }, [refreshOperations]);
 
-  // Convert operations to pickup tickets
   const mapOperationToTicket = (op: any): PickupTicket => {
     const discount = Number(op.discount) || 0;
-    const originalTotal = Number(op.totalAmount) + discount;
+    const shoes = Array.isArray(op.shoes) ? op.shoes : [];
+    const pendingShoeCount = shoes.filter((shoe: any) => (shoe.pickupStatus || 'pending') !== 'picked_up').length;
     const retailItems = (op.retailItems || []).map((item: any) => ({
       id: item.id || item.productId || Math.random().toString(36),
       productName: item.productName || item.name || 'Product',
@@ -76,6 +92,7 @@ export default function PickupPage() {
       quantity: Number(item.quantity) || 1,
       totalPrice: Number(item.totalPrice) || Number(item.unitPrice) || Number(item.price) || 0,
     }));
+
     return {
       id: op.id,
       customerName: op.customer?.name || 'Unknown',
@@ -83,65 +100,57 @@ export default function PickupPage() {
       customerId: op.customer?.id,
       customerBalance: Number(op.customer?.accountBalance) || 0,
       date: new Date(op.createdAt).toLocaleDateString(),
-      pieces: (op.shoes?.length || 0) + (op.retailItems?.length || 0),
-      total: Number(op.totalAmount),
-      originalTotal: originalTotal,
-      discount: discount,
+      pieces: shoes.length + retailItems.length,
+      total: Number(op.totalAmount) || 0,
+      originalTotal: (Number(op.totalAmount) || 0) + discount,
+      discount,
       paidAmount: Number(op.paidAmount) || 0,
-      status: op.status,
+      status: pendingShoeCount === 0 ? 'completed' : 'ready',
       workflowStatus: op.workflowStatus || 'pending',
       paymentStatus: op.paymentStatus || 'unpaid',
-      items: op.shoes.map((shoe: any) => ({
+      promisedDate: op.promisedDate || undefined,
+      pickupEvents: Array.isArray(op.pickupEvents) ? op.pickupEvents : [],
+      items: shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
-        size: shoe.size,
-        color: shoe.color,
-        description: shoe.description || shoe.category,
-        services: shoe.services.map((service: any) => ({
+        size: shoe.size || undefined,
+        color: shoe.color || '',
+        description: shoe.description || shoe.notes || shoe.category,
+        pickupStatus: shoe.pickupStatus || 'pending',
+        pickedUpAt: shoe.pickedUpAt || null,
+        services: (shoe.services || []).map((service: any) => ({
           name: service.name,
-          price: Number(service.price),
+          price: Number(service.price) || 0,
         })),
       })),
-      promisedDate: op.promisedDate || undefined,
       retailItems,
     };
   };
 
-  // Pending tickets (awaiting pickup)
-  // Only show operations that have repair shoes (not just retail products)
-  // workflowStatus not yet 'delivered' - still waiting to be picked up
-  const pendingTickets: PickupTicket[] = operations
-    .filter(op => op.workflowStatus !== 'delivered' && (op.shoes?.length || 0) > 0)
+  const openTickets = operations
+    .filter(op => op.shoes?.some((shoe: any) => (shoe.pickupStatus || 'pending') !== 'picked_up'))
     .map(mapOperationToTicket);
 
-  // Picked tickets (completed)
-  // Only show operations that had repair shoes and are physically delivered
-  const pickedTickets: PickupTicket[] = operations
-    .filter(op => op.workflowStatus === 'delivered' && (op.shoes?.length || 0) > 0)
+  const pickedTickets = operations
+    .filter(op => (op.shoes?.length || 0) > 0 && op.shoes.every((shoe: any) => (shoe.pickupStatus || 'pending') === 'picked_up'))
     .map(mapOperationToTicket);
 
-  // Get selected ticket details
-  const selected = [...pendingTickets, ...pickedTickets].find(t => t.id === selectedTicket);
+  const selected = [...openTickets, ...pickedTickets].find(ticket => ticket.id === selectedTicket);
+  const selectedPendingItems = selected?.items.filter(item => item.pickupStatus !== 'picked_up') || [];
+  const selectedPickedItems = selected?.items.filter(item => item.pickupStatus === 'picked_up') || [];
 
-  // Filter pending tickets based on search term and status filter
-  const filteredTickets = pendingTickets.filter(ticket => {
+  const filteredTickets = openTickets.filter(ticket => {
     const matchesSearch =
       ticket.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.customerPhone.includes(searchTerm);
+    const balance = Math.max(0, ticket.total - ticket.paidAmount);
 
-    const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
-
-    if (filter === 'needs_payment') {
-      return matchesSearch && ticketBalance > 0;
-    }
-    if (filter === 'ready') {
-      return matchesSearch && ticketBalance === 0;
-    }
+    if (filter === 'needs_payment') return matchesSearch && balance > 0;
+    if (filter === 'ready') return matchesSearch && balance === 0;
     return matchesSearch;
   });
 
-  // Calculate totals for selected ticket (use Number() to handle database string values)
   const selectedSubtotal = Number(selected?.originalTotal) || Number(selected?.total) || 0;
   const selectedTotal = Number(selected?.total) || 0;
   const selectedDiscount = Number(selected?.discount) || 0;
@@ -149,11 +158,25 @@ export default function PickupPage() {
   const selectedBalance = Math.max(0, selectedTotal - selectedPaid);
 
   const handleSelectTicket = (ticketId: string) => {
-    setSelectedTicket(prev => prev === ticketId ? null : ticketId);
+    setSelectedTicket(prev => {
+      const nextTicket = prev === ticketId ? null : ticketId;
+      setSelectedShoeIds([]);
+      return nextTicket;
+    });
   };
 
-  const handleMarkPickedUp = async (ticketId: string) => {
-    // Instead of directly marking picked up, show modal
+  const toggleShoeSelection = (shoeId: string) => {
+    setSelectedShoeIds(prev =>
+      prev.includes(shoeId) ? prev.filter(id => id !== shoeId) : [...prev, shoeId]
+    );
+  };
+
+  const handleMarkPickedUp = (ticketId: string) => {
+    if (selectedShoeIds.length === 0) {
+      alert('Select at least one item to pick up.');
+      return;
+    }
+
     setSelectedTicket(ticketId);
     setPendingPickupId(ticketId);
     setShowCollectorModal(true);
@@ -165,37 +188,27 @@ export default function PickupPage() {
     setIsSubmittingPickup(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-      };
-      const pickedUpAt = new Date().toISOString();
+      const response = await fetch(`${API_ENDPOINTS.operations}/${pendingPickupId}/pickup-shoes`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify({
+          shoe_ids: selectedShoeIds,
+          collector_name: name,
+          collector_phone: phone,
+        }),
+      });
 
-      const transitions = [
-        { status: 'in_progress', picked_up_at: undefined },
-        { status: 'ready', picked_up_at: undefined },
-        { status: 'delivered', picked_up_at: pickedUpAt, picked_up_by_name: name, picked_up_by_phone: phone },
-      ];
-
-      for (const transition of transitions) {
-        const response = await fetch(`${API_ENDPOINTS.operations}/${pendingPickupId}/workflow-status`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            workflow_status: transition.status,
-            ...(transition.picked_up_at && { picked_up_at: transition.picked_up_at }),
-            ...(name && { picked_up_by_name: name }),
-            ...(phone && { picked_up_by_phone: phone }),
-          }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || `Failed to transition to ${transition.status}`);
-        }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to process pickup');
       }
 
       await refreshOperations();
       setSelectedTicket(null);
+      setSelectedShoeIds([]);
       setShowCollectorModal(false);
       setPendingPickupId(null);
     } catch (error) {
@@ -207,35 +220,28 @@ export default function PickupPage() {
   };
 
   const handlePaymentComplete = async (payments: Array<{ method: string; amount: number }>) => {
-    try {
-      // Use selectedTicket as primary source — always set when PAY button is clicked
-      const ticketId = selectedTicket || payingTicketId;
-      if (!ticketId) {
-        alert('Error: No ticket selected for payment');
-        return;
-      }
+    if (!selectedTicket) {
+      alert('Error: No ticket selected for payment');
+      return;
+    }
 
+    try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${API_ENDPOINTS.operations}/${ticketId}/payments`, {
+      const response = await fetch(`${API_ENDPOINTS.operations}/${selectedTicket}/payments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` })
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: JSON.stringify({ payments }),
       });
-      if (!response.ok) {
-        throw new Error('Payment failed');
-      }
+
+      if (!response.ok) throw new Error('Payment failed');
 
       const paymentResult = await response.json();
-      await printerService.printPaymentReceipt(
-        buildPaymentReceiptPayload(paymentResult, payments)
-      );
-
+      await printerService.printPaymentReceipt(buildPaymentReceiptPayload(paymentResult, payments));
       await refreshOperations();
       setSelectedTicket(null);
-      setPayingTicketId(null); // Clear the paying ticket ID
       setIsPaymentModalOpen(false);
     } catch (error) {
       console.error('Payment error:', error);
@@ -245,77 +251,68 @@ export default function PickupPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
-      {/* Page Label */}
       <div className="mb-4">
         <h1 className="text-xl font-bold text-white">Pickup</h1>
       </div>
       <div className="grid grid-cols-12 gap-6">
-        {/* Left Panel */}
         <div className="col-span-7 space-y-6">
-          {/* Search and Stats */}
-          <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search tickets by ID or customer..."
-                  className="w-full pl-12 pr-4 py-3 bg-gray-700/50 rounded-xl border border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  placeholder="Search open pickups by ticket or customer..."
+                  className="w-full rounded-xl border border-gray-700 bg-gray-700/50 py-3 pl-12 pr-4 text-gray-100 transition-all focus:border-transparent focus:ring-2 focus:ring-indigo-500"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </div>
-              <div className="flex space-x-6 ml-6">
-                <div className="flex items-center space-x-3 bg-gray-800/50 rounded-lg p-3">
+              <div className="ml-6 flex space-x-6">
+                <div className="flex items-center space-x-3 rounded-lg bg-gray-800/50 p-3">
                   <Package className="h-5 w-5 text-indigo-400" />
-                  <span className="text-gray-300 font-medium">{filteredTickets.length}</span>
+                  <span className="font-medium text-gray-300">{filteredTickets.length}</span>
                 </div>
-                <div className="flex items-center space-x-3 bg-gray-800/50 rounded-lg p-3">
+                <div className="flex items-center space-x-3 rounded-lg bg-gray-800/50 p-3">
                   <DollarSign className="h-5 w-5 text-green-400" />
-                  <span className="text-gray-300 font-medium">
-                    {formatCurrency(filteredTickets.reduce((sum, t) => sum + t.total, 0))}
+                  <span className="font-medium text-gray-300">
+                    {formatCurrency(filteredTickets.reduce((sum, ticket) => sum + ticket.total, 0))}
                   </span>
                 </div>
               </div>
             </div>
-            {/* Filter Tabs */}
+
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setFilter('all')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filter === 'all'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
-                  All
+                  Open Pickups
                 </button>
                 <button
                   onClick={() => setFilter('needs_payment')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 ${
-                    filter === 'needs_payment'
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    filter === 'needs_payment' ? 'bg-orange-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
-                  <span>Needs Payment</span>
+                  Needs Payment
                 </button>
                 <button
                   onClick={() => setFilter('ready')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 ${
-                    filter === 'ready'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    filter === 'ready' ? 'bg-emerald-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
                   <CheckSquare size={16} />
-                  <span>Ready to Pickup</span>
+                  <span>Paid</span>
                 </button>
               </div>
               <Link
                 to="/picked-items"
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center space-x-2 bg-gray-700 text-gray-300 hover:bg-gray-600"
+                className="flex items-center space-x-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-all hover:bg-gray-600"
               >
                 <CheckCircle size={16} />
                 <span>Picked ({pickedTickets.length})</span>
@@ -323,17 +320,16 @@ export default function PickupPage() {
             </div>
           </div>
 
-          {/* Tickets Table */}
-          <div className="card-bevel p-6 bg-gradient-to-br from-gray-800 to-gray-900">
-            <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+          <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 p-6">
+            <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-track-gray-900 scrollbar-thumb-gray-700">
               <table className="w-full">
-                <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+                <thead className="sticky top-0 bg-gray-800/80 backdrop-blur-sm">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ready By</th>
-                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Pieces</th>
+                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Open</th>
                     <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Action</th>
@@ -343,312 +339,254 @@ export default function PickupPage() {
                   {filteredTickets.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center">
-                        <Package size={48} className="text-gray-600 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-gray-400 mb-2">No Tickets Found</h3>
+                        <Package size={48} className="mx-auto mb-4 text-gray-600" />
+                        <h3 className="mb-2 text-lg font-medium text-gray-400">No Open Pickups Found</h3>
                         <p className="text-sm text-gray-500">
-                          {filter === 'needs_payment'
-                            ? 'No tickets need payment'
-                            : filter === 'ready'
-                            ? 'No tickets ready for pickup'
-                            : searchTerm
-                            ? 'No tickets match your search'
-                            : 'No tickets are ready for pickup'}
+                          {searchTerm ? 'No tickets match your search' : 'No tickets have pending items for pickup'}
                         </p>
                       </td>
                     </tr>
                   )}
-                  {filteredTickets.map((ticket) => (
-                    <tr
-                      key={ticket.id}
-                      className={`group cursor-pointer transition-all ${
-                        selectedTicket === ticket.id
-                          ? 'bg-indigo-900/40 hover:bg-indigo-900/60'
-                          : 'hover:bg-gray-800/60'
-                      }`}
-                      onClick={() => handleSelectTicket(ticket.id)}
-                    >
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300 group-hover:bg-gray-600">
-                          {`TKT-${ticket.id.slice(-6).toUpperCase()}`}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
+                  {filteredTickets.map(ticket => {
+                    const balance = Math.max(0, ticket.total - ticket.paidAmount);
+                    const openItemCount = ticket.items.filter(item => item.pickupStatus !== 'picked_up').length;
+                    return (
+                      <tr
+                        key={ticket.id}
+                        className={`group cursor-pointer transition-all ${
+                          selectedTicket === ticket.id ? 'bg-indigo-900/40 hover:bg-indigo-900/60' : 'hover:bg-gray-800/60'
+                        }`}
+                        onClick={() => handleSelectTicket(ticket.id)}
+                      >
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center rounded-full bg-gray-700 px-3 py-1 text-xs font-medium text-gray-300 group-hover:bg-gray-600">
+                            {ticketLabel(ticket.id)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
                           <div className="text-sm font-medium text-gray-200">{ticket.customerName}</div>
                           <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
-                      <td className="px-6 py-4 text-sm text-indigo-400">{ticket.promisedDate ? new Date(ticket.promisedDate).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 text-center text-sm text-gray-300">{ticket.pieces}</td>
-                      <td className="px-6 py-4 text-right">
-                        {ticket.discount > 0 ? (
-                          <div>
-                            <div className="text-xs text-gray-400 line-through">
-                              {formatCurrency(ticket.originalTotal)}
-                            </div>
-                            <div className="text-sm font-medium text-green-400">
-                              {formatCurrency(ticket.total)}
-                            </div>
-                            <div className="text-xs text-pink-400">
-                              -{formatCurrency(ticket.discount)}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-sm font-medium text-gray-200">
-                            {formatCurrency(ticket.total)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {(() => {
-                          const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
-                          if (ticketBalance === 0) {
-                            return (
-                              <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-900/40 text-emerald-400">
-                                Paid
-                              </span>
-                            );
-                          }
-                          return (
-                            <span className="text-sm font-medium text-orange-400">
-                              {formatCurrency(ticketBalance)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
+                        <td className="px-6 py-4 text-sm text-indigo-400">
+                          {ticket.promisedDate ? new Date(ticket.promisedDate).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm text-gray-300">{openItemCount}</td>
+                        <td className="px-6 py-4 text-right text-sm font-medium text-gray-200">{formatCurrency(ticket.total)}</td>
+                        <td className="px-6 py-4 text-center">
+                          {balance === 0 ? (
+                            <span className="inline-flex items-center justify-center rounded-full bg-emerald-900/40 px-3 py-1 text-xs font-medium text-emerald-400">
+                              Paid
                             </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4">
-                        {ticket.status !== 'completed' ? (
-                          (() => {
-                            const ticketBalance = Math.max(0, ticket.total - ticket.paidAmount);
-                            if (ticketBalance > 0) {
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPayingTicketId(ticket.id); // Set directly, synchronously
-                                    setSelectedTicket(ticket.id); // Also set for display purposes
-                                    setIsPaymentModalOpen(true);
-                                  }}
-                                  className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors"
-                                >
-                                  PAY
-                                </button>
-                              );
-                            }
-                            return (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMarkPickedUp(ticket.id);
-                                }}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors"
-                              >
-                                PICK
-                              </button>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-xs text-gray-500">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          ) : (
+                            <span className="text-sm font-medium text-orange-400">{formatCurrency(balance)}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedTicket(ticket.id);
+                            }}
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                          >
+                            PICK
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        {/* Right Panel - Cart Summary */}
         <div className="col-span-5 space-y-4">
           {selected ? (
-            <>
-              {/* Cart Summary Header - Same style as DropPage */}
-              <div className="bg-white rounded-none shadow-xl border-l border-gray-100 h-full flex flex-col w-full">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 py-3 flex-shrink-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
-                        {selected.status === 'completed' ? (
-                          <CheckCircle className="w-4 h-4 text-violet-400" />
-                        ) : (
-                          <Package className="w-4 h-4 text-white" />
+            <div className="flex h-full w-full flex-col rounded-none border-l border-gray-100 bg-white shadow-xl">
+              <div className="flex-shrink-0 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
+                      <Package className="h-4 w-4 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">Pickup Summary</h3>
+                      <p className="text-xs text-slate-400">{ticketLabel(selected.id)}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white/10 px-3 py-1">
+                    <span className="text-lg font-bold text-white">{selectedPendingItems.length}</span>
+                    <span className="ml-1 text-xs text-slate-400">open</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100">
+                      <span className="text-sm font-bold text-indigo-600">
+                        {selected.customerName.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-800">{selected.customerName}</p>
+                      <p className="text-xs text-gray-400">{selected.customerPhone}</p>
+                    </div>
+                  </div>
+                  {selected.customerBalance > 0 && (
+                    <div className="mt-2 flex items-center border-t border-gray-200 pt-2">
+                      <Gift size={12} className="mr-1.5 text-emerald-500" />
+                      <span className="text-xs font-medium text-emerald-600">
+                        Credit: {formatCurrency(selected.customerBalance)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between px-1 text-sm">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Clock size={14} />
+                    <span>{selected.date}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {selectedPickedItems.length} picked / {selected.items.length} repair item(s)
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {selectedPendingItems.map(item => (
+                    <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <label className="pt-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedShoeIds.includes(item.id)}
+                            onChange={() => toggleShoeSelection(item.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                        </label>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-bold text-gray-800">{item.description}</div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{item.category}</div>
+                        </div>
+                        <span className="flex-shrink-0 text-sm font-bold text-gray-800">
+                          {formatCurrency(item.services.reduce((sum, service) => sum + service.price, 0))}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                        {item.size && (
+                          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                            Size {item.size}
+                          </span>
                         )}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-white text-base">
-                          {selected.status === 'completed' ? 'Picked Ticket' : 'Pickup Summary'}
-                        </h3>
-                        <p className="text-slate-400 text-xs">TKT-{selected.id.slice(-6).toUpperCase()}</p>
+                        {item.color && <span>{item.color}</span>}
+                        {item.services.length > 0 && <span className="italic text-gray-400">{item.services.map(service => service.name).join(', ')}</span>}
                       </div>
                     </div>
-                    {selected.status !== 'completed' && (
-                      <div className="bg-white/10 px-3 py-1 rounded-lg">
-                        <span className="text-white font-bold text-lg">{selected.pieces}</span>
-                        <span className="text-slate-400 text-xs ml-1">pcs</span>
+                  ))}
+
+                  {selectedPickedItems.length > 0 && (
+                    <div className="pt-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Already Picked</div>
+                      <div className="space-y-2">
+                        {selectedPickedItems.map(item => (
+                          <div key={item.id} className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-bold text-gray-800">{item.description}</div>
+                                <div className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                                  Picked up
+                                </div>
+                              </div>
+                              <span className="flex-shrink-0 text-sm font-bold text-gray-800">
+                                {formatCurrency(item.services.reduce((sum, service) => sum + service.price, 0))}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )}
+                    </div>
+                  )}
+
+                  {selected.retailItems.map(item => (
+                    <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-bold text-gray-800">{item.productName}</div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Product</div>
+                        </div>
+                        <span className="flex-shrink-0 text-sm font-bold text-gray-800">{formatCurrency(item.totalPrice)}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                        <span>Qty: {item.quantity}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-shrink-0 space-y-3 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 p-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-600">Subtotal</span>
+                    <span className="font-semibold text-gray-800">{formatCurrency(selectedSubtotal)}</span>
+                  </div>
+                  {selectedDiscount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-gray-600">Discount</span>
+                      <span className="font-medium text-pink-500">-{formatCurrency(selectedDiscount)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-600">Paid</span>
+                    <span className="font-medium text-emerald-600">{formatCurrency(selectedPaid)}</span>
+                  </div>
+                  <div className="my-1 h-px bg-gray-300" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold text-gray-800">Balance</span>
+                    <span className="text-xl font-bold text-gray-800">{formatCurrency(selectedBalance)}</span>
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {/* Customer Info */}
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <span className="text-indigo-600 text-sm font-bold">
-                          {selected.customerName.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-800">{selected.customerName}</p>
-                        <p className="text-xs text-gray-400">{selected.customerPhone}</p>
-                      </div>
-                    </div>
-                    {selected.customerBalance && selected.customerBalance > 0 && (
-                      <div className="flex items-center mt-2 pt-2 border-t border-gray-200">
-                        <Gift size={12} className="text-emerald-500 mr-1.5" />
-                        <span className="text-xs text-emerald-600 font-medium">
-                          Credit: {formatCurrency(selected.customerBalance)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Ticket Info */}
-                  <div className="flex items-center justify-between text-sm px-1">
-                    <div className="flex items-center gap-2 text-gray-500">
-                      <Clock size={14} />
-                      <span>{selected.date}</span>
-                    </div>
-                  </div>
-
-                  {/* Items List - Card Item Style */}
-                  <div className="space-y-2">
-                    {selected.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="bg-white rounded-lg border border-gray-200 group p-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-gray-800 text-sm truncate">{item.description}</div>
-                            <div className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
-                              {item.category}
-                            </div>
-                          </div>
-                          <span className="text-gray-800 font-bold text-sm flex-shrink-0">
-                            {formatCurrency(item.services.reduce((sum, s) => sum + s.price, 0))}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-                          {item.size && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-                              Size {item.size}
-                            </span>
-                          )}
-                          {item.color && <span>{item.color}</span>}
-                          {item.color && item.size && <span>•</span>}
-                          <span className="italic text-gray-400">{item.services.map(s => s.name).join(', ')}</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Retail Products */}
-                    {selected.retailItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="bg-white rounded-lg border border-gray-200 group p-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-gray-800 text-sm truncate">{item.productName}</div>
-                            <div className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
-                              Product
-                            </div>
-                          </div>
-                          <span className="text-gray-800 font-bold text-sm flex-shrink-0">
-                            {formatCurrency(item.totalPrice)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
-                          <span>Qty: {item.quantity}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Footer - Totals and Action */}
-                <div className="border-t-2 border-gray-200 p-4 bg-gradient-to-r from-gray-50 to-gray-100 flex-shrink-0 space-y-3">
-                  {/* Totals */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 font-medium">Subtotal</span>
-                      <span className="text-gray-800 font-semibold">{formatCurrency(selectedSubtotal)}</span>
-                    </div>
-                    {selectedDiscount > 0 && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-600 font-medium">Discount</span>
-                        <span className="text-pink-500 font-medium">-{formatCurrency(selectedDiscount)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 font-medium">Paid</span>
-                      <span className="text-emerald-600 font-medium">{formatCurrency(selectedPaid)}</span>
-                    </div>
-                    <div className="h-px bg-gray-300 my-1" />
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-800 font-bold text-base">Balance</span>
-                      <span className="text-gray-800 font-bold text-xl">{formatCurrency(selectedBalance)}</span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  {selected.status === 'completed' ? (
-                    <div className="flex items-center justify-center gap-2 p-4 bg-violet-100 border border-violet-200 rounded-lg text-violet-600">
-                      <CheckCircle size={20} />
-                      <span className="font-semibold">Picked Up</span>
-                    </div>
-                  ) : selectedBalance > 0 ? (
+                <div className="space-y-2">
+                  {selectedBalance > 0 && (
                     <button
                       onClick={() => setIsPaymentModalOpen(true)}
-                      className="w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white hover:from-cyan-600 hover:to-cyan-700 shadow-lg"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-cyan-600 py-3 text-sm font-bold text-white shadow-lg hover:from-cyan-600 hover:to-cyan-700"
                     >
                       <CreditCard size={18} />
                       PAY {formatCurrency(selectedBalance)}
                     </button>
-                  ) : (
-                    <button
-                      onClick={() => handleMarkPickedUp(selected.id)}
-                      className="w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 shadow-lg"
-                    >
-                      <ArrowRight size={18} />
-                      PICK UP
-                    </button>
                   )}
+                  <button
+                    onClick={() => handleMarkPickedUp(selected.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 py-3 text-sm font-bold text-white shadow-lg hover:from-emerald-600 hover:to-emerald-700"
+                  >
+                    <ArrowRight size={18} />
+                    PICK SELECTED {selectedShoeIds.length > 0 ? `(${selectedShoeIds.length})` : ''}
+                  </button>
                 </div>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="bg-white rounded-none shadow-xl border-l border-gray-100 h-full flex flex-col w-full">
-              <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 py-3 flex-shrink-0">
+            <div className="flex h-full w-full flex-col rounded-none border-l border-gray-100 bg-white shadow-xl">
+              <div className="flex-shrink-0 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
-                    <ShoppingCart className="w-4 h-4 text-white" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
+                    <ShoppingCart className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white text-base">Pickup Cart</h3>
-                    <p className="text-slate-400 text-xs">Select a ticket</p>
+                    <h3 className="text-base font-bold text-white">Pickup Cart</h3>
+                    <p className="text-xs text-slate-400">Select a ticket</p>
                   </div>
                 </div>
               </div>
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-                <Package size={48} className="text-gray-300 mb-4" />
-                <h3 className="text-lg font-medium text-gray-500 mb-2">No Ticket Selected</h3>
+              <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+                <Package size={48} className="mb-4 text-gray-300" />
+                <h3 className="mb-2 text-lg font-medium text-gray-500">No Ticket Selected</h3>
                 <p className="text-sm text-gray-400">Click on a ticket from the list to view details</p>
               </div>
             </div>
@@ -656,7 +594,6 @@ export default function PickupPage() {
         </div>
       </div>
 
-      {/* Collector Info Modal */}
       {showCollectorModal && selected && (
         <CollectorInfoModal
           isOpen={showCollectorModal}
@@ -671,15 +608,14 @@ export default function PickupPage() {
         />
       )}
 
-      {/* Payment Modal */}
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         totalAmount={selectedBalance}
-        customer={selected ? {
+        customer={selected && selected.customerId ? {
           id: selected.customerId,
           name: selected.customerName,
-          accountBalance: selected.customerBalance || 0
+          accountBalance: selected.customerBalance,
         } : null}
         onComplete={handlePaymentComplete}
       />

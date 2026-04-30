@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { API_ENDPOINTS } from '../config/api';
+import { useEffect, useState } from 'react';
 import { formatCurrency } from '../utils/formatCurrency';
 import { useOperation } from '../contexts/OperationContext';
-import { Search, Package, CheckCircle, Calendar, Filter, X, User, Phone } from 'lucide-react';
+import { Search, CheckCircle, Calendar, User, Phone } from 'lucide-react';
+
+interface PickupEvent {
+  id: string;
+  collectorName?: string | null;
+  collectorPhone?: string | null;
+  pickedUpAt?: string | null;
+  shoes: {
+    id: string;
+    category: string;
+    color?: string;
+    description?: string;
+  }[];
+}
 
 interface PickupTicket {
   id: string;
@@ -23,6 +35,7 @@ interface PickupTicket {
   pickedUpByName?: string | null;
   pickedUpByPhone?: string | null;
   pickedUpAt?: string | null;
+  pickupEvents: PickupEvent[];
   items: {
     id: string;
     category: string;
@@ -86,6 +99,7 @@ export default function PickedItemsPage() {
       pickedUpByName: op.pickedUpByName || null,
       pickedUpByPhone: op.pickedUpByPhone || null,
       pickedUpAt: op.pickedUpAt || null,
+      pickupEvents: Array.isArray(op.pickupEvents) ? op.pickupEvents : [],
       items: op.shoes.map((shoe: any) => ({
         id: shoe.id,
         category: shoe.category,
@@ -103,27 +117,32 @@ export default function PickedItemsPage() {
     .filter(op => op.workflowStatus === 'delivered')
     .map(mapOperationToTicket);
 
-  const isWithinDateFilter = (ticketDate: string): boolean => {
+  const isWithinDateFilter = (ticket: PickupTicket): boolean => {
     if (dateFilter === 'all') return true;
 
-    const ticket = new Date(ticketDate);
+    const pickupDates = ticket.pickupEvents
+      .map(event => event.pickedUpAt)
+      .filter(Boolean)
+      .sort();
+    const latestPickupDate = pickupDates[pickupDates.length - 1];
+    const ticketDate = new Date(latestPickupDate || ticket.pickedUpAt || ticket.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     if (dateFilter === 'today') {
-      return ticket.toDateString() === today.toDateString();
+      return ticketDate.toDateString() === today.toDateString();
     }
 
     if (dateFilter === 'week') {
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
-      return ticket >= weekAgo && ticket <= today;
+      return ticketDate >= weekAgo && ticketDate <= today;
     }
 
     if (dateFilter === 'month') {
       const monthAgo = new Date(today);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return ticket >= monthAgo && ticket <= today;
+      return ticketDate >= monthAgo && ticketDate <= today;
     }
 
     return true;
@@ -135,7 +154,7 @@ export default function PickedItemsPage() {
       ticket.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.customerPhone.includes(searchTerm);
 
-    return matchesSearch && isWithinDateFilter(ticket.date);
+    return matchesSearch && isWithinDateFilter(ticket);
   });
 
   const getDateFilterLabel = (filter: DateFilter): string => {
@@ -371,7 +390,48 @@ export default function PickedItemsPage() {
                 </div>
 
                 {/* Collector Info */}
-                {(selectedTicket.pickedUpByName || selectedTicket.pickedUpByPhone || selectedTicket.pickedUpAt) && (
+                {selectedTicket.pickupEvents.length > 0 ? (
+                  <div className="card-bevel p-4 bg-gray-800/50 border border-gray-700">
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Pickup History</h4>
+                    <div className="space-y-3">
+                      {selectedTicket.pickupEvents.map((event, index) => (
+                        <div key={event.id} className="rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+                              Pickup {index + 1}
+                            </span>
+                            <span className="text-xs text-gray-400">{safeFormatDate(event.pickedUpAt)}</span>
+                          </div>
+                          <div className="space-y-2">
+                            {event.collectorName && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <User size={14} className="text-gray-400" />
+                                <span className="text-gray-400">Collected by:</span>
+                                <span className="text-gray-200 font-medium">{event.collectorName}</span>
+                              </div>
+                            )}
+                            {event.collectorPhone && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Phone size={14} className="text-gray-400" />
+                                <span className="text-gray-400">Phone:</span>
+                                <span className="text-gray-200">{event.collectorPhone}</span>
+                              </div>
+                            )}
+                            {event.shoes.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {event.shoes.map(shoe => (
+                                  <span key={shoe.id} className="rounded-full bg-violet-900/40 px-2 py-1 text-xs text-violet-200">
+                                    {shoe.description || shoe.category}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (selectedTicket.pickedUpByName || selectedTicket.pickedUpByPhone || selectedTicket.pickedUpAt) && (
                   <div className="card-bevel p-4 bg-gray-800/50 border border-gray-700">
                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Collector Information</h4>
                     <div className="space-y-2">

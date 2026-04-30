@@ -30,9 +30,22 @@ router.get('/discounts', async (req, res) => {
       WHERE discount > 0
     `).get() as any;
 
-    const totalOperationsWithDiscount = summaryResult.operationsWithDiscount || 0;
-    const totalDiscounts = summaryResult.totalDiscounts || 0;
-    const averageDiscountPercent = summaryResult.averageDiscountPercent || 0;
+    const totalOperationsWithDiscount = Number(
+      summaryResult.operationsWithdiscount ??
+      summaryResult.operationswithdiscount ??
+      summaryResult.operationsWithDiscount ??
+      0
+    );
+    const totalDiscounts = Number(
+      summaryResult.totaldiscounts ??
+      summaryResult.totalDiscounts ??
+      0
+    );
+    const averageDiscountPercent = Number(
+      summaryResult.averagediscountpercent ??
+      summaryResult.averageDiscountPercent ??
+      0
+    );
 
     // Get discounts by period (last 30 days)
     const byPeriodResult = await db.prepare(`
@@ -597,22 +610,53 @@ router.get('/daily-balance', async (req, res) => {
 
     // Get expense details with staff names
     const expenseDetailsResult = await db.prepare(`
-      SELECT e.*, u.name as created_by_name
+      SELECT
+        e.*,
+        u.name as created_by_name,
+        ei.id as line_item_id,
+        ei.title as line_item_title,
+        ei.category as line_item_category,
+        ei.amount as line_item_amount,
+        ei.notes as line_item_notes,
+        ei.sort_order as line_item_sort_order
       FROM expenses e
       LEFT JOIN users u ON e.created_by = u.id
+      LEFT JOIN expense_items ei ON ei.expense_id = e.id
       WHERE e.date = ?
-      ORDER BY e.created_at DESC
+      ORDER BY e.created_at DESC, ei.sort_order ASC
     `).all(targetDate) as any[];
 
-    const expenseDetails = expenseDetailsResult.map((e: any) => ({
-      id: e.id,
-      title: e.title,
-      category: e.category,
-      amount: e.amount,
-      paymentMethod: e.payment_method || 'Cash',
-      vendor: e.vendor || '',
-      createdByName: e.created_by_name || 'Unknown',
-      notes: e.notes || ''
+    const expenseMap = new Map<string, any>();
+    for (const e of expenseDetailsResult) {
+      const existing = expenseMap.get(e.id) || {
+        id: e.id,
+        title: e.title,
+        category: e.category,
+        amount: Number(e.amount),
+        paymentMethod: e.payment_method || 'Cash',
+        vendor: e.vendor || '',
+        createdByName: e.created_by_name || 'Unknown',
+        notes: e.notes || '',
+        lineItems: []
+      };
+
+      if (e.line_item_id) {
+        existing.lineItems.push({
+          id: e.line_item_id,
+          title: e.line_item_title,
+          category: e.line_item_category,
+          amount: Number(e.line_item_amount),
+          notes: e.line_item_notes || '',
+          sortOrder: e.line_item_sort_order || 0
+        });
+      }
+
+      expenseMap.set(e.id, existing);
+    }
+
+    const expenseDetails = Array.from(expenseMap.values()).map((expense) => ({
+      ...expense,
+      lineItems: expense.lineItems.sort((a: any, b: any) => a.sortOrder - b.sortOrder)
     }));
 
     // Build sales by method map

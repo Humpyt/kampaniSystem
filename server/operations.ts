@@ -16,6 +16,57 @@ const mapRetailItem = (item: any) => ({
   totalPrice: item.total_price,
 });
 
+const mapPickupStatus = (value: any): 'pending' | 'picked_up' =>
+  value === 'picked_up' ? 'picked_up' : 'pending';
+
+const groupShoesWithServices = (shoeRows: any[]) => {
+  const shoeMap = new Map<string, any>();
+
+  for (const row of shoeRows) {
+    if (!shoeMap.has(row.id)) {
+      shoeMap.set(row.id, {
+        id: row.id,
+        category: row.category,
+        size: row.shoe_size || null,
+        color: row.color,
+        colorDescription: row.color_description || '',
+        notes: row.notes,
+        pickupStatus: mapPickupStatus(row.pickup_status),
+        pickedUpAt: row.picked_up_at || null,
+        pickupEventId: row.pickup_event_id || null,
+        services: [],
+      });
+    }
+
+    if (row.service_name) {
+      shoeMap.get(row.id)!.services.push({
+        id: row.service_id,
+        name: row.service_name,
+        price: row.service_price ?? row.service_base_price,
+        quantity: row.service_quantity || 1,
+        basePrice: row.service_base_price,
+      });
+    }
+  }
+
+  return Array.from(shoeMap.values());
+};
+
+const resolveWorkflowStatusFromShoes = (shoes: any[], fallback: string) => {
+  if (!Array.isArray(shoes) || shoes.length === 0) {
+    return fallback;
+  }
+
+  const pickedCount = shoes.filter((shoe) => shoe.pickupStatus === 'picked_up').length;
+  if (pickedCount === 0) {
+    return fallback === 'delivered' ? 'ready' : fallback;
+  }
+  if (pickedCount === shoes.length) {
+    return 'delivered';
+  }
+  return 'ready';
+};
+
 const normalizeServiceKey = (value: string | null | undefined) =>
   String(value || '')
     .toLowerCase()
@@ -160,9 +211,67 @@ const getRetailItemsByOperationIds = async (operationIds: string[], executor: an
   return retailItemsMap;
 };
 
+const getPickupEventsByOperationIds = async (operationIds: string[], executor: any = db) => {
+  const pickupEventsMap = new Map<string, any[]>();
+
+  if (operationIds.length === 0) {
+    return pickupEventsMap;
+  }
+
+  const placeholders = operationIds.map(() => '?').join(',');
+  const pickupEvents = await executor.prepare(`
+    SELECT
+      ope.id,
+      ope.operation_id,
+      ope.collector_name,
+      ope.collector_phone,
+      ope.picked_up_at,
+      os.id as shoe_id,
+      os.category as shoe_category,
+      os.shoe_size,
+      os.color as shoe_color,
+      os.notes as shoe_notes
+    FROM operation_pickup_events ope
+    LEFT JOIN operation_shoes os ON os.pickup_event_id = ope.id
+    WHERE ope.operation_id IN (${placeholders})
+    ORDER BY ope.picked_up_at ASC, os.created_at ASC
+  `).all(...operationIds);
+
+  for (const row of pickupEvents) {
+    if (!pickupEventsMap.has(row.operation_id)) {
+      pickupEventsMap.set(row.operation_id, []);
+    }
+
+    const eventList = pickupEventsMap.get(row.operation_id)!;
+    let event = eventList.find((entry: any) => entry.id === row.id);
+    if (!event) {
+      event = {
+        id: row.id,
+        collector_name: row.collector_name || null,
+        collector_phone: row.collector_phone || null,
+        picked_up_at: row.picked_up_at,
+        shoes: [],
+      };
+      eventList.push(event);
+    }
+
+    if (row.shoe_id) {
+      event.shoes.push({
+        id: row.shoe_id,
+        category: row.shoe_category || '',
+        size: row.shoe_size || null,
+        color: row.shoe_color || '',
+        description: row.shoe_notes || row.shoe_category || 'Shoe',
+      });
+    }
+  }
+
+  return pickupEventsMap;
+};
+
 const getOperationWithDetails = async (operationId: string, executor: any = db) => {
   const operation = await executor.prepare(`
-    SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
+    SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance, u.name as staff_name
     FROM operations o
     LEFT JOIN customers c ON o.customer_id = c.id
     LEFT JOIN users u ON o.created_by = u.id
@@ -181,22 +290,13 @@ const getOperationWithDetails = async (operationId: string, executor: any = db) 
     WHERE os.operation_id = ?
   `).all(operationId);
 
+  const pickupEventsMap = await getPickupEventsByOperationIds([operationId], executor);
+
   return {
     ...operation,
-    shoes: shoes.map((shoe: any) => ({
-      id: shoe.id,
-      category: shoe.category,
-      color: shoe.color,
-      colorDescription: shoe.color_description || '',
-      notes: shoe.notes,
-      services: [{
-        id: shoe.service_id,
-        name: shoe.service_name,
-        price: shoe.service_price ?? shoe.service_base_price,
-        quantity: shoe.service_quantity || 1,
-        basePrice: shoe.service_base_price
-      }]
-    })),
+    workflow_status: resolveWorkflowStatusFromShoes(groupShoesWithServices(shoes), operation.workflow_status || 'pending'),
+    shoes: groupShoesWithServices(shoes),
+    pickupEvents: pickupEventsMap.get(operationId) || [],
     retailItems: (await getRetailItemsByOperationIds([operationId], executor)).get(operationId) || []
   };
 };
@@ -209,7 +309,7 @@ router.get('/', async (req, res) => {
     const parsedOffset = parseInt(offset as string) || 0;
 
     let query = `
-      SELECT o.*, c.name as customer_name, c.phone as customer_phone, u.name as staff_name
+      SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance, u.name as staff_name
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
@@ -247,6 +347,7 @@ router.get('/', async (req, res) => {
     let shoesMap: Map<string, any[]> = new Map();
     const placeholders = operationIds.map(() => '?').join(',');
     const retailItemsPromise = getRetailItemsByOperationIds(operationIds);
+    const pickupEventsPromise = getPickupEventsByOperationIds(operationIds);
     const shoesPromise = operationIds.length > 0
       ? db.prepare(`
           SELECT os.*, oss.price as service_price, oss.quantity as service_quantity, s.name as service_name, s.price as service_base_price
@@ -257,7 +358,11 @@ router.get('/', async (req, res) => {
         `).all(...operationIds)
       : Promise.resolve([]);
 
-    const [retailItemsMap, allShoes] = await Promise.all([retailItemsPromise, shoesPromise]);
+    const [retailItemsMap, pickupEventsMap, allShoes] = await Promise.all([
+      retailItemsPromise,
+      pickupEventsPromise,
+      shoesPromise
+    ]);
 
     // Group shoes by operation_id
     for (const shoe of allShoes) {
@@ -268,24 +373,16 @@ router.get('/', async (req, res) => {
     }
 
     // Build operations with shoes
-    const operationsWithShoes = operations.map((operation: any) => ({
-      ...operation,
-      shoes: (shoesMap.get(operation.id) || []).map((shoe: any) => ({
-        id: shoe.id,
-        category: shoe.category,
-        color: shoe.color,
-        colorDescription: shoe.color_description || '',
-        notes: shoe.notes,
-        services: [{
-          id: shoe.service_id,
-          name: shoe.service_name,
-          price: shoe.service_price ?? shoe.service_base_price,
-          quantity: shoe.service_quantity || 1,
-          basePrice: shoe.service_base_price
-        }]
-      })),
-      retailItems: retailItemsMap.get(operation.id) || []
-    }));
+    const operationsWithShoes = operations.map((operation: any) => {
+      const groupedShoes = groupShoesWithServices(shoesMap.get(operation.id) || []);
+      return {
+        ...operation,
+        workflow_status: resolveWorkflowStatusFromShoes(groupedShoes, operation.workflow_status || 'pending'),
+        shoes: groupedShoes,
+        pickupEvents: pickupEventsMap.get(operation.id) || [],
+        retailItems: retailItemsMap.get(operation.id) || []
+      };
+    });
 
     res.json({
       data: operationsWithShoes.map(transformOperation),
@@ -678,6 +775,177 @@ router.patch('/:id', async (req, res) => {
     res.json(transformOperation(operation));
   } catch (error) {
     res.status(500).json({ error: 'Failed to update operation' });
+  }
+});
+
+// Update workflow status for pickup lifecycle
+router.patch('/:id/workflow-status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawStatus = req.body.workflow_status ?? req.body.workflowStatus;
+    const allowedStatuses = new Set(['pending', 'in_progress', 'ready', 'delivered', 'cancelled']);
+    const workflowStatus = String(rawStatus || '').trim();
+
+    if (!allowedStatuses.has(workflowStatus)) {
+      return res.status(400).json({ error: 'Invalid workflow status' });
+    }
+
+    const pickedUpAt = req.body.picked_up_at ?? req.body.pickedUpAt ?? null;
+    const pickedUpByName = req.body.picked_up_by_name ?? req.body.pickedUpByName ?? null;
+    const pickedUpByPhone = req.body.picked_up_by_phone ?? req.body.pickedUpByPhone ?? null;
+    const now = new Date().toISOString();
+
+    await db.prepare(`
+      UPDATE operations
+      SET workflow_status = ?,
+          picked_up_at = ?,
+          picked_up_by_name = ?,
+          picked_up_by_phone = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      workflowStatus,
+      pickedUpAt,
+      pickedUpByName,
+      pickedUpByPhone,
+      now,
+      id
+    );
+
+    const updatedOperation = await getOperationWithDetails(id);
+    if (!updatedOperation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    res.json(transformOperation(updatedOperation));
+  } catch (error) {
+    console.error('Failed to update workflow status:', error);
+    res.status(500).json({ error: 'Failed to update workflow status' });
+  }
+});
+
+router.patch('/:id/pickup-shoes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shoeIds = Array.isArray(req.body.shoe_ids)
+      ? req.body.shoe_ids.map((value: any) => String(value)).filter(Boolean)
+      : [];
+    const collectorName = String(req.body.collector_name ?? req.body.collectorName ?? '').trim();
+    const collectorPhone = String(req.body.collector_phone ?? req.body.collectorPhone ?? '').trim();
+    const authUser = (req as any).user;
+
+    if (shoeIds.length === 0) {
+      return res.status(400).json({ error: 'At least one shoe must be selected for pickup' });
+    }
+
+    const operation = await getOperationWithDetails(id);
+    if (!operation) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    const selectedShoeMap = new Map(
+      operation.shoes.map((shoe: any) => [shoe.id, shoe])
+    );
+    for (const shoeId of shoeIds) {
+      const shoe = selectedShoeMap.get(shoeId);
+      if (!shoe) {
+        return res.status(400).json({ error: 'One or more selected shoes do not belong to this operation' });
+      }
+      if (shoe.pickupStatus === 'picked_up') {
+        return res.status(400).json({ error: 'One or more selected shoes have already been picked up' });
+      }
+    }
+
+    const pickedUpAt = new Date().toISOString();
+
+    await db.withTransaction(async (tx: any) => {
+      const pickupEventId = uuidv4();
+      await tx.prepare(`
+        INSERT INTO operation_pickup_events (
+          id, operation_id, collector_name, collector_phone, picked_up_at, created_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        pickupEventId,
+        id,
+        collectorName || null,
+        collectorPhone || null,
+        pickedUpAt,
+        authUser?.id || null,
+        pickedUpAt
+      );
+
+      const placeholders = shoeIds.map(() => '?').join(', ');
+      await tx.prepare(`
+        UPDATE operation_shoes
+        SET pickup_status = 'picked_up',
+            picked_up_at = ?,
+            pickup_event_id = ?,
+            updated_at = ?
+        WHERE operation_id = ?
+          AND id IN (${placeholders})
+      `).run(pickedUpAt, pickupEventId, pickedUpAt, id, ...shoeIds);
+
+      const shoeCounts = await tx.prepare(`
+        SELECT
+          COUNT(*) AS total_count,
+          COUNT(CASE WHEN pickup_status = 'picked_up' THEN 1 END) AS picked_count
+        FROM operation_shoes
+        WHERE operation_id = ?
+      `).get(id);
+
+      const totalCount = Number(shoeCounts?.total_count || 0);
+      const pickedCount = Number(shoeCounts?.picked_count || 0);
+      const nextWorkflowStatus = totalCount > 0 && pickedCount === totalCount ? 'delivered' : 'ready';
+
+      await tx.prepare(`
+        UPDATE operations
+        SET workflow_status = ?,
+            picked_up_at = ?,
+            picked_up_by_name = ?,
+            picked_up_by_phone = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        nextWorkflowStatus,
+        nextWorkflowStatus === 'delivered' ? pickedUpAt : null,
+        nextWorkflowStatus === 'delivered' ? (collectorName || null) : null,
+        nextWorkflowStatus === 'delivered' ? (collectorPhone || null) : null,
+        pickedUpAt,
+        id
+      );
+    });
+
+    const updatedOperation = await getOperationWithDetails(id);
+    res.json(transformOperation(updatedOperation));
+  } catch (error) {
+    console.error('Failed to process partial pickup:', error);
+    res.status(500).json({ error: 'Failed to process pickup' });
+  }
+});
+
+// Delete operation
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await db.prepare('SELECT id FROM operations WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+
+    await db.withTransaction(async (tx: any) => {
+      // Clear dependent records explicitly so deletion works even if older
+      // production constraints were created without ON DELETE CASCADE.
+      await tx.prepare('DELETE FROM operation_payments WHERE operation_id = ?').run(id);
+      await tx.prepare('DELETE FROM operation_retail_items WHERE operation_id = ?').run(id);
+      await tx.prepare('DELETE FROM operation_shoes WHERE operation_id = ?').run(id);
+      await tx.prepare('DELETE FROM invoices WHERE operation_id = ?').run(id);
+      await tx.prepare('DELETE FROM operations WHERE id = ?').run(id);
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Failed to delete operation:', error);
+    res.status(500).json({ error: 'Failed to delete operation' });
   }
 });
 

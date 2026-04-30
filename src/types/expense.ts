@@ -1,3 +1,15 @@
+export interface ExpenseLineItem {
+  id: string;
+  expenseId?: string;
+  title: string;
+  category: string;
+  amount: number;
+  notes?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Expense {
   id: string;
   title: string;
@@ -12,29 +24,38 @@ export interface Expense {
   createdByName?: string;
   createdAt: string;
   updatedAt: string;
+  lineItems: ExpenseLineItem[];
+  lineItemCount: number;
+  isItemized: boolean;
+}
+
+export interface ExpenseLineItemInput {
+  id?: string;
+  title: string;
+  category: string;
+  amount: number;
+  notes?: string;
 }
 
 export interface CreateExpenseInput {
   title: string;
-  category: string;
-  amount: number;
   date: string;
   status?: 'paid' | 'pending' | 'overdue';
   paymentMethod?: string;
   vendor?: string;
   notes?: string;
   createdBy?: string;
+  lineItems: ExpenseLineItemInput[];
 }
 
 export interface UpdateExpenseInput {
   title?: string;
-  category?: string;
-  amount?: number;
   date?: string;
   status?: 'paid' | 'pending' | 'overdue';
   paymentMethod?: string;
   vendor?: string;
   notes?: string;
+  lineItems?: ExpenseLineItemInput[];
 }
 
 export interface ExpenseAnalytics {
