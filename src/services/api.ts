@@ -41,6 +41,49 @@ const clearApiCache = (prefix: string) => {
   }
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const fetchJsonWithRetry = async <T>(
+  url: string,
+  opts: { signal?: AbortSignal; timeoutMs?: number; retries?: number } = {}
+): Promise<T> => {
+  const { signal, timeoutMs = 8000, retries = 2 } = opts;
+  let attempt = 0;
+  let lastError: unknown = null;
+
+  while (attempt <= retries) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const relayAbort = () => controller.abort();
+    if (signal) signal.addEventListener('abort', relayAbort, { once: true });
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        if (response.status >= 500 && attempt < retries) {
+          throw new Error(`Server error ${response.status}`);
+        }
+        throw new Error(`Failed to fetch ${url}`);
+      }
+      return await response.json() as T;
+    } catch (error) {
+      lastError = error;
+      const isAbort = error instanceof Error && error.name === 'AbortError';
+      if (isAbort || attempt >= retries) {
+        throw error;
+      }
+      await sleep(250 * (attempt + 1));
+    } finally {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener('abort', relayAbort);
+    }
+
+    attempt += 1;
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to fetch');
+};
+
 const transformServiceRecord = (service: any): Service => ({
   id: service.id,
   name: service.name,
@@ -65,14 +108,34 @@ const transformServiceRecord = (service: any): Service => ({
 export const api = {
   // Customer endpoints
   customers: {
-    getAll: async (params?: { limit?: number; offset?: number; search?: string }): Promise<{ data: Customer[]; pagination: { total: number; hasMore: boolean } }> => {
+    getAll: async (
+      params?: {
+        limit?: number;
+        offset?: number;
+        search?: string;
+        sortBy?: 'name' | 'recent' | 'spent' | 'visits';
+        sortDir?: 'asc' | 'desc';
+        minSpent?: number;
+        minVisits?: number;
+        status?: 'active' | 'inactive';
+      },
+      opts?: { signal?: AbortSignal }
+    ): Promise<{ data: Customer[]; pagination: { total: number; limit: number; offset: number; hasMore: boolean } }> => {
       const searchParams = new URLSearchParams();
       if (params?.limit) searchParams.set('limit', String(params.limit));
       if (params?.offset) searchParams.set('offset', String(params.offset));
       if (params?.search) searchParams.set('search', params.search);
+      if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+      if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
+      if (params?.minSpent) searchParams.set('minSpent', String(params.minSpent));
+      if (params?.minVisits) searchParams.set('minVisits', String(params.minVisits));
+      if (params?.status) searchParams.set('status', params.status);
 
       const url = `${API_URL}/customers?${searchParams}`;
-      const result = await cachedJson<{ data: any[]; pagination: { total: number; hasMore: boolean } }>(url, 10000);
+      const result = await fetchJsonWithRetry<{ data: any[]; pagination: { total: number; limit: number; offset: number; hasMore: boolean } }>(
+        url,
+        { signal: opts?.signal }
+      );
 
       // Transform snake_case to camelCase, capitalize first letter of name
       return {

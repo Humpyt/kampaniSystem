@@ -153,9 +153,22 @@ app.use('/api/expenses', expensesRouter);
 // Customer endpoints
 app.get('/api/customers', async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 5000, 10000);
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = parseInt(req.query.offset as string) || 0;
     const search = String(req.query.search || '').trim();
+    const sortBy = String(req.query.sortBy || 'name').trim();
+    const sortDir = String(req.query.sortDir || 'asc').trim().toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const minSpent = Number(req.query.minSpent || 0);
+    const minVisits = Number(req.query.minVisits || 0);
+    const status = String(req.query.status || '').trim();
+
+    const allowedSortColumns: Record<string, string> = {
+      name: 'name',
+      recent: 'last_visit',
+      spent: 'total_spent',
+      visits: 'total_orders',
+    };
+    const orderBy = allowedSortColumns[sortBy] || 'name';
 
     let query = `
       SELECT id, name, phone, email, address, notes, status, total_orders,
@@ -164,18 +177,33 @@ app.get('/api/customers', async (req, res) => {
       FROM customers
     `;
     const params: any[] = [];
+    const where: string[] = [];
 
     if (search) {
-      query += ` WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ?`;
-      params.push(`%${search}%`, `%${search}%`);
+      where.push(`(LOWER(name) LIKE LOWER(?) OR phone LIKE ? OR LOWER(COALESCE(email, '')) LIKE LOWER(?))`);
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    if (Number.isFinite(minSpent) && minSpent > 0) {
+      where.push(`COALESCE(total_spent, 0) >= ?`);
+      params.push(minSpent);
+    }
+    if (Number.isFinite(minVisits) && minVisits > 0) {
+      where.push(`COALESCE(total_orders, 0) >= ?`);
+      params.push(minVisits);
+    }
+    if (status === 'active' || status === 'inactive') {
+      where.push(`status = ?`);
+      params.push(status);
     }
 
-    query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
+    if (where.length > 0) {
+      query += ` WHERE ${where.join(' AND ')}`;
+    }
+
+    query += ` ORDER BY ${orderBy} ${sortDir} NULLS LAST, name ASC LIMIT ? OFFSET ?`;
     const dataParams = [...params, limit, offset];
 
-    const countQuery = search
-      ? `SELECT COUNT(*) as total FROM customers WHERE LOWER(name) LIKE LOWER(?) OR phone LIKE ?`
-      : `SELECT COUNT(*) as total FROM customers`;
+    const countQuery = `SELECT COUNT(*) as total FROM customers ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}`;
     const [customers, countResult] = await Promise.all([
       db.prepare(query).all(...dataParams),
       db.prepare(countQuery).get(...params),

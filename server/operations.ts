@@ -304,7 +304,7 @@ const getOperationWithDetails = async (operationId: string, executor: any = db) 
 // Get all operations
 router.get('/', async (req, res) => {
   try {
-    const { created_by, status, limit = 1000, offset = 0 } = req.query;
+    const { created_by, status, customer_id, unpaid_only, limit = 1000, offset = 0 } = req.query;
     const parsedLimit = Math.min(parseInt(limit as string) || 1000, 5000);
     const parsedOffset = parseInt(offset as string) || 0;
 
@@ -325,6 +325,13 @@ router.get('/', async (req, res) => {
     if (status) {
       conditions.push(`o.status = ?`);
       params.push(status);
+    }
+    if (customer_id) {
+      conditions.push(`o.customer_id = ?`);
+      params.push(customer_id);
+    }
+    if (String(unpaid_only || '').toLowerCase() === 'true') {
+      conditions.push(`COALESCE(o.total_amount, 0) > COALESCE(o.paid_amount, 0)`);
     }
 
     if (conditions.length > 0) {

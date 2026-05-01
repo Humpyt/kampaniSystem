@@ -43,6 +43,7 @@ interface CustomerEvaluation {
 export default function CustomerPage() {
   const {
     customers,
+    pagination,
     fetchCustomers,
     addCustomer,
     updateCustomer,
@@ -68,6 +69,11 @@ export default function CustomerPage() {
   const [selectedOperationForPayment, setSelectedOperationForPayment] = useState<any>(null);
   const [evaluation, setEvaluation] = useState<CustomerEvaluation | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
+  const [minVisits, setMinVisits] = useState<number>(0);
+  const [minSpent, setMinSpent] = useState<number>(0);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const pageSize = 50;
   const transactionsPerPage = 3;
 
   // Compute total earned from credit transactions
@@ -93,8 +99,16 @@ export default function CustomerPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchCustomers({ limit: 10000 });
-  }, [fetchCustomers]);
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setCurrentPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sortBy, minSpent, minVisits]);
 
   const validateForm = (data: CustomerFormData) => {
     const errors: { name?: string; phone?: string } = {};
@@ -317,16 +331,11 @@ export default function CustomerPage() {
     const fetchUnpaidOperations = async () => {
       if (selectedCustomer) {
         try {
-          // Fetch all operations
-          const response = await fetch(API_ENDPOINTS.operations);
+          const response = await fetch(`${API_ENDPOINTS.operations}?customer_id=${selectedCustomer.id}&unpaid_only=true&limit=200`);
           if (response.ok) {
             const allOps = await response.json();
-            // Filter for this customer's unpaid operations
-            const unpaid = allOps
-              .filter((op: any) =>
-                op.customer?.id === selectedCustomer.id &&
-                op.totalAmount > (op.paidAmount || 0)
-              )
+            const unpaid = (allOps?.data || allOps)
+              .filter((op: any) => op.totalAmount > (op.paidAmount || 0))
               .sort((a: any, b: any) =>
                 new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
               );
@@ -355,31 +364,22 @@ export default function CustomerPage() {
   // Change page
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
-  // Filter customers based on search term
-  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
-  const [minVisits, setMinVisits] = useState<number>(0);
-  const [minSpent, setMinSpent] = useState<number>(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const offset = (currentPage - 1) * pageSize;
+    fetchCustomers({
+      limit: pageSize,
+      offset,
+      search: debouncedSearch || undefined,
+      sortBy,
+      sortDir: sortBy === 'name' ? 'asc' : 'desc',
+      minSpent,
+      minVisits,
+    }, { signal: controller.signal });
+    return () => controller.abort();
+  }, [fetchCustomers, currentPage, pageSize, debouncedSearch, sortBy, minSpent, minVisits]);
 
-  const filteredCustomers = customers
-    .filter(customer => {
-      const matchesSearch =
-        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone.includes(searchTerm) ||
-        customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesVisits = customer.totalOrders >= minVisits;
-      const matchesSpent = customer.totalSpent >= minSpent;
-      return matchesSearch && matchesVisits && matchesSpent;
-    })
-    .sort((a, b) => {
-      switch(sortBy) {
-        case 'recent':
-          return new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime();
-        case 'spent':
-          return b.totalSpent - a.totalSpent;
-        default:
-          return a.name.localeCompare(b.name);
-      }
-    });
+  const filteredCustomers = customers;
 
   const handleCustomerClick = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -462,14 +462,11 @@ export default function CustomerPage() {
       await response.json();
 
       // Refresh unpaid operations
-      const unpaidResponse = await fetch(API_ENDPOINTS.operations);
+      const unpaidResponse = await fetch(`${API_ENDPOINTS.operations}?customer_id=${selectedCustomer.id}&unpaid_only=true&limit=200`);
       if (unpaidResponse.ok) {
         const allOps = await unpaidResponse.json();
-        const unpaid = allOps
-          .filter((op: any) =>
-            op.customer?.id === selectedCustomer.id &&
-            op.totalAmount > (op.paidAmount || 0)
-          )
+        const unpaid = (allOps?.data || allOps)
+          .filter((op: any) => op.totalAmount > (op.paidAmount || 0))
           .sort((a: any, b: any) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
@@ -477,7 +474,15 @@ export default function CustomerPage() {
       }
 
       // Refresh customer list to update totalSpent, totalOrders, accountBalance
-      await fetchCustomers();
+      await fetchCustomers({
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+        search: debouncedSearch || undefined,
+        sortBy,
+        sortDir: sortBy === 'name' ? 'asc' : 'desc',
+        minSpent,
+        minVisits,
+      });
 
       setIsPaymentModalOpen(false);
       setSelectedOperationForPayment(null);
@@ -602,6 +607,28 @@ export default function CustomerPage() {
               ))}
             </div>
           )}
+          <div className="flex items-center justify-between border-t border-gray-700 px-4 py-3 text-sm text-gray-300">
+            <span>
+              Showing {pagination.total === 0 ? 0 : pagination.offset + 1}-{Math.min(pagination.offset + filteredCustomers.length, pagination.total)} of {pagination.total}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="rounded bg-gray-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span>Page {currentPage}</span>
+              <button
+                onClick={() => setCurrentPage(prev => (pagination.hasMore ? prev + 1 : prev))}
+                disabled={!pagination.hasMore}
+                className="rounded bg-gray-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Customer Details */}
