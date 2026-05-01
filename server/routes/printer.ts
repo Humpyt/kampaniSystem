@@ -306,13 +306,16 @@ async function generateReceiptPDF(data: {
   }
 
   doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(13.5);
+  const fullNameHeight = doc.heightOfString(STORE_INFO.fullName, { align: 'center', width: CW });
   doc.text(STORE_INFO.fullName, ML, y, { align: 'center', width: CW });
-  y += 16;
+  y += Math.max(16, fullNameHeight + 2);
   doc.font('Helvetica-Bold').fontSize(8.8);
+  const locationHeight = doc.heightOfString(STORE_INFO.location, { align: 'center', width: CW });
   doc.text(STORE_INFO.location, ML, y, { align: 'center', width: CW });
-  y += 10;
+  y += Math.max(10, locationHeight + 2);
+  const phoneHeight = doc.heightOfString(STORE_INFO.phone, { align: 'center', width: CW });
   doc.text(STORE_INFO.phone, ML, y, { align: 'center', width: CW });
-  y += 12;
+  y += Math.max(12, phoneHeight + 2);
 
   doc.roundedRect(ML + 28, y, CW - 56, 18, 3).lineWidth(1.1).strokeColor(BRAND.ink).stroke();
   doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(9.3);

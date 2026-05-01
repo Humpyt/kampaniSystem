@@ -321,8 +321,8 @@ export default function PickupPage() {
           </div>
 
           <div className="card-bevel bg-gradient-to-br from-gray-800 to-gray-900 p-6">
-            <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-track-gray-900 scrollbar-thumb-gray-700">
-              <table className="w-full">
+            <div className="max-h-[500px] overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-track-gray-900 scrollbar-thumb-gray-700">
+              <table className="min-w-[980px] w-full">
                 <thead className="sticky top-0 bg-gray-800/80 backdrop-blur-sm">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
@@ -331,8 +331,8 @@ export default function PickupPage() {
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ready By</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Open</th>
                     <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
-                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
-                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Action</th>
+                    <th className="sticky right-24 z-20 bg-gray-800/95 px-4 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
+                    <th className="sticky right-0 z-30 bg-gray-800/95 px-4 py-4 text-center text-sm font-medium text-gray-300">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -373,7 +373,7 @@ export default function PickupPage() {
                         </td>
                         <td className="px-6 py-4 text-center text-sm text-gray-300">{openItemCount}</td>
                         <td className="px-6 py-4 text-right text-sm font-medium text-gray-200">{formatCurrency(ticket.total)}</td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="sticky right-24 z-10 bg-gray-900 px-4 py-4 text-center group-hover:bg-gray-800/95">
                           {balance === 0 ? (
                             <span className="inline-flex items-center justify-center rounded-full bg-emerald-900/40 px-3 py-1 text-xs font-medium text-emerald-400">
                               Paid
@@ -382,7 +382,7 @@ export default function PickupPage() {
                             <span className="text-sm font-medium text-orange-400">{formatCurrency(balance)}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="sticky right-0 z-20 bg-gray-900 px-4 py-4 text-center group-hover:bg-gray-800/95">
                           <button
                             onClick={(event) => {
                               event.stopPropagation();
