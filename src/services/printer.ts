@@ -43,6 +43,11 @@ export interface PaymentReceiptPayload {
     price?: number;
     amount?: number;
     quantity?: number;
+    brand?: string;
+    color?: string;
+    variation?: string;
+    service?: string;
+    notes?: string;
     services?: Array<{ name: string; price: number }>;
   }>;
   subtotal: number;
@@ -118,14 +123,24 @@ export function buildPaymentReceiptPayload(operation: any, payments: PaymentBrea
   );
 
   const repairItems = (operation?.shoes || operation?.items || []).map((item: any) => {
-    const details = [
-      compact(item?.description || item?.category || 'Service Item'),
-      compact(item?.size ? `Sz ${item.size}` : ''),
-      compact(item?.color || ''),
-    ].filter(Boolean);
+    const brand = compact(item?.brand || item?.itemBrand || item?.productBrand || '');
+    const color = compact(item?.color || '');
+    const variation = compact(item?.variation || item?.size || item?.category || item?.type || '');
+    const notes = compact(item?.description || item?.notes || '');
+    const service = Array.isArray(item?.services)
+      ? item.services
+          .map((svc: any) => compact(svc?.name || ''))
+          .filter(Boolean)
+          .join(', ')
+      : '';
 
     return {
-      description: details.join(' | ') || 'Service Item',
+      description: compact(item?.description || item?.category || 'Service Item'),
+      brand,
+      color,
+      variation,
+      service,
+      notes,
       services: Array.isArray(item?.services)
         ? item.services.map((service: any) => ({
             name: compact(service?.name || 'Service'),
@@ -138,6 +153,10 @@ export function buildPaymentReceiptPayload(operation: any, payments: PaymentBrea
   const retailItems = (operation?.retailItems || []).map((item: any) => ({
     description: compact(`Product | ${item?.productName || item?.name || 'Retail Item'}`),
     quantity: Number(item?.quantity) || 1,
+    brand: compact(item?.brand || item?.productBrand || ''),
+    color: compact(item?.color || ''),
+    variation: compact(item?.variation || item?.size || ''),
+    notes: compact(item?.description || item?.notes || ''),
     price:
       Number(item?.totalPrice) ||
       (Number(item?.unitPrice || item?.price || 0) * Number(item?.quantity || 1)),

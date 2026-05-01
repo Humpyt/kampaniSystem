@@ -211,6 +211,7 @@ async function generateReceiptPDF(data: {
   paymentMethod?: string;
   tax?: number;
   notes?: string;
+  showBrandImage?: boolean;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
   const PW = 226.8;
@@ -229,7 +230,7 @@ async function generateReceiptPDF(data: {
   const timeStr = compact(data.time || '');
   const readyText = compact([data.promisedDate, data.promisedTime].filter(Boolean).join(' '));
   const totalQty = data.items.reduce((s, i) => s + (i.quantity || 1), 0);
-  const brandImagePath = resolveReceiptBrandImage();
+  const brandImagePath = data.showBrandImage === false ? null : resolveReceiptBrandImage();
   const itemsForLayout = data.items.map(item => {
     const qty = item.quantity || 1;
     const amount = item.price * qty;
@@ -1195,22 +1196,48 @@ router.post('/print/payment-receipt', async (req, res) => {
   const flatRows: { description: string; price: number }[] = [];
   if (items && items.length > 0) {
     for (const item of items) {
+      const brand = compact(item.brand || '');
+      const color = compact(item.color || '');
+      const variation = compact(item.variation || '');
+      const service = compact(item.service || '');
+      const notes = compact(item.notes || '');
+      const summary = compact(item.description || 'Service Item');
+      const detailParts = [
+        brand ? `Brand: ${brand}` : '',
+        color ? `Color: ${color}` : '',
+        variation ? `Variation: ${variation}` : '',
+      ].filter(Boolean);
+
       if (item.services && item.services.length > 0) {
-        const itemLabel = compact(item.description || 'Service Item');
-        const serviceNames = item.services
+        const serviceNames = (service || item.services
           .map((svc: any) => compact(svc.name || 'Service'))
           .filter(Boolean)
-          .join(' | ');
+          .join(', '));
         const totalServicePrice = item.services.reduce(
           (sum: number, svc: any) => sum + (Number(svc.price) || 0),
           0
         );
+        const lines = [
+          summary,
+          detailParts.join(' | '),
+          serviceNames ? `Service: ${serviceNames}` : '',
+          notes ? `Description: ${notes}` : '',
+        ].filter(Boolean);
         flatRows.push({
-          description: serviceNames ? `${itemLabel}\n${serviceNames}` : itemLabel,
+          description: lines.join('\n'),
           price: totalServicePrice,
         });
       } else {
-        flatRows.push({ description: item.description || 'Service', price: Number(item.price || item.amount) || 0 });
+        const lines = [
+          summary,
+          detailParts.join(' | '),
+          service ? `Service: ${service}` : '',
+          notes ? `Description: ${notes}` : '',
+        ].filter(Boolean);
+        flatRows.push({
+          description: lines.join('\n'),
+          price: Number(item.price || item.amount) || 0,
+        });
       }
     }
   }
@@ -1293,6 +1320,7 @@ router.post('/print/payment-receipt', async (req, res) => {
       amountPaid: amountPaid || 0,
       balance: remaining,
       paymentMethod: paymentMethod || 'Cash',
+      showBrandImage: false,
     });
 
     try {
