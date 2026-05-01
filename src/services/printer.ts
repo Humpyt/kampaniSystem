@@ -70,64 +70,41 @@ const escapeHtml = (value: string | null | undefined) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const openPrintWindow = () => {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=420,height=900');
-  if (!printWindow) {
-    throw new Error('Popup blocked. Allow popups for this site to print receipts directly.');
-  }
-  return printWindow;
-};
-
-const writePdfToPrintWindow = (printWindow: Window, pdfBuffer: ArrayBuffer, title: string) => {
+const printPdfInPage = (pdfBuffer: ArrayBuffer, title: string) => {
   const pdfUrl = URL.createObjectURL(new Blob([pdfBuffer], { type: 'application/pdf' }));
-  const safeTitle = escapeHtml(title);
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.setAttribute('aria-hidden', 'true');
+  frame.title = escapeHtml(title);
 
-  printWindow.document.open();
-  printWindow.document.write(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${safeTitle}</title>
-    <style>
-      html, body, iframe {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        border: 0;
-        background: #ffffff;
+  const cleanup = () => {
+    window.setTimeout(() => {
+      URL.revokeObjectURL(pdfUrl);
+      frame.remove();
+    }, 5000);
+  };
+
+  frame.onload = () => {
+    window.setTimeout(() => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+      } catch (error) {
+        console.warn('In-page receipt print failed, opening PDF fallback:', error);
+        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      } finally {
+        cleanup();
       }
-      .fallback {
-        position: fixed;
-        left: 12px;
-        bottom: 12px;
-        z-index: 1;
-        font-family: Arial, sans-serif;
-        font-size: 12px;
-      }
-    </style>
-  </head>
-  <body>
-    <iframe id="receiptPdf" src="${pdfUrl}" title="${safeTitle}"></iframe>
-    <a class="fallback" href="${pdfUrl}" target="_blank" rel="noopener noreferrer">Open receipt PDF</a>
-    <script>
-      const receiptFrame = document.getElementById('receiptPdf');
-      const printReceipt = () => {
-        window.setTimeout(() => {
-          try {
-            receiptFrame.contentWindow.focus();
-            receiptFrame.contentWindow.print();
-          } catch (_) {
-            window.print();
-          }
-        }, 500);
-      };
-      receiptFrame.addEventListener('load', printReceipt, { once: true });
-      window.addEventListener('beforeunload', () => URL.revokeObjectURL('${pdfUrl}'));
-    </script>
-  </body>
-</html>`);
-  printWindow.document.close();
+    }, 500);
+  };
+
+  frame.src = pdfUrl;
+  document.body.appendChild(frame);
 };
 
 export function buildPaymentReceiptPayload(operation: any, payments: PaymentBreakdown[]): PaymentReceiptPayload {
@@ -252,15 +229,10 @@ class PrinterService {
   }
 
   async printPaymentReceipt(data: PaymentReceiptPayload): Promise<void> {
-    const printWindow = openPrintWindow();
     const response = await axios.post<ArrayBuffer>(this.baseUrl + '/print/payment-receipt', data, {
       responseType: 'arraybuffer',
     });
-    writePdfToPrintWindow(
-      printWindow,
-      response.data,
-      `Receipt ${compact(data.ticketNumber || data.ticketId || '')}`
-    );
+    printPdfInPage(response.data, `Receipt ${compact(data.ticketNumber || data.ticketId || '')}`);
   }
 
   /** Open policy slip PDF in a new browser tab (GET — backend returns inline PDF) */
