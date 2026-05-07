@@ -6,6 +6,7 @@ import { transformOperation } from './utils';
 
 const router = express.Router();
 const DEBUG_OPERATIONS = process.env.DEBUG_OPERATIONS === '1';
+const WALK_IN_CUSTOMER_ID = 'w001';
 
 const mapRetailItem = (item: any) => ({
   id: item.id,
@@ -271,7 +272,22 @@ const getPickupEventsByOperationIds = async (operationIds: string[], executor: a
 
 const getOperationWithDetails = async (operationId: string, executor: any = db) => {
   const operation = await executor.prepare(`
-    SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance, u.name as staff_name
+    SELECT
+      o.*,
+      c.name as customer_name,
+      c.phone as customer_phone,
+      c.account_balance,
+      u.name as staff_name,
+      COALESCE(
+        o.payment_method,
+        (
+          SELECT op.payment_method
+          FROM operation_payments op
+          WHERE op.operation_id = o.id
+          ORDER BY op.created_at DESC
+          LIMIT 1
+        )
+      ) as resolved_payment_method
     FROM operations o
     LEFT JOIN customers c ON o.customer_id = c.id
     LEFT JOIN users u ON o.created_by = u.id
@@ -309,7 +325,22 @@ router.get('/', async (req, res) => {
     const parsedOffset = parseInt(offset as string) || 0;
 
     let query = `
-      SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance, u.name as staff_name
+      SELECT
+        o.*,
+        c.name as customer_name,
+        c.phone as customer_phone,
+        c.account_balance,
+        u.name as staff_name,
+        COALESCE(
+          o.payment_method,
+          (
+            SELECT op.payment_method
+            FROM operation_payments op
+            WHERE op.operation_id = o.id
+            ORDER BY op.created_at DESC
+            LIMIT 1
+          )
+        ) as resolved_payment_method
       FROM operations o
       LEFT JOIN customers c ON o.customer_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
@@ -1007,10 +1038,18 @@ router.post('/:id/payments', async (req, res) => {
         UPDATE operations
         SET paid_amount = ?,
             payment_status = ?,
+            payment_method = ?,
             status = CASE WHEN ? >= total_amount THEN 'completed' ELSE status END,
             updated_at = ?
         WHERE id = ?
-      `, [newPaidAmount, paymentStatus, newPaidAmount, now, id]);
+      `, [
+        newPaidAmount,
+        paymentStatus,
+        normalizedPayments[normalizedPayments.length - 1]?.method || operation.payment_method || null,
+        newPaidAmount,
+        now,
+        id
+      ]);
 
       await tx.prepare(`
         UPDATE customers
@@ -1022,6 +1061,14 @@ router.post('/:id/payments', async (req, res) => {
       const creditAmount = Math.round(totalPaid * 0.02);
       if (creditAmount > 0) {
         const customerId = operation.customer_id;
+        if (!customerId || customerId === WALK_IN_CUSTOMER_ID) {
+          return {
+            operation,
+            newPaidAmount,
+            totalAmount,
+            discountAmount,
+          };
+        }
         const creditTransactionId = `credit_tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const currentCustomer = await tx.get('SELECT account_balance FROM customers WHERE id = ?', [customerId]);
         const newCreditBalance = (Number(currentCustomer?.account_balance) || 0) + creditAmount;

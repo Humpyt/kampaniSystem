@@ -467,7 +467,7 @@ export default function BalancesPage() {
 
               const paymentResult = await response.json();
               await printerService.printPaymentReceipt(
-                buildPaymentReceiptPayload(paymentResult, payments)
+                buildPaymentReceiptPayload(paymentResult, payments, user?.name)
               );
 
               setPaymentModalOpen(false);

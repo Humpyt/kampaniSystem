@@ -31,6 +31,7 @@ export const transformOperation = (operation: any) => ({
     paymentStatus: operation.payment_status || 'unpaid',
     totalAmount: Number(operation.total_amount) || 0,
     paidAmount: Number(operation.paid_amount) || 0,
+    paymentMethod: operation.payment_method || operation.resolved_payment_method || null,
     discount: Number(operation.discount) || 0,
     notes: operation.notes || '',
     promisedDate: operation.promised_date || null,

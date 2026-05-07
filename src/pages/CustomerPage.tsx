@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { API_ENDPOINTS } from '../config/api';
 import {
   Search, Plus, Filter, Download, Phone, Mail,
@@ -10,12 +10,12 @@ import { format, differenceInDays } from 'date-fns';
 import type { Customer, Transaction, Operation } from '../types';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useOperation } from '../contexts/OperationContext';
-import { useAuthStore } from '../store/authStore';
 import { AddCreditModal } from '../components/AddCreditModal';
 import { PaymentModal } from '../components/PaymentModal';
 import CustomerSummaryCards from '../components/customers/CustomerSummaryCards';
 import CustomerListRow from '../components/customers/CustomerListRow';
 import CustomerFilters from '../components/customers/CustomerFilters';
+import { getAuthToken } from '../store/authStore';
 
 interface CustomerFormData {
   name: string;
@@ -43,17 +43,15 @@ interface CustomerEvaluation {
 export default function CustomerPage() {
   const {
     customers,
-    pagination,
     fetchCustomers,
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    pagination,
     loading,
     error
   } = useCustomer();
   const { operations } = useOperation();
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerDetails, setShowCustomerDetails] = useState(false);
@@ -68,20 +66,10 @@ export default function CustomerPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedOperationForPayment, setSelectedOperationForPayment] = useState<any>(null);
   const [evaluation, setEvaluation] = useState<CustomerEvaluation | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
-  const [minVisits, setMinVisits] = useState<number>(0);
-  const [minSpent, setMinSpent] = useState<number>(0);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const pageSize = 50;
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [customerPage, setCustomerPage] = useState(1);
+  const customersPerPage = 50;
   const transactionsPerPage = 3;
-
-  // Compute total earned from credit transactions
-  const totalEarned = useMemo(() => {
-    return creditTransactions
-      .filter(t => t.type === 'credit')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-  }, [creditTransactions]);
   
   const [formData, setFormData] = useState<CustomerFormData>({
     name: '',
@@ -95,20 +83,67 @@ export default function CustomerPage() {
     name?: string;
     phone?: string;
   }>({});
+  const [manualReloadToken, setManualReloadToken] = useState(0);
+  const [showAuthRecoveryHint, setShowAuthRecoveryHint] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'spent'>('name');
+  const [minVisits, setMinVisits] = useState<number>(0);
+  const [minSpent, setMinSpent] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim());
-      setCurrentPage(1);
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [searchTerm]);
+    const controller = new AbortController();
+    let cancelled = false;
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [sortBy, minSpent, minVisits]);
+    const queryParams = {
+      limit: customersPerPage,
+      offset: (customerPage - 1) * customersPerPage,
+      search: searchTerm || undefined,
+      sortBy,
+      sortDir: sortBy === 'name' ? 'asc' as const : 'desc' as const,
+      minSpent: minSpent > 0 ? minSpent : undefined,
+      minVisits: minVisits > 0 ? minVisits : undefined,
+    };
+
+    const loadCustomers = async () => {
+      setShowAuthRecoveryHint(false);
+      try {
+        await fetchCustomers(queryParams, { signal: controller.signal });
+      } catch (err) {
+        if (cancelled) return;
+        const maybeAuthIssue = !getAuthToken() || /401|unauthorized|forbidden/i.test(
+          err instanceof Error ? err.message : ''
+        );
+
+        if (maybeAuthIssue) {
+          await new Promise(resolve => setTimeout(resolve, 600));
+          if (cancelled) return;
+          try {
+            await fetchCustomers(queryParams, { signal: controller.signal });
+            return;
+          } catch {
+            if (!cancelled) setShowAuthRecoveryHint(true);
+            return;
+          }
+        }
+      }
+    };
+
+    void loadCustomers();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    fetchCustomers,
+    manualReloadToken,
+    customerPage,
+    searchTerm,
+    sortBy,
+    minSpent,
+    minVisits
+  ]);
 
   const validateForm = (data: CustomerFormData) => {
     const errors: { name?: string; phone?: string } = {};
@@ -331,11 +366,16 @@ export default function CustomerPage() {
     const fetchUnpaidOperations = async () => {
       if (selectedCustomer) {
         try {
-          const response = await fetch(`${API_ENDPOINTS.operations}?customer_id=${selectedCustomer.id}&unpaid_only=true&limit=200`);
+          // Fetch all operations
+          const response = await fetch(API_ENDPOINTS.operations);
           if (response.ok) {
             const allOps = await response.json();
-            const unpaid = (allOps?.data || allOps)
-              .filter((op: any) => op.totalAmount > (op.paidAmount || 0))
+            // Filter for this customer's unpaid operations
+            const unpaid = allOps
+              .filter((op: any) =>
+                op.customer?.id === selectedCustomer.id &&
+                op.totalAmount > (op.paidAmount || 0)
+              )
               .sort((a: any, b: any) =>
                 new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
               );
@@ -356,30 +396,21 @@ export default function CustomerPage() {
   }, [selectedCustomer?.id]);
 
   // Get current transactions for pagination
-  const indexOfLastTransaction = currentPage * transactionsPerPage;
+  const indexOfLastTransaction = transactionPage * transactionsPerPage;
   const indexOfFirstTransaction = indexOfLastTransaction - transactionsPerPage;
   const currentTransactions = transactions.slice(indexOfFirstTransaction, indexOfLastTransaction);
   const totalPages = Math.ceil(transactions.length / transactionsPerPage);
 
   // Change page
-  const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+  const paginate = (pageNumber: number) => setTransactionPage(pageNumber);
+
+  // Filter customers based on search term
+  const visibleCustomers = customers;
+  const totalCustomerPages = Math.max(1, Math.ceil((pagination.total || 0) / customersPerPage));
 
   useEffect(() => {
-    const controller = new AbortController();
-    const offset = (currentPage - 1) * pageSize;
-    fetchCustomers({
-      limit: pageSize,
-      offset,
-      search: debouncedSearch || undefined,
-      sortBy,
-      sortDir: sortBy === 'name' ? 'asc' : 'desc',
-      minSpent,
-      minVisits,
-    }, { signal: controller.signal });
-    return () => controller.abort();
-  }, [fetchCustomers, currentPage, pageSize, debouncedSearch, sortBy, minSpent, minVisits]);
-
-  const filteredCustomers = customers;
+    setCustomerPage(1);
+  }, [searchTerm, sortBy, minVisits, minSpent]);
 
   const handleCustomerClick = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -459,14 +490,15 @@ export default function CustomerPage() {
         throw new Error(error.error || 'Payment failed');
       }
 
-      await response.json();
-
       // Refresh unpaid operations
-      const unpaidResponse = await fetch(`${API_ENDPOINTS.operations}?customer_id=${selectedCustomer.id}&unpaid_only=true&limit=200`);
+      const unpaidResponse = await fetch(API_ENDPOINTS.operations);
       if (unpaidResponse.ok) {
         const allOps = await unpaidResponse.json();
-        const unpaid = (allOps?.data || allOps)
-          .filter((op: any) => op.totalAmount > (op.paidAmount || 0))
+        const unpaid = allOps
+          .filter((op: any) =>
+            op.customer?.id === selectedCustomer.id &&
+            op.totalAmount > (op.paidAmount || 0)
+          )
           .sort((a: any, b: any) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
@@ -474,15 +506,7 @@ export default function CustomerPage() {
       }
 
       // Refresh customer list to update totalSpent, totalOrders, accountBalance
-      await fetchCustomers({
-        limit: pageSize,
-        offset: (currentPage - 1) * pageSize,
-        search: debouncedSearch || undefined,
-        sortBy,
-        sortDir: sortBy === 'name' ? 'asc' : 'desc',
-        minSpent,
-        minVisits,
-      });
+      await fetchCustomers();
 
       setIsPaymentModalOpen(false);
       setSelectedOperationForPayment(null);
@@ -502,53 +526,49 @@ export default function CustomerPage() {
           <p className="text-gray-400">Manage customer relationships and track repair history</p>
         </div>
         <div className="flex space-x-4">
-          <button
+          <button 
             onClick={handleAddClick}
             className="flex items-center px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors duration-200"
           >
             <Plus className="h-5 w-5 mr-2" />
             Add Customer
           </button>
-          {isAdmin && (
-            <>
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleImportCSV}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
-              >
-                <Upload className="h-5 w-5 mr-2" />
-                Import CSV
-              </button>
-              <button
-                className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
-                onClick={() => {
-                  const csvContent = customers.map(c =>
-                    [c.name, c.phone, c.email, c.address, c.totalSpent, c.lastVisit].join(',')
-                  ).join('\n');
-                  const blob = new Blob([csvContent], { type: 'text/csv' });
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'customers.csv';
-                  a.click();
-                }}
-              >
-                <Download className="h-5 w-5 mr-2" />
-                Export CSV
-              </button>
-            </>
-          )}
+          <input
+            type="file"
+            accept=".csv"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleImportCSV}
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
+          >
+            <Upload className="h-5 w-5 mr-2" />
+            Import CSV
+          </button>
+          <button 
+            className="flex items-center px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors duration-200"
+            onClick={() => {
+              const csvContent = customers.map(c => 
+                [c.name, c.phone, c.email, c.address, c.totalSpent, c.lastVisit].join(',')
+              ).join('\n');
+              const blob = new Blob([csvContent], { type: 'text/csv' });
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'customers.csv';
+              a.click();
+            }}
+          >
+            <Download className="h-5 w-5 mr-2" />
+            Export CSV
+          </button>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <CustomerSummaryCards customers={filteredCustomers} />
+      <CustomerSummaryCards totalCustomers={pagination.total || customers.length} visibleCustomers={visibleCustomers} />
 
       {/* Filters */}
       <CustomerFilters
@@ -571,10 +591,21 @@ export default function CustomerPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
             </div>
           ) : error ? (
-            <div className="text-red-400 p-4 text-center">
-              {error}
+            <div className="p-4 text-center space-y-3">
+              <div className="text-red-400">{error}</div>
+              {showAuthRecoveryHint && (
+                <div className="text-yellow-300 text-sm">
+                  Session may be expired. Re-login if retry does not recover.
+                </div>
+              )}
+              <button
+                onClick={() => setManualReloadToken(prev => prev + 1)}
+                className="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+              >
+                Retry Fetch
+              </button>
             </div>
-          ) : filteredCustomers.length === 0 ? (
+          ) : visibleCustomers.length === 0 ? (
             <div className="text-gray-400 p-4 text-center">
               {searchTerm || minVisits > 0 || minSpent > 0
                 ? 'No customers match your filters'
@@ -582,7 +613,7 @@ export default function CustomerPage() {
             </div>
           ) : (
             <div className="divide-y divide-gray-700">
-              {filteredCustomers.map((customer) => (
+              {visibleCustomers.map((customer) => (
                 <CustomerListRow
                   key={customer.id}
                   customer={customer}
@@ -607,34 +638,36 @@ export default function CustomerPage() {
               ))}
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-gray-700 px-4 py-3 text-sm text-gray-300">
-            <span>
-              Showing {pagination.total === 0 ? 0 : pagination.offset + 1}-{Math.min(pagination.offset + filteredCustomers.length, pagination.total)} of {pagination.total}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="rounded bg-gray-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <span>Page {currentPage}</span>
-              <button
-                onClick={() => setCurrentPage(prev => (pagination.hasMore ? prev + 1 : prev))}
-                disabled={!pagination.hasMore}
-                className="rounded bg-gray-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next
-              </button>
+
+          {!loading && !error && totalCustomerPages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-700 px-4 py-3">
+              <p className="text-xs text-gray-400">
+                Page {customerPage} of {totalCustomerPages} • Showing {visibleCustomers.length} of {pagination.total}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCustomerPage(prev => Math.max(1, prev - 1))}
+                  disabled={customerPage === 1}
+                  className="px-3 py-1.5 text-sm rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setCustomerPage(prev => Math.min(totalCustomerPages, prev + 1))}
+                  disabled={customerPage >= totalCustomerPages}
+                  className="px-3 py-1.5 text-sm rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Customer Details */}
         {selectedCustomer && showCustomerDetails ? (
-          <div className="bg-gray-900 rounded-xl p-6 max-h-[calc(100vh-300px)] overflow-y-auto">
-            <div className="flex justify-between items-start mb-6 flex-shrink-0">
+          <div className="bg-gray-900 rounded-xl p-6">
+            <div className="flex justify-between items-start mb-6">
               <h2 className="text-xl font-bold">Customer Details</h2>
               <div className="flex space-x-2">
                 <button
@@ -659,7 +692,7 @@ export default function CustomerPage() {
               </div>
             </div>
 
-            <div className="space-y-6 overflow-y-auto">
+            <div className="space-y-6">
               {/* Customer Stats */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-800 p-4 rounded-lg">
@@ -675,40 +708,39 @@ export default function CustomerPage() {
                   </div>
                 </div>
 
-                {/* Store Credit */}
-                <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
-                  <div className="text-green-300 text-sm font-semibold">Store Credit</div>
-                  <div className="text-2xl font-bold text-green-400">
-                    {formatCurrency(selectedCustomer.accountBalance || 0)}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">Available to spend now</div>
-                  <div className="mt-3 pt-3 border-t border-green-800 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-green-300 text-xs">Total Earned</span>
-                      <span className="text-green-400 text-sm font-bold">{formatCurrency(totalEarned)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400 text-xs">Used / Redeemed</span>
-                      <span className="text-gray-400 text-sm font-bold">{formatCurrency(totalEarned - (selectedCustomer.accountBalance || 0))}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Outstanding Debt */}
+                {/* Consolidated Account Balance */}
                 {(() => {
+                  const accountBalance = selectedCustomer.accountBalance || 0;
                   const totalDebt = unpaidOperations.reduce(
                     (sum, op) => sum + (op.totalAmount - (op.paidAmount || 0)),
                     0
                   );
-                  if (totalDebt === 0) return null;
+                  const netBalance = accountBalance - totalDebt;
+
+                  if (netBalance === 0) return null;
+
+                  const isPositive = netBalance > 0;
+                  const balanceColor = isPositive ? 'green' : 'red';
 
                   return (
-                    <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
-                      <div className="text-red-300 text-sm">Outstanding Debt</div>
-                      <div className="text-2xl font-bold text-red-400">
-                        {formatCurrency(totalDebt)}
+                    <div className={`${isPositive ? 'bg-green-900/30 border-green-700' : 'bg-red-900/30 border-red-700'} border rounded-lg p-4 col-span-2`}>
+                      <div className={`${isPositive ? 'text-green-300' : 'text-red-300'} text-sm`}>Account Balance</div>
+                      <div className={`text-2xl font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCurrency(netBalance)}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">Total unpaid balance</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {isPositive ? 'Credit available' : 'Amount owed'}
+                        {accountBalance > 0 && (
+                          <span className={`ml-2 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            (Credit: {formatCurrency(accountBalance)})
+                          </span>
+                        )}
+                        {totalDebt > 0 && (
+                          <span className="ml-2 text-red-400">
+                            (Debt: {formatCurrency(totalDebt)})
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}

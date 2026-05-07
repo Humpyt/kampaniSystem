@@ -7,6 +7,7 @@ import { useOperation } from '../contexts/OperationContext';
 import { PaymentModal } from '../components/PaymentModal';
 import { CollectorInfoModal } from '../components/CollectorInfoModal';
 import { buildPaymentReceiptPayload, printerService } from '../services/printer';
+import { useAuthStore } from '../store/authStore';
 
 interface PickupEvent {
   id: string;
@@ -63,6 +64,7 @@ interface PickupTicket {
 const ticketLabel = (id: string) => `TKT-${id.slice(-6).toUpperCase()}`;
 
 export default function PickupPage() {
+  const { user } = useAuthStore();
   const { operations, refreshOperations } = useOperation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
@@ -239,7 +241,7 @@ export default function PickupPage() {
       if (!response.ok) throw new Error('Payment failed');
 
       const paymentResult = await response.json();
-      await printerService.printPaymentReceipt(buildPaymentReceiptPayload(paymentResult, payments));
+      await printerService.printPaymentReceipt(buildPaymentReceiptPayload(paymentResult, payments, user?.name));
       await refreshOperations();
       setSelectedTicket(null);
       setIsPaymentModalOpen(false);
@@ -325,13 +327,13 @@ export default function PickupPage() {
               <table className="min-w-[980px] w-full">
                 <thead className="sticky top-0 bg-gray-800/80 backdrop-blur-sm">
                   <tr>
+                    <th className="sticky left-0 z-20 bg-gray-800/95 px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ready By</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Open</th>
                     <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
-                    <th className="sticky right-24 z-20 bg-gray-800/95 px-4 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
+                    <th className="sticky right-[88px] z-20 bg-gray-800/95 px-4 py-4 text-center text-sm font-medium text-gray-300">Balance</th>
                     <th className="sticky right-0 z-30 bg-gray-800/95 px-4 py-4 text-center text-sm font-medium text-gray-300">Action</th>
                   </tr>
                 </thead>
@@ -358,14 +360,14 @@ export default function PickupPage() {
                         }`}
                         onClick={() => handleSelectTicket(ticket.id)}
                       >
+                        <td className="sticky left-0 z-10 bg-gray-900 px-6 py-4 group-hover:bg-gray-800/95">
+                          <div className="text-sm font-medium text-gray-200">{ticket.customerName}</div>
+                          <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
+                        </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center rounded-full bg-gray-700 px-3 py-1 text-xs font-medium text-gray-300 group-hover:bg-gray-600">
                             {ticketLabel(ticket.id)}
                           </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-200">{ticket.customerName}</div>
-                          <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
                         <td className="px-6 py-4 text-sm text-indigo-400">
@@ -373,7 +375,7 @@ export default function PickupPage() {
                         </td>
                         <td className="px-6 py-4 text-center text-sm text-gray-300">{openItemCount}</td>
                         <td className="px-6 py-4 text-right text-sm font-medium text-gray-200">{formatCurrency(ticket.total)}</td>
-                        <td className="sticky right-24 z-10 bg-gray-900 px-4 py-4 text-center group-hover:bg-gray-800/95">
+                        <td className="sticky right-[88px] z-10 bg-gray-900 px-4 py-4 text-center group-hover:bg-gray-800/95">
                           {balance === 0 ? (
                             <span className="inline-flex items-center justify-center rounded-full bg-emerald-900/40 px-3 py-1 text-xs font-medium text-emerald-400">
                               Paid

@@ -55,7 +55,9 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       if (err instanceof Error && err.name === 'AbortError') {
         return;
       }
-      setError(err instanceof Error ? err.message : 'Failed to fetch customers');
+      const message = err instanceof Error ? err.message : 'Failed to fetch customers';
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setLoading(false);
     }

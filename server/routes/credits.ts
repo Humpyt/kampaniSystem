@@ -2,12 +2,17 @@ import express from 'express';
 import db from '../database';
 
 const router = express.Router();
+const WALK_IN_CUSTOMER_ID = 'w001';
 
 // Add credit to customer account
 router.post('/:customerId/credits', async (req, res) => {
   try {
     const { customerId } = req.params;
     const { amount, description, createdBy } = req.body;
+
+    if (customerId === WALK_IN_CUSTOMER_ID) {
+      return res.status(400).json({ error: 'Walk-in customers cannot have store credit' });
+    }
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Amount must be positive' });
@@ -54,6 +59,10 @@ router.post('/:customerId/apply-credit-to-debts', async (req, res) => {
   try {
     const { customerId } = req.params;
     const now = new Date().toISOString();
+
+    if (customerId === WALK_IN_CUSTOMER_ID) {
+      return res.status(400).json({ error: 'Walk-in customers cannot use store credit' });
+    }
 
     // Get customer's current credit balance
     const customer = await db.get('SELECT account_balance FROM customers WHERE id = ?', [customerId]);
@@ -187,6 +196,10 @@ router.post('/:customerId/credits/deduct', async (req, res) => {
   try {
     const { customerId } = req.params;
     const { amount, description } = req.body;
+
+    if (customerId === WALK_IN_CUSTOMER_ID) {
+      return res.status(400).json({ error: 'Walk-in customers cannot use store credit' });
+    }
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Amount must be positive' });

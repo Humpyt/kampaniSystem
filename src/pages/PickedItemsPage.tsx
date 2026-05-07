@@ -216,8 +216,8 @@ export default function PickedItemsPage() {
               <table className="w-full">
                 <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
                   <tr>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Customer</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Ticket No</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Date</th>
                     <th className="px-6 py-4 text-center text-sm font-medium text-gray-300">Pieces</th>
                     <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Amount</th>
@@ -255,15 +255,15 @@ export default function PickedItemsPage() {
                       onClick={() => setSelectedTicket(ticket)}
                     >
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-violet-900/50 text-violet-300">
-                          TKT-{ticket.id.slice(-6).toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
                         <div>
                           <div className="text-sm font-medium text-gray-200">{ticket.customerName}</div>
                           <div className="text-xs text-gray-400">{ticket.customerPhone}</div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-violet-900/50 text-violet-300">
+                          TKT-{ticket.id.slice(-6).toUpperCase()}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-300">{ticket.date}</td>
                       <td className="px-6 py-4 text-center text-sm text-gray-300">{ticket.pieces}</td>

@@ -1,17 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import {
-  AlertCircle,
-  Edit3,
-  Package,
-  Plus,
-  RefreshCw,
-  Save,
-  Trash2,
-  Wrench,
-} from 'lucide-react';
+import { Edit3, Package, Plus, RefreshCw, Save, Search, Trash2, Wrench, DollarSign } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/authStore';
+import { formatCurrency } from '../utils/formatCurrency';
 
 type PricingMode = 'fixed' | 'range' | 'per_unit';
 type Status = 'active' | 'inactive';
@@ -59,8 +51,15 @@ const emptyForm = (): ServiceFormState => ({
   status: 'active',
 });
 
-const currency = (value: number | null | undefined) =>
-  `UGX ${(Number(value) || 0).toLocaleString('en-US')}`;
+const renderPrice = (service: ServiceRecord) => {
+  if (service.pricingMode === 'range') {
+    return `${formatCurrency(service.minPrice)} - ${formatCurrency(service.maxPrice)}`;
+  }
+  if (service.pricingMode === 'per_unit') {
+    return `${formatCurrency(service.price)} / ${service.unitLabel || 'unit'}`;
+  }
+  return formatCurrency(service.price);
+};
 
 export default function ServicesPage() {
   const user = useAuthStore(state => state.user);
@@ -121,7 +120,6 @@ export default function ServicesPage() {
       category: service.category || '',
       status: service.status || 'active',
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSubmit = async () => {
@@ -183,358 +181,339 @@ export default function ServicesPage() {
     }
   };
 
-  const renderPrice = (service: ServiceRecord) => {
-    if (service.pricingMode === 'range') {
-      return `${currency(service.minPrice)} - ${currency(service.maxPrice)}`;
-    }
-    if (service.pricingMode === 'per_unit') {
-      return `${currency(service.price)} / ${service.unitLabel || 'unit'}`;
-    }
-    return currency(service.price);
-  };
+  const fixedCount = services.filter(s => s.pricingMode === 'fixed').length;
+  const rangeCount = services.filter(s => s.pricingMode === 'range').length;
+  const perUnitCount = services.filter(s => s.pricingMode === 'per_unit').length;
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-900 p-8">
-      <div className="relative mb-8 overflow-hidden rounded-3xl border border-white/10 bg-gray-800/60 p-8 shadow-2xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute right-0 top-0 -mr-20 -mt-20 h-64 w-64 rounded-full bg-indigo-600/20 blur-3xl"></div>
-        <div className="pointer-events-none absolute bottom-0 left-0 -mb-20 -ml-20 h-64 w-64 rounded-full bg-purple-600/20 blur-3xl"></div>
-
-        <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs uppercase tracking-[0.25em] text-gray-300">
-              <Wrench size={14} />
-              Service Pricing
-            </div>
-            <h1 className="mb-2 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-4xl font-extrabold text-transparent">
-              Services Dashboard
-            </h1>
-            <p className="max-w-3xl text-sm text-gray-400 md:text-base">
-              Keep the catalog price-aware and ready for receipts. Fixed services use one amount, range services store a floor and ceiling,
-              and per-unit services show the unit you charge by.
-            </p>
-          </div>
-
-          <div className="flex flex-col items-end rounded-xl border border-white/5 bg-black/30 px-6 py-4 shadow-inner backdrop-blur-md">
-            <span className="font-mono text-3xl font-light tracking-wider text-indigo-300 md:text-4xl">
-              {services.length.toLocaleString()}
-            </span>
-            <span className="mt-1 text-xs font-medium uppercase tracking-widest text-gray-500 md:text-sm">
-              Active service rules
-            </span>
-          </div>
+    <div className="min-h-screen bg-gray-900 p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Services</h1>
+          <p className="text-gray-400 text-sm">Manage service catalog and pricing rules</p>
         </div>
-
-        <div className="relative z-10 mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Total services', services.length, 'from-indigo-500/10 to-indigo-500/20'],
-            ['Fixed pricing', services.filter(s => s.pricingMode === 'fixed').length, 'from-emerald-500/10 to-emerald-500/20'],
-            ['Range pricing', services.filter(s => s.pricingMode === 'range').length, 'from-orange-500/10 to-orange-500/20'],
-            ['Per-unit pricing', services.filter(s => s.pricingMode === 'per_unit').length, 'from-purple-500/10 to-purple-500/20'],
-          ].map(([label, value, gradient]) => (
-            <div
-              key={String(label)}
-              className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/5 bg-gray-900/40 p-6 shadow-xl transition-all duration-500 hover:bg-gray-800/50"
-            >
-              <div className={`absolute right-0 top-0 -mr-8 -mt-8 h-32 w-32 rounded-full bg-gradient-to-br ${gradient} blur-2xl transition-all duration-500 group-hover:opacity-80`}></div>
-              <div className="relative z-10 flex flex-col gap-2">
-                <p className="border-b border-white/5 pb-3 text-sm font-medium text-gray-300">{label as string}</p>
-                <p className="text-3xl font-bold text-white">{Number(value).toLocaleString()}</p>
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-2 text-gray-400 bg-gray-800 px-3 py-2 rounded-lg">
+            <Wrench className="h-4 w-4" />
+            <span className="text-sm">{services.length}</span>
+            <DollarSign className="h-4 w-4 ml-2" />
+            <span className="text-sm">{formatCurrency(services.reduce((sum, s) => sum + (s.price || 0), 0))}</span>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        <div className="flex flex-col gap-5 rounded-3xl border border-white/5 bg-gray-800/40 p-6 shadow-xl backdrop-blur-xl lg:col-span-5 md:p-8">
-          <div className="px-1 flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-wide text-white">{editingId ? 'Edit Service' : 'New Service'}</h2>
-            <div className="ml-6 h-px flex-1 bg-gradient-to-r from-white/20 to-transparent"></div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-800/30 rounded-xl p-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-300 text-xs font-medium">FIXED PRICING</span>
+            <Wrench size={16} className="text-indigo-400" />
           </div>
+          <p className="text-2xl font-bold text-white mb-1">{fixedCount}</p>
+          <span className="text-indigo-300/60 text-xs">Single-price services</span>
+        </div>
+        <div className="bg-gradient-to-br from-orange-900/50 to-orange-800/30 rounded-xl p-4 border border-orange-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-orange-300 text-xs font-medium">RANGE PRICING</span>
+            <Wrench size={16} className="text-orange-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">{rangeCount}</p>
+          <span className="text-orange-300/60 text-xs">Min-max estimate services</span>
+        </div>
+        <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 rounded-xl p-4 border border-purple-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-purple-300 text-xs font-medium">PER-UNIT PRICING</span>
+            <Wrench size={16} className="text-purple-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mb-1">{perUnitCount}</p>
+          <span className="text-purple-300/60 text-xs">Charged-by-unit services</span>
+        </div>
+      </div>
 
-          <p className="text-sm text-gray-400">
-            {canEdit
-              ? 'Set the default rule once. The sale flow will still store the final charged amount on each transaction.'
-              : 'You can view the catalog only.'}
-          </p>
-
+      {/* Search */}
+      <div className="card-bevel p-4 mb-4">
+        <div className="flex space-x-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search services..."
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg border border-gray-600 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={loadServices}
+            className="btn-bevel accent-secondary px-4 py-2 rounded-lg flex items-center text-sm"
+          >
+            <RefreshCw size={14} className="mr-2" />
+            Refresh
+          </button>
           {editingId && (
             <button
               onClick={resetForm}
-              className="self-start rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200 hover:bg-white/10"
+              className="btn-bevel accent-secondary px-4 py-2 rounded-lg flex items-center text-sm"
             >
-              Cancel edit
+              Cancel Edit
             </button>
-          )}
-
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Name</label>
-              <input
-                value={form.name}
-                onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
-                disabled={!canEdit}
-                className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                placeholder="Dyeing Bags"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Description</label>
-              <textarea
-                value={form.description}
-                onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-                disabled={!canEdit}
-                rows={3}
-                className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                placeholder="Short note about the service"
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Pricing Mode</label>
-                <select
-                  value={form.pricingMode}
-                  onChange={e => setForm(prev => ({ ...prev, pricingMode: e.target.value as PricingMode }))}
-                  disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                >
-                  <option value="fixed">Fixed</option>
-                  <option value="range">Range</option>
-                  <option value="per_unit">Per Unit</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Status</label>
-                <select
-                  value={form.status}
-                  onChange={e => setForm(prev => ({ ...prev, status: e.target.value as Status }))}
-                  disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Base Price</label>
-                <input
-                  value={form.price}
-                  onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))}
-                  disabled={!canEdit || form.pricingMode === 'range'}
-                  className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                  placeholder="30000"
-                  inputMode="numeric"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Estimated Days</label>
-                <input
-                  value={form.estimatedDays}
-                  onChange={e => setForm(prev => ({ ...prev, estimatedDays: e.target.value }))}
-                  disabled={!canEdit}
-                  className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                  placeholder="1"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-
-            {form.pricingMode === 'range' && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Minimum Price</label>
-                  <input
-                    value={form.minPrice}
-                    onChange={e => setForm(prev => ({ ...prev, minPrice: e.target.value }))}
-                    disabled={!canEdit}
-                    className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                    placeholder="50000"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Maximum Price</label>
-                  <input
-                    value={form.maxPrice}
-                    onChange={e => setForm(prev => ({ ...prev, maxPrice: e.target.value }))}
-                    disabled={!canEdit}
-                    className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                    placeholder="80000"
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-            )}
-
-            {form.pricingMode === 'per_unit' && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Unit Label</label>
-                  <input
-                    value={form.unitLabel}
-                    onChange={e => setForm(prev => ({ ...prev, unitLabel: e.target.value }))}
-                    disabled={!canEdit}
-                    className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                    placeholder="wheel"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Per-Unit Note</label>
-                  <input
-                    value={form.priceNote}
-                    onChange={e => setForm(prev => ({ ...prev, priceNote: e.target.value }))}
-                    disabled={!canEdit}
-                    className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                    placeholder="optional note"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Category</label>
-              <input
-                value={form.category}
-                onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))}
-                disabled={!canEdit}
-                className="w-full rounded-2xl border border-white/10 bg-gray-900/60 px-4 py-3 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
-                placeholder="cleaning, repair, adjustment"
-              />
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              disabled={!canEdit || saving}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {editingId ? <Save size={18} /> : <Plus size={18} />}
-              {saving ? 'Saving...' : editingId ? 'Update Service' : 'Create Service'}
-            </button>
-          </div>
-
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <div>
-                Fixed services use one number. Range services show a low and high estimate. Per-unit services use the unit label you enter here.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 rounded-3xl border border-white/5 bg-gray-800/40 p-6 shadow-xl backdrop-blur-xl lg:col-span-7 md:p-8">
-          <div className="px-1 flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-wide text-white">Catalog</h2>
-            <div className="ml-6 h-px flex-1 bg-gradient-to-r from-white/20 to-transparent"></div>
-          </div>
-
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <p className="text-sm text-gray-400">
-              Search the catalog and open any item to edit its pricing rule.
-            </p>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-72 max-w-full rounded-2xl border border-white/10 bg-gray-900/60 py-3 pl-9 pr-4 text-sm text-white outline-none focus:border-indigo-500"
-                  placeholder="Search services"
-                />
-              </div>
-              <button
-                onClick={loadServices}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10"
-              >
-                <RefreshCw size={16} />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="rounded-2xl border border-white/5 bg-gray-900/40 p-8 text-center text-gray-400">
-              Loading services...
-            </div>
-          ) : filteredServices.length === 0 ? (
-            <div className="rounded-2xl border border-white/5 bg-gray-900/40 p-8 text-center text-gray-400">
-              No services found.
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {filteredServices.map(service => (
-                <div key={service.id} className="group relative overflow-hidden rounded-2xl border border-white/5 bg-gray-900/50 p-5 transition-all duration-300 hover:border-white/10 hover:bg-gray-800/60">
-                  <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-indigo-500 to-purple-500"></div>
-                  <div className="ml-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-white">{service.name}</h3>
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] ${service.status === 'active' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gray-500/15 text-gray-300'}`}>
-                          {service.status}
-                        </span>
-                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-gray-300">
-                          {service.pricingMode.replace('_', ' ')}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 text-sm text-gray-400">
-                        <span className="rounded-full border border-white/10 px-3 py-1">{service.category || 'uncategorized'}</span>
-                        <span className="rounded-full border border-white/10 px-3 py-1">ETA {service.estimatedDays || 1} days</span>
-                        {service.priceNote && <span className="rounded-full border border-white/10 px-3 py-1">{service.priceNote}</span>}
-                      </div>
-
-                      <p className="max-w-3xl text-sm text-gray-300">{service.description || 'No description provided.'}</p>
-                    </div>
-
-                    <div className="min-w-[220px] rounded-2xl border border-white/5 bg-black/30 p-4">
-                      <div className="text-xs uppercase tracking-[0.2em] text-gray-500">Pricing</div>
-                      <div className="mt-2 text-lg font-semibold text-white">{renderPrice(service)}</div>
-                    </div>
-                  </div>
-
-                  {canEdit && (
-                    <div className="ml-2 mt-4 flex flex-wrap gap-3">
-                      <button
-                        onClick={() => startEdit(service)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-                      >
-                        <Edit3 size={16} />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(service.id)}
-                        disabled={deletingId === service.id}
-                        className="inline-flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 hover:bg-rose-500/20 disabled:opacity-60"
-                      >
-                        <Trash2 size={16} />
-                        {deletingId === service.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
           )}
         </div>
       </div>
 
-      <div className="mt-8 rounded-3xl border border-white/5 bg-gray-800/40 p-6 shadow-xl backdrop-blur-xl">
-        <div className="flex items-start gap-3">
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-indigo-300" />
-          <div>
-            <div className="font-semibold text-white">How to edit pricing</div>
-            <ul className="mt-2 space-y-1 text-sm text-gray-400">
-              <li>- Fixed: type the one price and save.</li>
-              <li>- Range: switch to range, enter minimum and maximum, then save.</li>
-              <li>- Per unit: enter the unit price and a unit label such as wheel, piece, or strap.</li>
-              <li>- Change the category or note only if it helps staff identify the service faster at drop time.</li>
-              <li>- The final price used on a receipt is still stored on the sale, so these catalog values act as defaults and quotes.</li>
-            </ul>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Form */}
+        <div className="lg:col-span-5">
+          <div className="card-bevel p-6">
+            <h2 className="text-lg font-bold text-white mb-4">{editingId ? 'Edit Service' : 'New Service'}</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Name</label>
+                <input
+                  value={form.name}
+                  onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
+                  disabled={!canEdit}
+                  className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                  placeholder="Dyeing Bags"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+                  disabled={!canEdit}
+                  rows={2}
+                  className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                  placeholder="Short note about the service"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Pricing Mode</label>
+                  <select
+                    value={form.pricingMode}
+                    onChange={e => setForm(prev => ({ ...prev, pricingMode: e.target.value as PricingMode }))}
+                    disabled={!canEdit}
+                    className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                  >
+                    <option value="fixed">Fixed</option>
+                    <option value="range">Range</option>
+                    <option value="per_unit">Per Unit</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={e => setForm(prev => ({ ...prev, status: e.target.value as Status }))}
+                    disabled={!canEdit}
+                    className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Base Price</label>
+                  <input
+                    value={form.price}
+                    onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))}
+                    disabled={!canEdit || form.pricingMode === 'range'}
+                    className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                    placeholder="30000"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Est. Days</label>
+                  <input
+                    value={form.estimatedDays}
+                    onChange={e => setForm(prev => ({ ...prev, estimatedDays: e.target.value }))}
+                    disabled={!canEdit}
+                    className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                    placeholder="1"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+
+              {form.pricingMode === 'range' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Min Price</label>
+                    <input
+                      value={form.minPrice}
+                      onChange={e => setForm(prev => ({ ...prev, minPrice: e.target.value }))}
+                      disabled={!canEdit}
+                      className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                      placeholder="50000"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Max Price</label>
+                    <input
+                      value={form.maxPrice}
+                      onChange={e => setForm(prev => ({ ...prev, maxPrice: e.target.value }))}
+                      disabled={!canEdit}
+                      className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                      placeholder="80000"
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {form.pricingMode === 'per_unit' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Unit Label</label>
+                    <input
+                      value={form.unitLabel}
+                      onChange={e => setForm(prev => ({ ...prev, unitLabel: e.target.value }))}
+                      disabled={!canEdit}
+                      className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                      placeholder="wheel"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Price Note</label>
+                    <input
+                      value={form.priceNote}
+                      onChange={e => setForm(prev => ({ ...prev, priceNote: e.target.value }))}
+                      disabled={!canEdit}
+                      className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                      placeholder="optional"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Category</label>
+                <input
+                  value={form.category}
+                  onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))}
+                  disabled={!canEdit}
+                  className="w-full bg-gray-700 rounded-lg border border-gray-600 px-3 py-2 text-white text-sm focus:border-indigo-500 disabled:opacity-50"
+                  placeholder="cleaning, repair, adjustment"
+                />
+              </div>
+
+              <button
+                onClick={handleSubmit}
+                disabled={!canEdit || saving}
+                className="flex w-full items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {editingId ? <Save size={16} /> : <Plus size={16} />}
+                {saving ? 'Saving...' : editingId ? 'Update Service' : 'Create Service'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Catalog Table */}
+        <div className="lg:col-span-7">
+          <div className="card-bevel overflow-hidden">
+            <div className="max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+              <table className="w-full">
+                <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Category</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Pricing</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Price</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Status</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-gray-400 text-sm">Loading...</td>
+                    </tr>
+                  ) : filteredServices.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center">
+                        <Package size={32} className="mx-auto mb-2 text-gray-600" />
+                        <p className="text-gray-400 text-sm">No services found</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredServices.map((service, index) => (
+                      <tr
+                        key={service.id}
+                        className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700 transition-colors`}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-white">{service.name}</div>
+                          {service.description && (
+                            <div className="text-xs text-gray-500 mt-0.5">{service.description.slice(0, 60)}{service.description.length > 60 ? '...' : ''}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            {service.category || 'uncategorized'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            service.pricingMode === 'fixed' ? 'bg-indigo-100 text-indigo-800' :
+                            service.pricingMode === 'range' ? 'bg-orange-100 text-orange-800' :
+                            'bg-purple-100 text-purple-800'
+                          }`}>
+                            {service.pricingMode.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-semibold text-white">{renderPrice(service)}</span>
+                          {service.estimatedDays > 0 && (
+                            <div className="text-xs text-gray-500">~{service.estimatedDays}d</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            service.status === 'active'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {service.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => startEdit(service)}
+                              disabled={!canEdit}
+                              className="p-1.5 rounded-lg hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-30"
+                              title="Edit"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(service.id)}
+                              disabled={!canEdit || deletingId === service.id}
+                              className="p-1.5 rounded-lg hover:bg-rose-900/50 text-gray-400 hover:text-rose-400 transition-colors disabled:opacity-30"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

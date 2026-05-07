@@ -6,9 +6,10 @@ import { formatCurrency } from '../utils/formatCurrency';
 interface ReceiptProps {
   data: ReceiptData;
   onPrint?: () => void;
+  servedBy?: string;
 }
 
-export function Receipt({ data, onPrint }: ReceiptProps) {
+export function Receipt({ data, onPrint, servedBy }: ReceiptProps) {
   const handlePrint = async () => {
     try {
       await printerService.printReceipt(data);
@@ -27,8 +28,9 @@ export function Receipt({ data, onPrint }: ReceiptProps) {
       <div className="space-y-4 font-mono text-sm">
         {/* Header */}
         <div className="text-center">
-          <h2 className="text-xl font-bold">Kampani Shoes and Bag Clinic</h2>
-          <p>FORESTMALL, KAMPALA, Uganda</p>
+          <h2 className="text-xl font-bold">KAMPANI SHOES &amp; BAGS CLINIC</h2>
+          <p>FORESTMALL LUGOGO GF06</p>
+          <p>Mob: 0789 183 784 | 0704 830 016</p>
         </div>
 
         {/* Order Info */}
@@ -76,13 +78,20 @@ export function Receipt({ data, onPrint }: ReceiptProps) {
           </div>
         </div>
 
-        {/* Promised Date */}
+        {/* Promised Date - Prominent */}
         {data.promisedDate && (
-          <div className="text-center border-t border-gray-200 pt-2">
-            <p className="font-bold">
+          <div className="text-center border-t border-gray-200 pt-3">
+            <p className="font-bold text-sm">PICKUP DATE</p>
+            <p className="font-bold text-xl">
               {data.promisedDate.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/(\d{2})\/(\d{2})\/(\d{4})/, (m, d, mo, y) => d + '/' + mo + '/' + y)} {data.promisedDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
             </p>
-            <p className="font-bold text-lg">REG/PICKUP</p>
+          </div>
+        )}
+
+        {/* Served by */}
+        {servedBy && (
+          <div className="text-center border-t border-gray-200 pt-2">
+            <p className="text-sm">Served by: <span className="font-bold">{servedBy}</span></p>
           </div>
         )}
 

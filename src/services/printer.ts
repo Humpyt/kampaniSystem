@@ -57,6 +57,7 @@ export interface PaymentReceiptPayload {
   balance?: number;
   paymentMethod?: string;
   date?: string;
+  servedBy?: string;
 }
 
 const toTitleCase = (value: string) =>
@@ -112,7 +113,7 @@ const printPdfInPage = (pdfBuffer: ArrayBuffer, title: string) => {
   document.body.appendChild(frame);
 };
 
-export function buildPaymentReceiptPayload(operation: any, payments: PaymentBreakdown[]): PaymentReceiptPayload {
+export function buildPaymentReceiptPayload(operation: any, payments: PaymentBreakdown[], servedBy?: string): PaymentReceiptPayload {
   const uniqueMethods = Array.from(
     new Set(
       (payments || [])
@@ -190,6 +191,7 @@ export function buildPaymentReceiptPayload(operation: any, payments: PaymentBrea
       hour: '2-digit',
       minute: '2-digit',
     }),
+    servedBy: servedBy || undefined,
   };
 }
 
@@ -224,9 +226,10 @@ class PrinterService {
   }
 
   /** Open order receipt PDF in a new browser tab (GET — backend returns inline PDF) */
-  async printOrder(orderId: string): Promise<void> {
+  async printOrder(orderId: string, servedBy?: string): Promise<void> {
+    const servedByParam = servedBy ? '&servedBy=' + encodeURIComponent(servedBy) : '';
     window.open(
-      this.baseUrl + '/print/order/' + encodeURIComponent(orderId) + '?format=html&autoprint=1',
+      this.baseUrl + '/print/order/' + encodeURIComponent(orderId) + '?format=html&autoprint=1' + servedByParam,
       '_blank',
       'noopener,noreferrer'
     );
@@ -242,9 +245,9 @@ class PrinterService {
   }
 
   /** Opens receipt PDF — just forwards to printOrder */
-  async printReceipt(data: ReceiptData): Promise<void> {
+  async printReceipt(data: ReceiptData, servedBy?: string): Promise<void> {
     if (!data.orderNumber) throw new Error('No order number provided');
-    await this.printOrder(data.orderNumber);
+    await this.printOrder(data.orderNumber, servedBy);
   }
 
   async printPaymentReceipt(data: PaymentReceiptPayload): Promise<void> {

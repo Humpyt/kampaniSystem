@@ -4,6 +4,7 @@ import { useOperation } from '../contexts/OperationContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useServices } from '../contexts/ServiceContext';
 import { useAuthStore } from '../store/authStore';
+import { api } from '../services/api';
 import type { RetailProduct } from '../contexts/RetailProductContext';
 import type { Customer, CartItem, DropFormState } from '../types';
 import PillChip from '../components/drop/PillChip';
@@ -136,7 +137,7 @@ const getInitialFormState = (): DropFormState => ({
 
 export default function DropPage() {
   const { cartItems, addToCart, removeFromCart, clearCart, updateCartItem, ticketNumber, fetchTicketNumber, addOperation, updateOperation, refreshOperations } = useOperation();
-  const { customers, fetchCustomers, addCustomer } = useCustomer();
+  const { addCustomer } = useCustomer();
   const { services } = useServices();
 
   const [form, setForm] = useState<DropFormState>(getInitialFormState());
@@ -157,6 +158,10 @@ export default function DropPage() {
   const [showProducts, setShowProducts] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [serviceIdMap, setServiceIdMap] = useState<Map<string, string>>(new Map());
+  const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
+  const [customerOffset, setCustomerOffset] = useState(0);
+  const [customerHasMore, setCustomerHasMore] = useState(false);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const requiresShoeSize = SHOE_CATEGORY_NAMES.has(form.category);
@@ -221,10 +226,52 @@ export default function DropPage() {
     fetchColors();
   }, []);
 
+  const loadCustomerOptions = async (opts?: { reset?: boolean }) => {
+    const reset = opts?.reset ?? false;
+    const search = customerSearchTerm.trim();
+    const nextOffset = reset ? 0 : customerOffset;
+
+    setCustomerSearchLoading(true);
+    try {
+      const result = await api.customers.getAll({
+        limit: 50,
+        offset: nextOffset,
+        search: search || undefined,
+        sortBy: 'name',
+        sortDir: 'asc',
+      });
+
+      setCustomerOptions(prev => {
+        const base = reset ? [] : prev;
+        const merged = [...base, ...result.data];
+        const seen = new Set<string>();
+        return merged.filter(customer => {
+          if (seen.has(customer.id)) return false;
+          seen.add(customer.id);
+          return true;
+        });
+      });
+      setCustomerOffset(nextOffset + result.data.length);
+      setCustomerHasMore(Boolean(result.pagination?.hasMore));
+    } catch (error) {
+      console.error('Failed to fetch customer options:', error);
+      if (reset) {
+        setCustomerOptions([]);
+        setCustomerOffset(0);
+        setCustomerHasMore(false);
+      }
+    } finally {
+      setCustomerSearchLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!showCustomerSearch || customers.length > 0) return;
-    fetchCustomers({ limit: 10000 });
-  }, [showCustomerSearch, customers.length, fetchCustomers]);
+    if (!showCustomerSearch) return;
+    const timeout = setTimeout(() => {
+      void loadCustomerOptions({ reset: true });
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [showCustomerSearch, customerSearchTerm]);
 
   // Build service name-to-ID map
   useEffect(() => {
@@ -667,7 +714,7 @@ export default function DropPage() {
           orderNumber: operationTicketNumber,
           customerName: selectedCustomer?.name || 'N/A',
           customerPhone: selectedCustomer?.phone || undefined,
-        });
+        }, user?.name);
         // Print policy slip
         await printerService.printPolicy({
           ticketNumber: operationTicketNumber,
@@ -794,15 +841,9 @@ export default function DropPage() {
                 className="w-full pl-10 pr-4 py-3 bg-gray-700 rounded-xl text-white placeholder-gray-400 border border-gray-600 focus:border-indigo-500 outline-none"
               />
             </div>
-            {showCustomerSearch && customerSearchTerm && (
+            {showCustomerSearch && customerSearchTerm.trim() && (
               <div className="bg-gray-700 rounded-xl border border-gray-600 overflow-hidden">
-                {customers
-                  .filter(c =>
-                    c.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-                    c.phone.includes(customerSearchTerm)
-                  )
-                  .slice(0, 5)
-                  .map(customer => (
+                {customerOptions.map(customer => (
                     <button
                       key={customer.id}
                       onClick={() => handleCustomerSelect(customer)}
@@ -812,9 +853,23 @@ export default function DropPage() {
                       <div className="text-xs text-gray-400">{customer.phone}</div>
                     </button>
                   ))}
+                {customerSearchLoading && (
+                  <div className="px-4 py-3 text-xs text-gray-400">Searching customers...</div>
+                )}
+                {!customerSearchLoading && customerOptions.length === 0 && (
+                  <div className="px-4 py-3 text-xs text-gray-400">No existing customers found.</div>
+                )}
+                {!customerSearchLoading && customerHasMore && (
+                  <button
+                    onClick={() => void loadCustomerOptions({ reset: false })}
+                    className="w-full px-4 py-2 text-sm text-indigo-300 hover:text-indigo-200 hover:bg-gray-700 border-t border-gray-600 transition-colors"
+                  >
+                    Load more customers
+                  </button>
+                )}
               </div>
             )}
-            {customerSearchTerm && !customers.some(c => c.name.toLowerCase() === customerSearchTerm.toLowerCase()) && (
+            {customerSearchTerm && !customerOptions.some(c => c.name.toLowerCase() === customerSearchTerm.toLowerCase()) && (
               <div className="space-y-3 rounded-xl border border-gray-600 bg-gray-800/60 p-4">
                 <div className="flex items-center gap-2 text-sm text-gray-300">
                   <Plus className="w-4 h-4" />

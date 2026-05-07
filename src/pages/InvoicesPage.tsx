@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 interface ReceiptRow {
   id: string;
   operationId: string;
+  type: 'invoice' | 'receipt';
   ticketNumber: string | null;
   invoiceNumber: string;
   customerName: string;
@@ -45,7 +46,6 @@ export default function InvoicesPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.append('type', 'receipt');
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
 
@@ -53,7 +53,7 @@ export default function InvoicesPage() {
       setReceipts(response.data || []);
     } catch (error) {
       console.error('Failed to fetch receipts:', error);
-      toast.error('Failed to load receipts');
+      toast.error('Failed to load receipts and tickets');
     } finally {
       setLoading(false);
     }
@@ -88,12 +88,12 @@ export default function InvoicesPage() {
     <div className="min-h-screen bg-gray-900 p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Receipts</h1>
-          <p className="text-sm text-gray-400">Stored receipt PDFs for completed payments</p>
+          <h1 className="text-2xl font-bold text-white">Receipts & Tickets</h1>
+          <p className="text-sm text-gray-400">Archive of payment receipts and order tickets</p>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-right">
           <div className="text-xs uppercase tracking-widest text-emerald-300">Archive</div>
-          <div className="text-lg font-semibold text-white">{filteredReceipts.length} receipts</div>
+          <div className="text-lg font-semibold text-white">{filteredReceipts.length} records</div>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export default function InvoicesPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by customer, receipt number, or ticket..."
+              placeholder="Search by customer, document number, or ticket..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-lg border border-gray-600 bg-gray-700 py-2 pl-10 pr-4 text-white placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -150,9 +150,10 @@ export default function InvoicesPage() {
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-800/90 backdrop-blur-sm">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Receipt #</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ticket</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Document #</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ticket</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Type</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Total</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Stored PDF</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Date</th>
@@ -162,14 +163,14 @@ export default function InvoicesPage() {
             <tbody className="divide-y divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
-                    Loading receipt archive...
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                    Loading archive...
                   </td>
                 </tr>
               ) : filteredReceipts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
-                    No receipt PDFs found
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                    No records found
                   </td>
                 </tr>
               ) : (
@@ -179,8 +180,12 @@ export default function InvoicesPage() {
                     className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} transition-colors hover:bg-gray-700`}
                   >
                     <td className="px-4 py-3">
+                      <div className="text-sm text-white">{receipt.customerName}</div>
+                      <div className="text-xs text-gray-500">{receipt.customerPhone || 'N/A'}</div>
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Receipt size={15} className="text-emerald-400" />
+                        <Receipt size={15} className={receipt.type === 'receipt' ? 'text-emerald-400' : 'text-amber-400'} />
                         <span className="font-mono text-sm text-indigo-400">{receipt.invoiceNumber}</span>
                       </div>
                     </td>
@@ -188,8 +193,9 @@ export default function InvoicesPage() {
                       <span className="text-sm text-gray-300">{receipt.ticketNumber || '-'}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-white">{receipt.customerName}</div>
-                      <div className="text-xs text-gray-500">{receipt.customerPhone || 'N/A'}</div>
+                      <span className={`rounded px-2 py-1 text-xs font-medium uppercase tracking-wide ${receipt.type === 'receipt' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                        {receipt.type}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="text-sm font-medium text-white">{formatCurrency(receipt.total)}</div>

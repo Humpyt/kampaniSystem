@@ -1,8 +1,17 @@
 import { Customer, Order, Service } from '../types';
+import { getAuthToken } from '../store/authStore';
 
 const API_URL = '/api';
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
+
+const withAuthHeaders = (headers: Record<string, string> = {}) => {
+  const token = getAuthToken();
+  return {
+    ...headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
 
 const cachedJson = async <T>(url: string, ttlMs = 15000): Promise<T> => {
   const now = Date.now();
@@ -58,12 +67,25 @@ const fetchJsonWithRetry = async <T>(
     if (signal) signal.addEventListener('abort', relayAbort, { once: true });
 
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, { signal: controller.signal, headers: withAuthHeaders() });
       if (!response.ok) {
-        if (response.status >= 500 && attempt < retries) {
-          throw new Error(`Server error ${response.status}`);
+        let errorMessage = `Failed to fetch ${url}`;
+        try {
+          const payload = await response.json();
+          if (payload && typeof payload === 'object' && typeof (payload as any).error === 'string') {
+            errorMessage = (payload as any).error;
+          }
+        } catch {
+          // Keep fallback message when response body is not JSON
         }
-        throw new Error(`Failed to fetch ${url}`);
+
+        const statusMessage = `${response.status} ${response.statusText}`.trim();
+        const combinedMessage = `${errorMessage} (${statusMessage})`;
+
+        if (response.status >= 500 && attempt < retries) {
+          throw new Error(combinedMessage);
+        }
+        throw new Error(combinedMessage);
       }
       return await response.json() as T;
     } catch (error) {
@@ -165,9 +187,9 @@ export const api = {
       };
       const response = await fetch(`${API_URL}/customers`, {
         method: 'POST',
-        headers: {
+        headers: withAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(capitalizedCustomer),
       });
       if (!response.ok) throw new Error('Failed to create customer');
@@ -193,9 +215,9 @@ export const api = {
     update: async (id: string, customer: Partial<Customer>): Promise<Customer> => {
       const response = await fetch(`${API_URL}/customers/${id}`, {
         method: 'PUT',
-        headers: {
+        headers: withAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(customer),
       });
       if (!response.ok) throw new Error('Failed to update customer');
@@ -206,6 +228,7 @@ export const api = {
     delete: async (id: string): Promise<void> => {
       const response = await fetch(`${API_URL}/customers/${id}`, {
         method: 'DELETE',
+        headers: withAuthHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete customer');
       clearApiCache(`${API_URL}/customers`);
@@ -233,9 +256,9 @@ export const api = {
     }): Promise<Order> => {
       const response = await fetch(`${API_URL}/orders`, {
         method: 'POST',
-        headers: {
+        headers: withAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(order),
       });
       if (!response.ok) throw new Error('Failed to create order');
@@ -253,9 +276,9 @@ export const api = {
     create: async (service: Omit<Service, 'id'>): Promise<Service> => {
       const response = await fetch(`${API_URL}/services`, {
         method: 'POST',
-        headers: {
+        headers: withAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(service),
       });
       if (!response.ok) throw new Error('Failed to create service');
@@ -266,9 +289,9 @@ export const api = {
     update: async (id: string, service: Partial<Service>): Promise<Service> => {
       const response = await fetch(`${API_URL}/services/${id}`, {
         method: 'PATCH',
-        headers: {
+        headers: withAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(service),
       });
       if (!response.ok) throw new Error('Failed to update service');

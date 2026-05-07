@@ -100,7 +100,7 @@ const menuGroups = [
     title: "Management",
     items: [
       { icon: Settings, label: "Operation", to: "/operation", permission: "view_operations" },
-      { icon: Wrench, label: "Services", to: "/services", roles: ["admin", "manager", "staff"] },
+      { icon: Wrench, label: "Services", to: "/services", roles: ["admin"] },
       { icon: Wallet, label: "Expenses", to: "/expenses" },
       { icon: ShoppingBag, label: "Sales", to: "/sales", permission: "view_sales" },
     ]

@@ -1,10 +1,11 @@
 import React from 'react';
-import { Users, Crown, TrendingUp, UserPlus } from 'lucide-react';
+import { Users, Crown, UserPlus } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import type { Customer } from '../../types';
 
 interface CustomerSummaryCardsProps {
-  customers: Customer[];
+  totalCustomers: number;
+  visibleCustomers: Customer[];
 }
 
 interface SummaryCardProps {
@@ -38,35 +39,24 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   </div>
 );
 
-const CustomerSummaryCards: React.FC<CustomerSummaryCardsProps> = ({ customers }) => {
-  const totalCustomers = customers.length;
-
-  const activeCustomers = customers.filter(c => c.status === 'active').length;
-
+const CustomerSummaryCards: React.FC<CustomerSummaryCardsProps> = ({ totalCustomers, visibleCustomers }) => {
   const thisMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-  const newThisMonth = customers.filter(c =>
+  const newThisMonth = visibleCustomers.filter(c =>
     c.lastVisit && c.lastVisit.startsWith(thisMonth)
   ).length;
 
-  const topSpender = customers.reduce((max, c) =>
+  const topSpender = visibleCustomers.reduce((max, c) =>
     c.totalSpent > (max?.totalSpent || 0) ? c : max
   , null as Customer | null);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
       <SummaryCard
         title="Total Customers"
         value={totalCustomers}
         icon={Users}
         iconColor="text-indigo-400"
         iconBgColor="bg-indigo-500/10"
-      />
-      <SummaryCard
-        title="Active Customers"
-        value={activeCustomers}
-        icon={TrendingUp}
-        iconColor="text-emerald-400"
-        iconBgColor="bg-emerald-500/10"
       />
       <SummaryCard
         title="New This Month"

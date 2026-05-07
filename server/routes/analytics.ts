@@ -204,9 +204,9 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      totalSpent: row.totalSpent || 0,
-      orderCount: row.orderCount || 0,
-      lastVisit: row.lastVisit
+      totalSpent: row.totalSpent ?? row.totalspent ?? 0,
+      orderCount: row.orderCount ?? row.ordercount ?? 0,
+      lastVisit: row.lastVisit ?? row.lastvisit ?? null
     }));
 
     // Get all customers ordered by order count
@@ -228,9 +228,9 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      totalSpent: row.totalSpent || 0,
-      orderCount: row.orderCount || 0,
-      lastVisit: row.lastVisit
+      totalSpent: row.totalSpent ?? row.totalspent ?? 0,
+      orderCount: row.orderCount ?? row.ordercount ?? 0,
+      lastVisit: row.lastVisit ?? row.lastvisit ?? null
     }));
 
     // Get all customers ordered by loyalty points
@@ -251,8 +251,8 @@ router.get('/customer-rankings', async (req, res) => {
       id: row.id,
       name: row.name,
       phone: row.phone,
-      loyaltyPoints: row.loyaltyPoints || 0,
-      totalSpent: row.totalSpent || 0
+      loyaltyPoints: row.loyaltyPoints ?? row.loyaltypoints ?? 0,
+      totalSpent: row.totalSpent ?? row.totalspent ?? 0
     }));
 
     res.json({
@@ -284,11 +284,11 @@ router.get('/service-performance', async (req, res) => {
     `).all() as any[];
 
     const byRevenue = byRevenueResult.map(row => ({
-      serviceId: row.serviceId,
-      serviceName: row.serviceName,
+      serviceId: row.serviceId ?? row.serviceid ?? null,
+      serviceName: row.serviceName ?? row.servicename ?? 'Unknown Service',
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: row.totalRevenue ?? row.totalrevenue ?? 0,
+      orderCount: row.orderCount ?? row.ordercount ?? 0
     }));
 
     // Get service performance by order count
@@ -306,11 +306,11 @@ router.get('/service-performance', async (req, res) => {
     `).all() as any[];
 
     const byOrders = byOrdersResult.map(row => ({
-      serviceId: row.serviceId,
-      serviceName: row.serviceName,
+      serviceId: row.serviceId ?? row.serviceid ?? null,
+      serviceName: row.serviceName ?? row.servicename ?? 'Unknown Service',
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: row.totalRevenue ?? row.totalrevenue ?? 0,
+      orderCount: row.orderCount ?? row.ordercount ?? 0
     }));
 
     // Get category breakdown
@@ -327,8 +327,8 @@ router.get('/service-performance', async (req, res) => {
 
     const categoryBreakdown = categoryBreakdownResult.map(row => ({
       category: row.category || 'Uncategorized',
-      totalRevenue: row.totalRevenue || 0,
-      orderCount: row.orderCount || 0
+      totalRevenue: row.totalRevenue ?? row.totalrevenue ?? 0,
+      orderCount: row.orderCount ?? row.ordercount ?? 0
     }));
 
     res.json({
@@ -454,15 +454,25 @@ router.get('/unpaid-balances', async (req, res) => {
 // GET /api/analytics/profit-summary - Returns sales, expenses, and profit summary
 router.get('/profit-summary', async (req, res) => {
   try {
+    const { created_by } = req.query;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
+    // Build optional staff filter for operations queries
+    const opFilter = created_by ? 'WHERE created_by = ?' : '';
+    const opFilterAnd = created_by ? 'AND created_by = ?' : '';
+    const opParams = (sql: string[]) => { if (created_by) sql.push(created_by as string); };
+
     // Total sales (all time)
-    const totalSalesResult = await db.prepare(`
-      SELECT COALESCE(SUM(total_amount), 0) as total FROM operations
-    `).get() as any;
+    const totalSalesSql = created_by
+      ? 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations WHERE created_by = ?'
+      : 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations';
+    const totalSalesStmt = db.prepare(totalSalesSql);
+    const totalSalesResult = (created_by
+      ? await totalSalesStmt.get(created_by)
+      : await totalSalesStmt.get()) as any;
 
     // Total expenses (all time)
     const totalExpensesResult = await db.prepare(`
@@ -470,18 +480,22 @@ router.get('/profit-summary', async (req, res) => {
     `).get() as any;
 
     // Sales this month
-    const salesThisMonthResult = await db.prepare(`
-      SELECT COALESCE(SUM(total_amount), 0) as total
-      FROM operations
-      WHERE created_at >= ?
-    `).get(startOfMonth.toISOString()) as any;
+    const salesThisMonthSql = created_by
+      ? 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations WHERE created_at >= ? AND created_by = ?'
+      : 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations WHERE created_at >= ?';
+    const salesThisMonthStmt = db.prepare(salesThisMonthSql);
+    const salesThisMonthResult = (created_by
+      ? await salesThisMonthStmt.get(startOfMonth.toISOString(), created_by)
+      : await salesThisMonthStmt.get(startOfMonth.toISOString())) as any;
 
     // Sales last month
-    const salesLastMonthResult = await db.prepare(`
-      SELECT COALESCE(SUM(total_amount), 0) as total
-      FROM operations
-      WHERE created_at >= ? AND created_at <= ?
-    `).get(startOfLastMonth.toISOString(), endOfLastMonth.toISOString()) as any;
+    const salesLastMonthSql = created_by
+      ? 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations WHERE created_at >= ? AND created_at <= ? AND created_by = ?'
+      : 'SELECT COALESCE(SUM(total_amount), 0) as total FROM operations WHERE created_at >= ? AND created_at <= ?';
+    const salesLastMonthStmt = db.prepare(salesLastMonthSql);
+    const salesLastMonthResult = (created_by
+      ? await salesLastMonthStmt.get(startOfLastMonth.toISOString(), endOfLastMonth.toISOString(), created_by)
+      : await salesLastMonthStmt.get(startOfLastMonth.toISOString(), endOfLastMonth.toISOString())) as any;
 
     // Expenses this month
     const expensesThisMonthResult = await db.prepare(`
@@ -521,15 +535,13 @@ router.get('/profit-summary', async (req, res) => {
       : 0;
 
     // Get monthly breakdown for last 6 months
-    const monthlyBreakdownResult = await db.prepare(`
-      SELECT
-        TO_CHAR(created_at, 'YYYY-MM') as month,
-        SUM(total_amount) as sales
-      FROM operations
-      WHERE created_at >= NOW() - INTERVAL '6 months'
-      GROUP BY TO_CHAR(created_at, 'YYYY-MM')
-      ORDER BY month ASC
-    `).all() as any[];
+    const monthlySql = created_by
+      ? `SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(total_amount) as sales FROM operations WHERE created_at >= NOW() - INTERVAL '6 months' AND created_by = ? GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY month ASC`
+      : `SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(total_amount) as sales FROM operations WHERE created_at >= NOW() - INTERVAL '6 months' GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY month ASC`;
+    const monthlyStmt = db.prepare(monthlySql);
+    const monthlyBreakdownResult = (created_by
+      ? await monthlyStmt.all(created_by)
+      : await monthlyStmt.all()) as any[];
 
     const monthlyExpenseResult = await db.prepare(`
       SELECT

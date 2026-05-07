@@ -265,7 +265,7 @@ function App() {
                         </ProtectedRoute>
                       } />
                       <Route path="services" element={
-                        <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
+                        <ProtectedRoute requiredRoles={['admin']}>
                           <Suspense fallback={<PageLoader />}>
                             <ServicesPage />
                           </Suspense>

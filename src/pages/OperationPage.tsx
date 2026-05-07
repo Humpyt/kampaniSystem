@@ -20,6 +20,16 @@ const safeFormat = (date: string | Date | null | undefined, formatStr: string) =
   }
 };
 
+const formatPaymentMethod = (method?: string | null) => {
+  if (!method) return 'Unknown';
+  const normalized = String(method).trim().toLowerCase().replace(/\s+/g, '_');
+  if (['cash'].includes(normalized)) return 'Cash';
+  if (['mobile', 'mobile_money', 'momo'].includes(normalized)) return 'Mobile';
+  if (['card', 'visa', 'mastercard', 'pos'].includes(normalized)) return 'Card';
+  if (['credit', 'store_credit', 'account_credit'].includes(normalized)) return 'Credit';
+  return method.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 export default function OperationPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -190,14 +200,15 @@ export default function OperationPage() {
   useEffect(() => {
     const fetchProfit = async () => {
       try {
-        const data = await getProfitSummary();
+        const createdBy = user?.role === 'staff' ? user.id : undefined;
+        const data = await getProfitSummary(createdBy);
         setProfitSummary(data);
       } catch (error) {
         console.error('Failed to fetch profit summary:', error);
       }
     };
     fetchProfit();
-  }, []);
+  }, [user]);
 
   // Fetch expenses when expenses tab is active
   useEffect(() => {
@@ -221,6 +232,9 @@ export default function OperationPage() {
     amount: operation.totalAmount || 0,
     paid: operation.paidAmount || 0,
     balance: (operation.totalAmount || 0) - (operation.paidAmount || 0),
+    paymentMethod: operation.paymentRecords?.length
+      ? operation.paymentRecords[operation.paymentRecords.length - 1]?.payment_method
+      : ((operation as any).paymentMethod || null),
     discount: (operation as any).discount || 0,
     status: operation.workflowStatus || 'pending',
     paymentStatus: operation.paymentStatus || 'unpaid',
@@ -570,167 +584,81 @@ export default function OperationPage() {
 
       {/* Work Table */}
       {activeTab === 'operations' && (
-      <div className="card-bevel overflow-hidden">
-        <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
-          <table className="w-full">
-            <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ticket No</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer ID</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created By</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Name</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Pairs</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ready By</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Amount</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Balance</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Flags</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Status</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
-              </tr>
-            </thead>
-          <tbody className="divide-y divide-gray-700">
-            {filteredWorkItems.map((item, index) => (
-              <tr 
-                key={item.ticketNo} 
-                className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700`}
-              >
-                <td className="px-4 py-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                      {item.ticketNo}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      {item.custNo}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-300">
-                  {item.staffName || 'N/A'}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center">
-                    <div className="text-sm font-medium text-white">{item.name}</div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-700 text-white text-sm">
-                    {item.pair}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-sm text-gray-300">{item.createDate}</div>
-                  <div className="text-xs text-gray-500">{item.createTime}</div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-sm text-gray-300">{item.readyDate}</div>
-                  <div className="text-xs text-gray-500">{item.readyTime}</div>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {item.discount > 0 ? (
-                    <div>
-                      <div className="text-xs text-gray-400 line-through">
-                        {formatCurrency(item.amount + item.discount)}
-                      </div>
-                      <div className="text-sm font-medium text-green-400">
-                        {formatCurrency(item.amount)}
-                      </div>
-                      <div className="text-xs text-pink-400">
-                        -{formatCurrency(item.discount)}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm font-medium text-white">
-                      {formatCurrency(item.amount)}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {item.balance > 0 ? (
-                    <div className="text-sm font-bold text-red-400">
-                      {formatCurrency(item.balance)}
-                    </div>
-                  ) : (
-                    <div className="text-sm font-medium text-green-400">
-                      Paid
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <div className="flex flex-wrap gap-1 justify-center">
-                    {item.isDelivery && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                        Delivery
-                      </span>
-                    )}
-                    {item.isPickup && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800">
-                        Pickup
-                      </span>
-                    )}
-                    {item.isNoCharge && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                        No Charge
-                      </span>
-                    )}
-                    {item.isDoOver && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                        Do Over
-                      </span>
-                    )}
-                    {item.discount > 0 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800">
-                        Discount
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    ${item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}
-                    ${item.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : ''}
-                    ${item.status === 'ready' ? 'bg-indigo-100 text-indigo-800' : ''}
-                    ${item.status === 'delivered' ? 'bg-green-100 text-green-800' : ''}
-                    ${item.status === 'held' ? 'bg-purple-100 text-purple-800' : ''}
-                    ${item.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
-                  `}>
-                    {item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.slice(1)}
-                  </span>
-                  <div className="flex items-center justify-center space-x-1 mt-1">
-                    {item.isNoCharge && (
-                      <span className="text-xs text-gray-400">No Charge</span>
-                    )}
-                    {item.isDoOver && (
-                      <span className="text-xs text-gray-400">Do Over</span>
-                    )}
-                    {item.isDelivery && (
-                      <span className="text-xs text-gray-400">Delivery</span>
-                    )}
-                    {item.isPickup && (
-                      <span className="text-xs text-gray-400">Pickup</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end space-x-2">
-                    <button 
-                      className="text-indigo-400 hover:text-indigo-300"
-                      onClick={() => handleViewDetails(item.id)}
-                    >
-                      View Details
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          </table>
+      <>
+        <div className="grid grid-cols-1 gap-3 lg:hidden">
+          {filteredWorkItems.map((item) => (
+            <div key={item.ticketNo} className="card-bevel p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-gray-400">{item.ticketNo}</p>
+                  <p className="text-sm font-semibold text-white">{item.name}</p>
+                  <p className="text-xs text-gray-500">{item.custNo}</p>
+                </div>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                  ${item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}
+                  ${item.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : ''}
+                  ${item.status === 'ready' ? 'bg-indigo-100 text-indigo-800' : ''}
+                  ${item.status === 'delivered' ? 'bg-green-100 text-green-800' : ''}
+                  ${item.status === 'held' ? 'bg-purple-100 text-purple-800' : ''}
+                  ${item.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
+                `}>
+                  {item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.slice(1)}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-gray-800 rounded-md p-2"><p className="text-gray-400">Amount</p><p className="text-white font-semibold">{formatCurrency(item.amount)}</p></div>
+                <div className="bg-gray-800 rounded-md p-2"><p className="text-gray-400">Balance</p><p className={`font-semibold ${item.balance > 0 ? 'text-red-400' : 'text-green-400'}`}>{item.balance > 0 ? formatCurrency(item.balance) : 'Paid'}</p></div>
+                <div className="bg-gray-800 rounded-md p-2"><p className="text-gray-400">Payment</p><p className="text-indigo-300 font-medium">{formatPaymentMethod(item.paymentMethod)}</p></div>
+                <div className="bg-gray-800 rounded-md p-2"><p className="text-gray-400">Pairs</p><p className="text-white font-semibold">{item.pair}</p></div>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs text-gray-400"><span>{item.createDate} {item.createTime}</span><button className="text-indigo-400 hover:text-indigo-300 font-medium" onClick={() => handleViewDetails(item.id)}>View Details</button></div>
+            </div>
+          ))}
         </div>
-      </div>
+
+        <div className="card-bevel overflow-hidden hidden lg:block">
+          <div className="max-h-[500px] overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+            <table className="w-full min-w-[1200px]">
+              <thead className="bg-gray-800/80 backdrop-blur-sm sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ticket No</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer ID</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created By</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Name</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Pairs</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Ready By</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Payment</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Amount</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Balance</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Flags</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Status</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {filteredWorkItems.map((item, index) => (
+                  <tr key={item.ticketNo} className={`${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} hover:bg-gray-700`}>
+                    <td className="px-4 py-3"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">{item.ticketNo}</span></td>
+                    <td className="px-4 py-3"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{item.custNo}</span></td>
+                    <td className="px-4 py-3 text-sm text-gray-300">{item.staffName || 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-white">{item.name}</td>
+                    <td className="px-4 py-3 text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-700 text-white text-sm">{item.pair}</span></td>
+                    <td className="px-4 py-3"><div className="text-sm text-gray-300">{item.createDate}</div><div className="text-xs text-gray-500">{item.createTime}</div></td>
+                    <td className="px-4 py-3"><div className="text-sm text-gray-300">{item.readyDate}</div><div className="text-xs text-gray-500">{item.readyTime}</div></td>
+                    <td className="px-4 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-300">{formatPaymentMethod(item.paymentMethod)}</span></td>
+                    <td className="px-4 py-3 text-right">{item.discount > 0 ? (<div><div className="text-xs text-gray-400 line-through">{formatCurrency(item.amount + item.discount)}</div><div className="text-sm font-medium text-green-400">{formatCurrency(item.amount)}</div><div className="text-xs text-pink-400">-{formatCurrency(item.discount)}</div></div>) : (<div className="text-sm font-medium text-white">{formatCurrency(item.amount)}</div>)}</td>
+                    <td className="px-4 py-3 text-right">{item.balance > 0 ? (<div className="text-sm font-bold text-red-400">{formatCurrency(item.balance)}</div>) : (<div className="text-sm font-medium text-green-400">Paid</div>)}</td>
+                    <td className="px-4 py-3 text-center"><div className="flex flex-wrap gap-1 justify-center">{item.isDelivery && (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">Delivery</span>)}{item.isPickup && (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800">Pickup</span>)}{item.isNoCharge && (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">No Charge</span>)}{item.isDoOver && (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Do Over</span>)}{item.discount > 0 && (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800">Discount</span>)}</div></td>
+                    <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''} ${item.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : ''} ${item.status === 'ready' ? 'bg-indigo-100 text-indigo-800' : ''} ${item.status === 'delivered' ? 'bg-green-100 text-green-800' : ''} ${item.status === 'held' ? 'bg-purple-100 text-purple-800' : ''} ${item.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}`}>{item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.slice(1)}</span></td>
+                    <td className="px-4 py-3 text-right"><button className="text-indigo-400 hover:text-indigo-300" onClick={() => handleViewDetails(item.id)}>View Details</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
       )}
 
       {/* Balance Sheet Modal */}

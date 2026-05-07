@@ -53,11 +53,11 @@ const BRAND = {
 };
 
 const STORE_INFO = {
-  brand: 'KAMPANIS',
-  fullName: 'KAMPANIS SHOES & BAGS CLINIC',
+  brand: 'KAMPANI',
+  fullName: 'KAMPANI SHOES & BAGS CLINIC',
   tagline: 'Shoes & Bags Clinic',
-  location: 'Forest Mall, Kololo, Kampala, Uganda',
-  phone: '+256 789 183784',
+  location: 'FORESTMALL LUGOGO GF06',
+  phone: 'Mob: 0789 183 784 | 0704 830 016',
   footerLine1: 'Thank you for your business.',
   footerLine2: 'Items not collected after 30 days attract storage fees.',
   footerLine3: 'After 60 days, uncollected items may be disposed of.',
@@ -212,6 +212,7 @@ async function generateReceiptPDF(data: {
   tax?: number;
   notes?: string;
   showBrandImage?: boolean;
+  servedBy?: string;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
   const PW = 226.8;
@@ -229,17 +230,19 @@ async function generateReceiptPDF(data: {
   const dateStr = compact(data.date || '');
   const timeStr = compact(data.time || '');
   const readyText = compact([data.promisedDate, data.promisedTime].filter(Boolean).join(' '));
+  const servedBy = compact(data.servedBy || '');
   const totalQty = data.items.reduce((s, i) => s + (i.quantity || 1), 0);
   const brandImagePath = data.showBrandImage === false ? null : resolveReceiptBrandImage();
   const itemsForLayout = data.items.map(item => {
     const qty = item.quantity || 1;
     const amount = item.price * qty;
-    const [line1Raw, line2Raw] = String(item.description || 'Service').split('\n');
+    const [mainLine, ...rest] = String(item.description || 'Service').split('\n');
+    const detailLine = rest.join(' | ');
     return {
       qty,
       amount,
-      line1: limitText(compact(line1Raw || 'Service'), 30),
-      line2: limitText(compact(line2Raw || ''), 38),
+      line1: limitText(compact(mainLine || 'Service'), 30),
+      line2: limitText(compact(detailLine || ''), 38),
     };
   });
 
@@ -338,7 +341,6 @@ async function generateReceiptPDF(data: {
   if (cacct) metaPairs.push(['Account', cacct]);
   if (readyText) metaPairs.push(['Ready', readyText]);
   if (caddr) metaPairs.push(['Address', limitText(caddr, 54)]);
-
   for (const [label, value] of metaPairs) {
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor(BRAND.ink);
     doc.text(label.toUpperCase(), ML, y, { width: 58 });
@@ -395,6 +397,30 @@ async function generateReceiptPDF(data: {
 
   rule(y);
   y += 8;
+
+  // Pickup date - prominent display
+  if (readyText) {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND.ink);
+    doc.text('PICKUP DATE', ML, y, { align: 'center', width: CW });
+    y += 12;
+    doc.font('Helvetica-Bold').fontSize(14);
+    doc.text(readyText, ML, y, { align: 'center', width: CW });
+    y += 10;
+  }
+
+  // Thank you
+  doc.font('Helvetica-Bold').fontSize(7.8).fillColor(BRAND.ink);
+  doc.text('Thank you for your business.', ML, y, { align: 'center', width: CW });
+  y += 10;
+
+  // Served by
+  if (servedBy) {
+    doc.font('Helvetica').fontSize(7.5).fillColor(BRAND.ink);
+    doc.text('Served by: ' + servedBy, ML, y, { align: 'center', width: CW });
+    y += 10;
+  }
+
+  y += 2;
   doc.font('Helvetica-Bold').fontSize(7.8).fillColor(BRAND.ink);
   doc.text(STORE_INFO.footerLine2, ML, y, { align: 'center', width: CW });
   y += 10;
@@ -434,6 +460,7 @@ async function generateOrderPrintHtml(data: {
   ticketNumber: string;
   customerName?: string;
   customerPhone?: string;
+  customerAccount?: string;
   createdAt: string;
   promisedDate?: string;
   items: Array<{ description: string; price: number; quantity?: number }>;
@@ -443,6 +470,7 @@ async function generateOrderPrintHtml(data: {
   paidAmount?: number;
   notes?: string;
   autoPrint?: boolean;
+  servedBy?: string;
 }): Promise<string> {
   const createdAt = new Date(data.createdAt);
   const createdLabel = createdAt.toLocaleString('en-UG', {
@@ -464,6 +492,7 @@ async function generateOrderPrintHtml(data: {
   const paidAmount = Number(data.paidAmount) || 0;
   const discountAmount = Math.max(0, Number(data.discount) || (Number(data.subtotal) - Number(data.total)));
   const balance = Math.max(0, (Number(data.total) || 0) - paidAmount);
+  const servedBy = data.servedBy || '';
   const barcodeDataUri = await generateBarcodeDataUri(data.ticketNumber || data.orderId);
   const itemRows = data.items.length > 0
     ? data.items.map((item) => {
@@ -617,6 +646,7 @@ async function generateOrderPrintHtml(data: {
       <div class="divider"></div>
       <div class="meta-row"><div class="meta-label">Customer</div><div class="meta-value">${escapeHtml(data.customerName || 'Walk-in Customer')}</div></div>
       <div class="meta-row"><div class="meta-label">Phone</div><div class="meta-value">${escapeHtml(data.customerPhone || '-')}</div></div>
+      ${data.customerAccount ? `<div class="meta-row"><div class="meta-label">Store Credit</div><div class="meta-value">${escapeHtml(data.customerAccount)}</div></div>` : ''}
       <div class="meta-row"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(createdLabel)}</div></div>
       ${promisedLabel ? `<div class="meta-row"><div class="meta-label">Ready</div><div class="meta-value">${escapeHtml(promisedLabel)}</div></div>` : ''}
       <div class="divider"></div>
@@ -629,8 +659,15 @@ async function generateOrderPrintHtml(data: {
       ${paidAmount > 0 ? `<div class="total-row"><span>Paid</span><span>${escapeHtml(formatCurrency(paidAmount))}</span></div>` : ''}
       ${balance > 0 ? `<div class="total-row strong"><span>Balance</span><span>${escapeHtml(formatCurrency(balance))}</span></div>` : ''}
       ${data.notes ? `<div class="divider"></div><div>${escapeHtml(data.notes)}</div>` : ''}
+      ${promisedLabel ? `
+        <div class="center" style="margin-top: 16px;">
+          <div style="font-size: 13px;">PICKUP DATE</div>
+          <div style="font-size: 18px; font-weight: 700;">${escapeHtml(promisedLabel)}</div>
+        </div>
+      ` : ''}
       <div class="footer">
-        <div>${escapeHtml(STORE_INFO.footerLine1)}</div>
+        <div>Thank you for your business.</div>
+        ${servedBy ? `<div>Served by: ${escapeHtml(servedBy)}</div>` : ''}
         <div>${escapeHtml(STORE_INFO.footerLine2)}</div>
         <div>${escapeHtml(STORE_INFO.footerLine3)}</div>
       </div>
@@ -709,7 +746,7 @@ router.get("/print/order/:id", async (req, res) => {
   const { id } = req.params;
 
   const order = await db.get(`
-    SELECT o.*, c.name as customer_name, c.phone as customer_phone
+    SELECT o.*, c.name as customer_name, c.phone as customer_phone, c.account_balance
     FROM operations o
     LEFT JOIN customers c ON o.customer_id = c.id
     WHERE o.id = $1 OR o.ticket_number = $1
@@ -823,6 +860,8 @@ router.get("/print/order/:id", async (req, res) => {
   }
 
   const orderTotal = Number(order.total_amount) || subtotal;
+  const storeCreditAmount = Number(order.account_balance) || 0;
+  const storeCreditLabel = storeCreditAmount > 0 ? formatCurrency(storeCreditAmount) : '';
 
   // Build minimal ZPL for USB printer (silent)
   const safe = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/\^/g, '\\^').replace(/_/g, '\\_');
@@ -870,6 +909,7 @@ router.get("/print/order/:id", async (req, res) => {
     ['Customer', order.customer_name || 'N/A'],
   ];
   if (order.customer_phone) ip.push(['Phone', order.customer_phone]);
+  if (storeCreditAmount > 0) ip.push(['Store Credit', fmt(storeCreditAmount)]);
   for (const [l, v] of ip) { zl.push(fo(col1X,y)+font(22,22)+'^B1 '+fd(l+' :')); zl.push(fo(col2X,y)+font(22,22)+'^B0 '+fd(v)); y+=LH+4; }
   if (order.promised_date) { const pd = new Date(order.promised_date); const pdStr = pd.toLocaleDateString('en-UG', {weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}); const ptStr = pd.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}); zl.push(fo(LM,y)+font(20,20)+' '+fd('Ready:')); y+=LH+4; zl.push(fo(LM,y)+font(24,24)+' '+fd(pdStr)); y+=LH+6; zl.push(fo(LM,y)+font(24,24)+' '+fd(ptStr)); y+=LH+8; zl.push(vl(y,2)); y+=10; }
   y+=5; zl.push(vl(y,2)); y+=12;
@@ -924,6 +964,7 @@ router.get("/print/order/:id", async (req, res) => {
       ticketNumber: order.ticket_number || order.id,
       customerName: order.customer_name || undefined,
       customerPhone: order.customer_phone || undefined,
+      customerAccount: storeCreditLabel || undefined,
       createdAt: order.created_at,
       promisedDate: order.promised_date || undefined,
       items: lineItems.map((item) => ({
@@ -937,6 +978,7 @@ router.get("/print/order/:id", async (req, res) => {
       paidAmount: Number(order.paid_amount) || 0,
       notes: order.notes || undefined,
       autoPrint: req.query.autoprint === '1',
+      servedBy: (req.query.servedBy as string) || undefined,
     }));
     return;
   }
@@ -949,6 +991,7 @@ router.get("/print/order/:id", async (req, res) => {
       ticketNumber: order.ticket_number || order.id,
       customerName: order.customer_name || undefined,
       customerPhone: order.customer_phone || undefined,
+      customerAccount: storeCreditLabel || undefined,
       date: new Date(order.created_at).toLocaleDateString('en-UG', { day: '2-digit', month: '2-digit', year: 'numeric' }),
       time: new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
       promisedDate: order.promised_date ? new Date(order.promised_date).toLocaleDateString('en-UG', {day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short'}) : undefined,
@@ -961,6 +1004,7 @@ router.get("/print/order/:id", async (req, res) => {
       amountPaid: Number(order.paid_amount) || undefined,
       balance: (Number(order.paid_amount) || 0) !== orderTotal ? (orderTotal - (Number(order.paid_amount) || 0)) : undefined,
       notes: order.notes || undefined,
+      servedBy: (req.query.servedBy as string) || undefined,
     });
     
     res.setHeader('Content-Type', 'application/pdf');
@@ -1194,7 +1238,25 @@ router.post('/print/quotation/:id', async (req: Request, res: Response) => {
 // Payment receipt — returns PDF to browser, optionally prints USB
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/print/payment-receipt', async (req, res) => {
-  const { ticketId, ticketNumber, customerName, customerPhone, items, subtotal, discount, tax, total, amountPaid, balance, paymentMethod, date } = req.body;
+  const { ticketId, ticketNumber, customerName, customerPhone, items, subtotal, discount, tax, total, amountPaid, balance, paymentMethod, date, servedBy } = req.body;
+  let storeCreditAmount = 0;
+
+  try {
+    const operationReference = compact(ticketId || ticketNumber);
+    if (operationReference) {
+      const operation = await db.get(`
+        SELECT c.account_balance
+        FROM operations o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        WHERE o.id = $1 OR o.ticket_number = $1
+      `, [operationReference]);
+      storeCreditAmount = Number(operation?.account_balance) || 0;
+    }
+  } catch (error) {
+    console.error('Failed to fetch customer store credit for receipt:', error);
+  }
+
+  const storeCreditLabel = storeCreditAmount > 0 ? formatCurrency(storeCreditAmount) : '';
 
   const flatRows: { description: string; price: number }[] = [];
   if (items && items.length > 0) {
@@ -1277,6 +1339,7 @@ router.post('/print/payment-receipt', async (req, res) => {
     ['Customer', customerName || 'N/A'],
   ];
   if (customerPhone) ip.push(['Phone', customerPhone]);
+  if (storeCreditAmount > 0) ip.push(['Store Credit', fmt(storeCreditAmount)]);
   for (const [l, v] of ip) { zl.push(fo(col1X,y)+font(22,22)+'^B1 '+fd(l+' :')); zl.push(fo(col2X,y)+font(22,22)+'^B0 '+fd(v)); y+=LH+4; }
   y+=5; zl.push(vl(y,2)); y+=12;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(22,22)+' ^B1 '+fd('SERVICE DETAILS')); y+=8;
@@ -1315,6 +1378,7 @@ router.post('/print/payment-receipt', async (req, res) => {
     const pdfBuf = await generateReceiptPDF({
       title: 'PAYMENT RECEIPT',
       ticketId, ticketNumber, customerName, customerPhone, date,
+      customerAccount: storeCreditLabel || undefined,
       items: flatRows,
       subtotal: subtotal || total || 0,
       discount: discountAmount,
@@ -1324,6 +1388,7 @@ router.post('/print/payment-receipt', async (req, res) => {
       balance: remaining,
       paymentMethod: paymentMethod || 'Cash',
       showBrandImage: false,
+      servedBy: servedBy || undefined,
     });
 
     try {

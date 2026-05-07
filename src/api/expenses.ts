@@ -137,8 +137,11 @@ export interface ProfitSummary {
   }[];
 }
 
-export const getProfitSummary = async (): Promise<ProfitSummary> => {
-  const response = await fetch(`${API_BASE}/analytics/profit-summary`, {
+export const getProfitSummary = async (createdBy?: string): Promise<ProfitSummary> => {
+  const url = createdBy
+    ? `${API_BASE}/analytics/profit-summary?created_by=${encodeURIComponent(createdBy)}`
+    : `${API_BASE}/analytics/profit-summary`;
+  const response = await fetch(url, {
     headers: getHeaders()
   });
 
