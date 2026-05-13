@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_ENDPOINTS } from '../config/api';
-import { Calendar, Download, Eye, FileArchive, Receipt, Search } from 'lucide-react';
+import { Calendar, Download, Eye, FileArchive, MessageCircle, Receipt, Search } from 'lucide-react';
 import { formatCurrency } from '../utils/formatCurrency';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -27,6 +27,7 @@ export default function InvoicesPage() {
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'receipt' | 'invoice'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -60,6 +61,9 @@ export default function InvoicesPage() {
   };
 
   const filteredReceipts = receipts.filter((receipt) => {
+    if (typeFilter !== 'all' && receipt.type !== typeFilter) {
+      return false;
+    }
     const needle = searchTerm.toLowerCase();
     return (
       receipt.customerName.toLowerCase().includes(needle) ||
@@ -84,6 +88,17 @@ export default function InvoicesPage() {
     window.open(url, '_blank');
   };
 
+  const shareOnWhatsApp = (receipt: ReceiptRow) => {
+    if (!receipt.pdfUrl) {
+      toast.error('PDF not available yet');
+      return;
+    }
+    const absoluteUrl = new URL(receipt.pdfUrl, window.location.origin).toString();
+    const message = `Receipt ${receipt.invoiceNumber} for ${receipt.customerName}: ${absoluteUrl}`;
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -93,7 +108,9 @@ export default function InvoicesPage() {
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-right">
           <div className="text-xs uppercase tracking-widest text-emerald-300">Archive</div>
-          <div className="text-lg font-semibold text-white">{filteredReceipts.length} records</div>
+          <div className="text-lg font-semibold text-white">
+            {filteredReceipts.length} {typeFilter === 'all' ? 'records' : `${typeFilter}s`}
+          </div>
         </div>
       </div>
 
@@ -118,6 +135,15 @@ export default function InvoicesPage() {
         </div>
 
         <div className="flex items-center gap-4">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'receipt' | 'invoice')}
+            className="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="all">All</option>
+            <option value="receipt">Receipts</option>
+            <option value="invoice">Invoices</option>
+          </select>
           <div className="relative flex-1">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -205,9 +231,9 @@ export default function InvoicesPage() {
                       <div className="flex items-center gap-2">
                         <FileArchive size={15} className="text-emerald-400" />
                         <div>
-                          <div className="text-sm text-white">{receipt.pdfFileName || 'Pending'}</div>
+                          <div className="text-sm text-white">{receipt.pdfFileName || 'Pending archive'}</div>
                           <div className="text-xs text-gray-500">
-                            {receipt.pdfStoredAt ? `Stored ${new Date(receipt.pdfStoredAt).toLocaleString()}` : 'Not stored yet'}
+                            {receipt.pdfStoredAt ? `Stored ${new Date(receipt.pdfStoredAt).toLocaleString()}` : 'Pending archive'}
                           </div>
                         </div>
                       </div>
@@ -221,17 +247,27 @@ export default function InvoicesPage() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => openPdf(receipt.pdfUrl)}
-                          className="rounded p-1.5 text-gray-400 transition-colors hover:bg-indigo-500/10 hover:text-indigo-400"
-                          title="View PDF"
+                          disabled={!receipt.pdfUrl}
+                          className={`rounded p-1.5 transition-colors ${receipt.pdfUrl ? 'text-gray-400 hover:bg-indigo-500/10 hover:text-indigo-400' : 'cursor-not-allowed text-gray-600'}`}
+                          title={receipt.pdfUrl ? 'View PDF' : 'PDF not available yet'}
                         >
                           <Eye size={16} />
                         </button>
                         <button
                           onClick={() => downloadPdf(receipt.downloadUrl)}
-                          className="rounded p-1.5 text-gray-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-400"
-                          title="Download PDF"
+                          disabled={!receipt.downloadUrl}
+                          className={`rounded p-1.5 transition-colors ${receipt.downloadUrl ? 'text-gray-400 hover:bg-emerald-500/10 hover:text-emerald-400' : 'cursor-not-allowed text-gray-600'}`}
+                          title={receipt.downloadUrl ? 'Download PDF' : 'PDF not available yet'}
                         >
                           <Download size={16} />
+                        </button>
+                        <button
+                          onClick={() => shareOnWhatsApp(receipt)}
+                          disabled={!receipt.pdfUrl}
+                          className={`rounded p-1.5 transition-colors ${receipt.pdfUrl ? 'text-gray-400 hover:bg-green-500/10 hover:text-green-400' : 'cursor-not-allowed text-gray-600'}`}
+                          title={receipt.pdfUrl ? 'Share on WhatsApp' : 'PDF not available yet'}
+                        >
+                          <MessageCircle size={16} />
                         </button>
                       </div>
                     </td>

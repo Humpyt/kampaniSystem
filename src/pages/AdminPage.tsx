@@ -681,13 +681,19 @@ const StaffTargetsManagement: React.FC = () => {
     }
   };
 
-  // Calculate aggregate stats
-  const totalMonthlyTarget = staffTargets.reduce((sum, s) => sum + (s.monthly_target || 0), 0);
-  const totalMonthlySales = staffTargets.reduce((sum, s) => sum + (s.monthly_sales || 0), 0);
+  const toNumber = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Calculate aggregate stats (Postgres numeric fields may arrive as strings)
+  const totalMonthlyTarget = staffTargets.reduce((sum, s) => sum + toNumber(s.monthly_target), 0);
+  const totalMonthlySales = staffTargets.reduce((sum, s) => sum + toNumber(s.monthly_sales), 0);
   const overallProgress = totalMonthlyTarget > 0 ? (totalMonthlySales / totalMonthlyTarget) * 100 : 0;
-  const activeStaff = staffTargets.filter(s => s.today_sales > 0).length;
+  const activeStaff = staffTargets.filter(s => toNumber(s.today_sales) > 0).length;
 
   const formatCurrency = (value: number) => {
+    if (!Number.isFinite(value)) return '0';
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
     return value.toString();

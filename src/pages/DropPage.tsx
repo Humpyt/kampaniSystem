@@ -504,6 +504,16 @@ export default function DropPage() {
     setEditingItem(null);
   };
 
+  const handleCartItemPriceChange = (id: string, price: number) => {
+    const item = cartItems.find(cartItem => cartItem.id === id);
+    if (!item) return;
+
+    updateCartItem?.(id, {
+      ...item,
+      price: Math.max(0, price),
+    });
+  };
+
   const handleDeleteCartItem = (id: string) => {
     removeFromCart(id);
     setEditingItem(null);
@@ -1521,7 +1531,9 @@ export default function DropPage() {
             onComplete={handleComplete}
             disabled={isCompleting || cartItems.length === 0 || !selectedCustomer}
             previewItem={previewItem}
+            onPriceChange={(price) => handlePriceChange(String(price))}
             onDone={handlePreviewDone}
+            onCartItemPriceChange={handleCartItemPriceChange}
             discount={discount}
             onDiscountChange={setDiscount}
             customer={selectedCustomer}

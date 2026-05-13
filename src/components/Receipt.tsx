@@ -28,7 +28,7 @@ export function Receipt({ data, onPrint, servedBy }: ReceiptProps) {
       <div className="space-y-4 font-mono text-sm">
         {/* Header */}
         <div className="text-center">
-          <h2 className="text-xl font-bold">KAMPANI SHOES &amp; BAGS CLINIC</h2>
+          <img src="/kampani-receipt-logo.png" alt="Kampani" className="mx-auto mb-2 h-16 w-auto object-contain" />
           <p>FORESTMALL LUGOGO GF06</p>
           <p>Mob: 0789 183 784 | 0704 830 016</p>
         </div>

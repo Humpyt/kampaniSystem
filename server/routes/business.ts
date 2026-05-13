@@ -562,7 +562,7 @@ router.put('/targets/staff/:userId/targets', async (req, res) => {
     }
 
     // Check if staff exists
-    const staff = await db.prepare('SELECT id FROM users WHERE id = ?', [userId]).get(userId);
+    const staff = await db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
     if (!staff) {
       return res.status(404).json({ error: 'Staff member not found' });
     }
@@ -570,10 +570,7 @@ router.put('/targets/staff/:userId/targets', async (req, res) => {
     const now = new Date().toISOString();
 
     // Check if targets exist
-    const existingTargets = await db.prepare(
-      'SELECT id FROM staff_targets WHERE user_id = ?',
-      [userId]
-    ).get();
+    const existingTargets = await db.prepare('SELECT id FROM staff_targets WHERE user_id = ?').get(userId);
 
     if (existingTargets) {
       // Update existing targets
@@ -609,8 +606,7 @@ router.put('/targets/staff/:userId/targets', async (req, res) => {
 
     // Return updated targets
     const updatedTargets = await db.prepare(
-      'SELECT daily_target, monthly_target FROM staff_targets WHERE user_id = ?',
-      [userId]
+      'SELECT daily_target, monthly_target FROM staff_targets WHERE user_id = ?'
     ).get(userId);
 
     res.json({

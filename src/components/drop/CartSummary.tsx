@@ -44,7 +44,9 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   onComplete,
   disabled = false,
   previewItem = null,
+  onPriceChange,
   onDone,
+  onCartItemPriceChange,
   discount = 0,
   onDiscountChange,
   customer,
@@ -150,12 +152,12 @@ const CartSummary: React.FC<CartSummaryProps> = ({
                 <div className="flex gap-2">
                   <input
                     type="number"
+                    min="0"
+                    step="100"
                     placeholder="0"
                     value={previewItem.price || ''}
-                    readOnly
-                    aria-readonly="true"
-                    title="Service prices are controlled by the service catalog"
-                    className="flex-1 pl-3 pr-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-bold text-sm placeholder-gray-300 border-2 border-indigo-200 cursor-not-allowed"
+                    onChange={(e) => onPriceChange?.(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="flex-1 pl-3 pr-3 py-2 bg-white rounded-lg text-gray-800 font-bold text-sm placeholder-gray-300 border-2 border-indigo-200 focus:border-indigo-500 focus:outline-none"
                   />
                   <button
                     onClick={() => previewItem && onDone?.(previewItem)}
@@ -177,7 +179,11 @@ const CartSummary: React.FC<CartSummaryProps> = ({
             item={item}
             onEdit={() => {}}
             onRemove={onRemoveItem}
-            onPriceChange={undefined}
+            onPriceChange={
+              onCartItemPriceChange
+                ? (price) => onCartItemPriceChange(item.id, price)
+                : undefined
+            }
           />
         ))}
 

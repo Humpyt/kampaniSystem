@@ -26,9 +26,18 @@ const getRetailItems = async (operationId: string) => {
   `).all(operationId);
 };
 
-const getReceiptStorageDir = () => path.join(process.cwd(), 'storage', 'receipts');
+const getDocumentStorageDir = () => path.join(process.cwd(), 'storage', 'receipts');
 
-const getReceiptFileName = (invoice: any) => {
+const getReceiptLogoPath = () => {
+  const candidates = [
+    path.join(process.cwd(), 'public', 'kampani-receipt-logo.png'),
+    path.join(process.cwd(), 'public', 'receipt-branding.png'),
+  ];
+
+  return candidates.find(candidate => fs.existsSync(candidate)) || null;
+};
+
+const getDocumentFileName = (invoice: any) => {
   const safeBase = String(invoice.invoice_number || invoice.id).replace(/[^a-zA-Z0-9._-]+/g, '_');
   return `${safeBase}.pdf`;
 };
@@ -127,9 +136,11 @@ const generateReceiptPdfBuffer = async (invoice: any, context: any): Promise<Buf
   };
 
   let y = 14;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000');
-  doc.text('KAMPANIS SHOES & BAGS CLINIC', ML, y, { align: 'center', width: CW });
-  y += 13;
+  const logoPath = getReceiptLogoPath();
+  if (logoPath) {
+    doc.image(logoPath, ML + CW / 2 - 30, y, { fit: [60, 60], align: 'center', valign: 'center' });
+    y += 64;
+  }
   doc.font('Helvetica').fontSize(7);
   doc.text('Forest Mall, Kampala', ML, y, { align: 'center', width: CW });
   y += 9;
@@ -243,18 +254,22 @@ const generateReceiptPdfBuffer = async (invoice: any, context: any): Promise<Buf
   return Buffer.concat(chunks);
 };
 
-const ensureReceiptPdf = async (invoice: any, context?: any) => {
-  if (invoice.type !== 'receipt') {
-    return null;
-  }
-
-  const storageDir = getReceiptStorageDir();
+const ensureDocumentPdf = async (invoice: any, context?: any) => {
+  const storageDir = getDocumentStorageDir();
   fs.mkdirSync(storageDir, { recursive: true });
 
-  const fileName = getReceiptFileName(invoice);
+  const fileName = getDocumentFileName(invoice);
   const filePath = path.join(storageDir, fileName);
+  const logoPath = getReceiptLogoPath();
+  const shouldRegenerate =
+    !fs.existsSync(filePath) ||
+    Boolean(
+      logoPath &&
+      fs.existsSync(filePath) &&
+      fs.statSync(logoPath).mtimeMs > fs.statSync(filePath).mtimeMs
+    );
 
-  if (!fs.existsSync(filePath)) {
+  if (shouldRegenerate) {
     const invoiceContext = context || await getInvoiceContext(invoice);
     const pdfBuffer = await generateReceiptPdfBuffer(invoice, invoiceContext);
     fs.writeFileSync(filePath, pdfBuffer);
@@ -307,7 +322,7 @@ router.get('/', async (req, res) => {
 
     const results = await Promise.all(
       invoices.map(async (inv: any) => {
-        const pdfMeta = inv.type === 'receipt' ? await ensureReceiptPdf(inv) : null;
+        const pdfMeta = await ensureDocumentPdf(inv);
         return {
           id: inv.id,
           operationId: inv.operation_id,
@@ -349,7 +364,7 @@ router.get('/:id', async (req, res) => {
     }
 
     const context = await getInvoiceContext(invoice);
-    const pdfMeta = invoice.type === 'receipt' ? await ensureReceiptPdf(invoice, context) : null;
+    const pdfMeta = await ensureDocumentPdf(invoice, context);
 
     res.json({
       id: invoice.id,
@@ -413,16 +428,12 @@ router.get('/:id/pdf', async (req, res) => {
     const invoice = await getInvoiceById(id);
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Receipt not found' });
+      return res.status(404).json({ error: 'Document not found' });
     }
 
-    if (invoice.type !== 'receipt') {
-      return res.status(400).json({ error: 'Only receipt PDFs are stored in this archive' });
-    }
-
-    const pdfMeta = await ensureReceiptPdf(invoice);
+    const pdfMeta = await ensureDocumentPdf(invoice);
     if (!pdfMeta) {
-      return res.status(500).json({ error: 'Failed to prepare receipt PDF' });
+      return res.status(500).json({ error: 'Failed to prepare PDF' });
     }
 
     const disposition = req.query.download ? 'attachment' : 'inline';
@@ -430,8 +441,8 @@ router.get('/:id/pdf', async (req, res) => {
     res.setHeader('Content-Disposition', `${disposition}; filename="${pdfMeta.fileName}"`);
     res.sendFile(pdfMeta.filePath);
   } catch (error) {
-    console.error('Failed to load receipt PDF:', error);
-    res.status(500).json({ error: 'Failed to load receipt PDF' });
+    console.error('Failed to load document PDF:', error);
+    res.status(500).json({ error: 'Failed to load PDF' });
   }
 });
 
@@ -511,7 +522,7 @@ router.post('/', async (req, res) => {
     );
 
     const invoice = await getInvoiceById(invoiceId);
-    const pdfMeta = invoice && invoice.type === 'receipt' ? await ensureReceiptPdf(invoice) : null;
+    const pdfMeta = invoice ? await ensureDocumentPdf(invoice) : null;
 
     res.json({
       ...(invoice as any),
@@ -532,14 +543,10 @@ router.post('/:id/print', async (req, res) => {
     const invoice = await getInvoiceById(id);
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Receipt not found' });
+      return res.status(404).json({ error: 'Document not found' });
     }
 
-    if (invoice.type !== 'receipt') {
-      return res.status(400).json({ error: 'Only receipt PDFs are stored in this archive' });
-    }
-
-    const pdfMeta = await ensureReceiptPdf(invoice);
+    const pdfMeta = await ensureDocumentPdf(invoice);
     res.json({
       success: true,
       stored: true,
@@ -547,8 +554,8 @@ router.post('/:id/print', async (req, res) => {
       downloadUrl: pdfMeta?.downloadUrl || null,
     });
   } catch (error: any) {
-    console.error('Failed to prepare receipt PDF:', error);
-    res.status(500).json({ error: error.message || 'Failed to prepare receipt PDF' });
+    console.error('Failed to prepare document PDF:', error);
+    res.status(500).json({ error: error.message || 'Failed to prepare PDF' });
   }
 });
 

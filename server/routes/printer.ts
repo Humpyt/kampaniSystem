@@ -54,8 +54,8 @@ const BRAND = {
 
 const STORE_INFO = {
   brand: 'KAMPANI',
-  fullName: 'KAMPANI SHOES & BAGS CLINIC',
-  tagline: 'Shoes & Bags Clinic',
+  fullName: '',
+  tagline: '',
   location: 'FORESTMALL LUGOGO GF06',
   phone: 'Mob: 0789 183 784 | 0704 830 016',
   footerLine1: 'Thank you for your business.',
@@ -64,6 +64,7 @@ const STORE_INFO = {
 };
 
 const RECEIPT_BRAND_IMAGE_CANDIDATES = [
+  path.join(process.cwd(), 'public', 'kampani-receipt-logo.png'),
   path.join(process.cwd(), 'public', 'receipt-branding.png'),
   path.join(process.cwd(), 'public', 'ChatGPT Image Apr 23, 2026, 01_14_31 PM.png'),
 ];
@@ -308,10 +309,12 @@ async function generateReceiptPDF(data: {
     y += 60;
   }
 
-  doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(13.5);
-  const fullNameHeight = doc.heightOfString(STORE_INFO.fullName, { align: 'center', width: CW });
-  doc.text(STORE_INFO.fullName, ML, y, { align: 'center', width: CW });
-  y += Math.max(16, fullNameHeight + 2);
+  if (!brandImagePath && STORE_INFO.fullName) {
+    doc.fillColor(BRAND.ink).font('Helvetica-Bold').fontSize(13.5);
+    const fullNameHeight = doc.heightOfString(STORE_INFO.fullName, { align: 'center', width: CW });
+    doc.text(STORE_INFO.fullName, ML, y, { align: 'center', width: CW });
+    y += Math.max(16, fullNameHeight + 2);
+  }
   doc.font('Helvetica-Bold').fontSize(8.8);
   const locationHeight = doc.heightOfString(STORE_INFO.location, { align: 'center', width: CW });
   doc.text(STORE_INFO.location, ML, y, { align: 'center', width: CW });
@@ -541,10 +544,12 @@ async function generateOrderPrintHtml(data: {
         line-height: 1.32;
       }
       .center { text-align: center; }
-      .brand {
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: 0;
+      .brand-logo {
+        display: block;
+        width: 44mm;
+        max-width: 100%;
+        height: auto;
+        margin: 0 auto 6px;
       }
       .subtle {
         font-size: 12px;
@@ -636,8 +641,7 @@ async function generateOrderPrintHtml(data: {
   <body>
     <main class="receipt">
       <div class="center">
-        <div class="brand">${escapeHtml(STORE_INFO.brand)}</div>
-        <div>${escapeHtml(STORE_INFO.tagline)}</div>
+        <img class="brand-logo" src="/kampani-receipt-logo.png" alt="Kampani" />
         <div class="subtle">${escapeHtml(STORE_INFO.location)}</div>
         <div class="subtle">${escapeHtml(STORE_INFO.phone)}</div>
       </div>
@@ -879,7 +883,7 @@ router.get("/print/order/:id", async (req, res) => {
   const zl: string[] = [];
   zl.push('^XA','^CI28');
   // Header
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(52,52)+' '+fd(STORE_INFO.fullName)); y+=58;
+  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(52,52)+' '+fd(STORE_INFO.brand)); y+=58;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.location)); y+=30;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.phone)); y+=30;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(21,21)+' '+fd(' CUSTOMER COPY ')); y+=27;
@@ -1327,7 +1331,6 @@ router.post('/print/payment-receipt', async (req, res) => {
   const zl: string[] = [];
   zl.push('^XA','^CI28');
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(66,66)+' '+fd(STORE_INFO.brand)); y+=70;
-  zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(32,32)+' '+fd(STORE_INFO.tagline)); y+=39;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.location)); y+=32;
   zl.push(fo(0,y)+fb(W,1,0,0,'C')+' '+font(24,24)+' '+fd(STORE_INFO.phone)); y+=30;
   zl.push(vl(y,3)); y+=12;
@@ -1387,7 +1390,6 @@ router.post('/print/payment-receipt', async (req, res) => {
       amountPaid: amountPaid || 0,
       balance: remaining,
       paymentMethod: paymentMethod || 'Cash',
-      showBrandImage: false,
       servedBy: servedBy || undefined,
     });
 
